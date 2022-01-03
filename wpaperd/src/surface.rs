@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 
+use color_eyre::eyre::Context;
 use color_eyre::Result;
 use dowser::Dowser;
 use image::imageops::FilterType;
@@ -135,12 +136,14 @@ impl Surface {
         let width = self.dimensions.0 as i32;
         let height = self.dimensions.1 as i32;
 
-        self.pool.resize((stride * height) as usize).unwrap();
+        self.pool
+            .resize((stride * height) as usize)
+            .context("resizing the wayland pool")?;
 
         let (canvas, buffer) = self
             .pool
             .buffer(width, height, stride, wl_shm::Format::Abgr8888)
-            .unwrap();
+            .context("creating the wayland buffer from the pool")?;
 
         let img_path = if path.is_dir() {
             let files = Vec::<PathBuf>::try_from(
@@ -150,24 +153,22 @@ impl Surface {
                 })
                 .with_path(path),
             )
-            .unwrap();
+            .with_context(|| format!("iterating files in directory {:?}", path))?;
             files[rand::random::<usize>() % files.len()].clone()
         } else {
             path.to_path_buf()
         };
 
-        let image = open(img_path).unwrap();
+        let image = open(&img_path).with_context(|| format!("opening the image {:?}", img_path))?;
         let image = image
-            .resize_to_fill(
-                width.try_into().unwrap(),
-                height.try_into().unwrap(),
-                FilterType::Lanczos3,
-            )
+            .resize_to_fill(width.try_into()?, height.try_into()?, FilterType::Lanczos3)
             .into_rgba8();
 
         let mut writer = BufWriter::new(canvas);
-        writer.write_all(image.as_raw()).unwrap();
-        writer.flush().unwrap();
+        writer
+            .write_all(image.as_raw())
+            .context("writing the image to the surface")?;
+        writer.flush().context("flushing the surface writer")?;
 
         // Attach the buffer to the surface and mark the entire surface as damaged
         self.surface.attach(Some(&buffer), 0, 0);

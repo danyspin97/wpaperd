@@ -14,9 +14,11 @@ use std::{
 };
 
 use calloop::channel::Sender;
-use color_eyre::{eyre::ensure, Result};
+use color_eyre::{eyre::ensure, eyre::WrapErr, Result};
 use hotwatch::{Event, Hotwatch};
+use log::error;
 use output_timer::OutputTimer;
+use simplelog::{ColorChoice, LevelFilter, TermLogger, TerminalMode};
 use smithay_client_toolkit::{
     environment,
     environment::SimpleGlobal,
@@ -86,6 +88,12 @@ fn get_timer_closure(surface_timer: Arc<Mutex<OutputTimer>>, tx: Sender<()>) -> 
 
 fn main() -> Result<()> {
     color_eyre::install()?;
+    TermLogger::init(
+        LevelFilter::Warn,
+        simplelog::Config::default(),
+        TerminalMode::Mixed,
+        ColorChoice::Auto,
+    )?;
 
     let xdg_dirs = BaseDirectories::with_prefix("wpaper").unwrap();
     let config_file = xdg_dirs.place_config_file("wpaperd.conf").unwrap();
@@ -130,7 +138,7 @@ fn main() -> Result<()> {
             let surface = env_handle.create_surface().detach();
             let pool = env_handle
                 .create_auto_pool()
-                .expect("Failed to create a memory pool!");
+                .expect("failed to create a memory pool!");
             (*surfaces_handle.borrow_mut()).push((
                 info.id,
                 Surface::new(
@@ -157,7 +165,7 @@ fn main() -> Result<()> {
     let _listner_handle =
         env.listen_for_outputs(move |output, info, _| output_handler(output, info));
 
-    let mut event_loop = calloop::EventLoop::<()>::try_new().unwrap();
+    let mut event_loop = calloop::EventLoop::<()>::try_new()?;
 
     WaylandSource::new(queue)
         .quick_insert(event_loop.handle())
@@ -174,26 +182,36 @@ fn main() -> Result<()> {
     let config_reloaded_clone = Arc::clone(&config_reloaded);
     let config_clone = config.clone();
     let config_file_clone = config_file.clone();
-    let mut hotwatch = Hotwatch::new().expect("Hotwatch failed to initialize.");
+    let mut hotwatch = Hotwatch::new().context("hotwatch failed to initialize")?;
     hotwatch
         .watch(&config_file, move |event: Event| {
             if let Event::Write(_) = event {
-                let new_config = Config::new_from_path(&config_file_clone);
-                if let Ok(new_config) = new_config {
-                    *config_clone.lock().unwrap() = new_config;
-                    config_reloaded_clone.store(true, Ordering::SeqCst);
-                    ev_tx_clone.send(()).unwrap();
+                let new_config = Config::new_from_path(&config_file_clone).with_context(|| {
+                    format!("reading configuration from file {:?}", config_file_clone)
+                });
+                match new_config {
+                    Ok(new_config) => {
+                        *config_clone.lock().unwrap() = new_config;
+                        config_reloaded_clone.store(true, Ordering::SeqCst);
+                        ev_tx_clone.send(()).unwrap();
+                    }
+                    Err(err) => {
+                        error!("{:?}", err);
+                    }
                 }
             }
         })
-        .expect("Failed to watch file!");
+        .with_context(|| format!("watching file {:?}", &config_file))?;
 
     let timer = timer::Timer::new();
 
     let mut timer_guards = HashMap::new();
     macro_rules! add_timer_on_draw {
         ($surface:ident) => {
-            if let Some(duration) = $surface.draw().unwrap() {
+            if let Some(duration) = $surface
+                .draw()
+                .with_context(|| format!("drawing surface for {}", $surface.info.name))?
+            {
                 timer_guards.insert(
                     $surface.info.id,
                     timer.schedule_with_delay(
@@ -237,7 +255,9 @@ fn main() -> Result<()> {
             }
         }
 
-        display.flush().unwrap();
-        event_loop.dispatch(None, &mut ()).unwrap();
+        display.flush().context("flushing the display")?;
+        event_loop
+            .dispatch(None, &mut ())
+            .context("dispatching the event loop")?;
     }
 }
