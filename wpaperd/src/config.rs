@@ -30,8 +30,8 @@ impl Config {
                 name
             );
             ensure!(
-                config.time.is_none() || path.is_dir(),
-                "Time can only be set when path points to a directory, for input {}",
+                config.duration.is_none() || path.is_dir(),
+                "Duration can only be set when path points to a directory, for input {}",
                 name
             );
         }

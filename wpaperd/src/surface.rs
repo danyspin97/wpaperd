@@ -38,7 +38,7 @@ pub struct Surface {
     pub info: OutputInfo,
     pool: AutoMemPool,
     dimensions: (u32, u32),
-    output: Arc<Output>,
+    pub output: Arc<Output>,
     need_redraw: bool,
     pub timer: Arc<Mutex<OutputTimer>>,
 }
@@ -120,11 +120,12 @@ impl Surface {
         }
     }
 
-    pub fn draw(&mut self) -> Result<Option<u32>> {
+    /// Returns true if something has been drawn to the surface
+    pub fn draw(&mut self) -> Result<bool> {
         {
             let mut output_timer = self.timer.lock().unwrap();
             if !(self.need_redraw || output_timer.expired) || self.dimensions.0 == 0 {
-                return Ok(None);
+                return Ok(false);
             }
             output_timer.expired = false;
             self.need_redraw = false;
@@ -178,7 +179,7 @@ impl Surface {
         // Finally, commit the surface
         self.surface.commit();
 
-        Ok(self.output.time)
+        Ok(true)
     }
 
     pub fn update_output(&mut self, output: Arc<Output>) {

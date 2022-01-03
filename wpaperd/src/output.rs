@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::{path::PathBuf, time::Duration};
 
 use serde::Deserialize;
 
@@ -6,5 +6,6 @@ use serde::Deserialize;
 pub struct Output {
     pub path: Option<PathBuf>,
     pub mode: Option<()>,
-    pub time: Option<u32>,
+    #[serde(with = "humantime_serde")]
+    pub duration: Option<Duration>,
 }

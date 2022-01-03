@@ -1,5 +1,4 @@
-use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::{sync::Arc, time::Instant};
 
 use crate::output::Output;
 
@@ -16,11 +15,9 @@ impl OutputTimer {
 
     pub fn check_timeout(&mut self) -> bool {
         // Config might have changed
-        if let Some(duration) = self.output.time {
+        if let Some(duration) = self.output.duration {
             let now = Instant::now();
-            if now.checked_duration_since(self.time_changed).unwrap()
-                > Duration::from_secs(duration.into())
-            {
+            if now.checked_duration_since(self.time_changed).unwrap() > duration {
                 self.expired = true;
                 self.time_changed = now;
                 return true;

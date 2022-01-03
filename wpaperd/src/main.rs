@@ -208,17 +208,19 @@ fn main() -> Result<()> {
     let mut timer_guards = HashMap::new();
     macro_rules! add_timer_on_draw {
         ($surface:ident) => {
-            if let Some(duration) = $surface
+            if $surface
                 .draw()
                 .with_context(|| format!("drawing surface for {}", $surface.info.name))?
             {
-                timer_guards.insert(
-                    $surface.info.id,
-                    timer.schedule_with_delay(
-                        chrono::Duration::seconds(duration.into()),
-                        get_timer_closure($surface.timer.clone(), ev_tx.clone()),
-                    ),
-                );
+                if let Some(duration) = $surface.output.duration {
+                    timer_guards.insert(
+                        $surface.info.id,
+                        timer.schedule_with_delay(
+                            chrono::Duration::seconds(duration.as_secs().try_into().unwrap()),
+                            get_timer_closure($surface.timer.clone(), ev_tx.clone()),
+                        ),
+                    );
+                }
             }
         };
     }
