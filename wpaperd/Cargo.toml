@@ -1,0 +1,23 @@
+[package]
+name = "wpaperd"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+calloop = "0.9.3"
+chrono = "0.4.19"
+color-eyre = "0.5.11"
+dowser = "0.3.5"
+image = "0.23.14"
+hotwatch = "0.4.6"
+lazy_static = "1.4.0"
+rand = "0.8.4"
+serde = { version = "1.0.133", features = ["derive", "rc"] }
+serde_yaml = "0.8.23"
+smithay-client-toolkit = "0.15.3"
+timer = "0.2.0"
+wayland-client = "0.29.2"
+xdg = "2.4.0"
+
