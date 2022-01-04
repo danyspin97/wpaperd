@@ -1,0 +1,6 @@
+rinstall: 0.1.0
+pkgs:
+  wpaperd:
+    type: rust
+    exe:
+      - wpaperd
