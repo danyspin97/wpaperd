@@ -1,15 +1,15 @@
 use std::cell::Cell;
 use std::io::{BufWriter, Write};
-use std::os::unix::prelude::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 
-use color_eyre::eyre::Context;
+use color_eyre::eyre::{ensure, Context};
 use color_eyre::Result;
 use dowser::Dowser;
 use image::imageops::FilterType;
 use image::open;
+use log::warn;
 use smithay_client_toolkit::{
     output::OutputInfo,
     reexports::{
@@ -146,21 +146,46 @@ impl Surface {
             .buffer(width, height, stride, wl_shm::Format::Abgr8888)
             .context("creating the wayland buffer from the pool")?;
 
-        let img_path = if path.is_dir() {
-            let files = Vec::<PathBuf>::try_from(
-                Dowser::filtered(|p: &Path| {
-                    p.extension()
-                        .map_or(false, |e| e.as_bytes().eq_ignore_ascii_case(b"jpg"))
-                })
-                .with_path(path),
-            )
-            .with_context(|| format!("iterating files in directory {:?}", path))?;
-            files[rand::random::<usize>() % files.len()].clone()
+        let mut tries = 0;
+        let image = if path.is_dir() {
+            loop {
+                let files = Vec::<PathBuf>::try_from(
+                    Dowser::filtered(|p: &Path| {
+                        if let Some(guess) = new_mime_guess::from_path(&p).first() {
+                            if guess.type_() == "image" {
+                                true
+                            } else {
+                                false
+                            }
+                        } else {
+                            false
+                        }
+                    })
+                    .with_path(path),
+                )
+                .with_context(|| format!("iterating files in directory {:?}", path))?;
+                let img_path = files[rand::random::<usize>() % files.len()].clone();
+                match open(&img_path).with_context(|| format!("opening the image {:?}", img_path)) {
+                    Ok(image) => {
+                        break image;
+                    }
+                    Err(err) => {
+                        warn!("{:?}", err);
+                        tries += 1;
+                    }
+                }
+
+                ensure!(
+                    tries < 5,
+                    "tried reading an image from the directory {:?} without success",
+                    &path
+                );
+            }
         } else {
-            path.to_path_buf()
+            let img_path = path.to_path_buf();
+            open(&img_path).with_context(|| format!("opening the image {:?}", img_path))?
         };
 
-        let image = open(&img_path).with_context(|| format!("opening the image {:?}", img_path))?;
         let image = image
             .resize_to_fill(width.try_into()?, height.try_into()?, FilterType::Lanczos3)
             .into_rgba8();

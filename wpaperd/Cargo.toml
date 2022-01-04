@@ -15,6 +15,8 @@ hotwatch = "0.4.6"
 humantime-serde = "1.0.1"
 lazy_static = "1.4.0"
 log = "0.4.14"
+mime = "0.3.16"
+new_mime_guess = "4.0.0"
 rand = "0.8.4"
 serde = { version = "1.0.133", features = ["derive", "rc"] }
 simplelog = "0.11.1"
