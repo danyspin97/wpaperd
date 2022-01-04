@@ -18,7 +18,7 @@ impl Config {
         let mut config_manager: Self = toml::from_str(&fs::read_to_string(path)?)?;
         config_manager.default_config = config_manager
             .data
-            .get("*")
+            .get("default")
             .unwrap_or(&Arc::new(Output::default()))
             .clone();
         for (name, config) in &config_manager.data {
