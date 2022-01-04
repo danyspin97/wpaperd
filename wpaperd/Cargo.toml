@@ -17,7 +17,6 @@ lazy_static = "1.4.0"
 log = "0.4.14"
 rand = "0.8.4"
 serde = { version = "1.0.133", features = ["derive", "rc"] }
-serde_yaml = "0.8.23"
 simplelog = "0.11.1"
 smithay-client-toolkit = "0.15.3"
 timer = "0.2.0"

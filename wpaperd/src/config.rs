@@ -15,7 +15,7 @@ pub struct Config {
 
 impl Config {
     pub fn new_from_path(path: &Path) -> Result<Self> {
-        let mut config_manager: Self = serde_yaml::from_str(&fs::read_to_string(path)?)?;
+        let mut config_manager: Self = toml::from_str(&fs::read_to_string(path)?)?;
         config_manager.default_config = config_manager
             .data
             .get("*")

@@ -6,6 +6,6 @@ use serde::Deserialize;
 pub struct Output {
     pub path: Option<PathBuf>,
     pub mode: Option<()>,
-    #[serde(with = "humantime_serde")]
+    #[serde(default, with = "humantime_serde")]
     pub duration: Option<Duration>,
 }
