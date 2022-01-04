@@ -6,6 +6,8 @@ mod surface;
 use std::{
     cell::RefCell,
     collections::HashMap,
+    path::PathBuf,
+    process::exit,
     rc::Rc,
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -14,9 +16,11 @@ use std::{
 };
 
 use calloop::channel::Sender;
+use clap::Parser;
 use color_eyre::{eyre::ensure, eyre::WrapErr, Result};
 use hotwatch::{Event, Hotwatch};
 use log::error;
+use nix::unistd::fork;
 use output_timer::OutputTimer;
 use simplelog::{ColorChoice, LevelFilter, TermLogger, TerminalMode};
 use smithay_client_toolkit::{
@@ -78,6 +82,23 @@ impl OutputHandling for Env {
     }
 }
 
+#[derive(Parser)]
+#[clap(
+    author = "Danilo Spinella <danilo.spinella@suse.com>",
+    version,
+    about = "A wallpaper manager for Wayland compositors"
+)]
+struct Opts {
+    #[clap(short, long, help = "Path to the config to read")]
+    config: Option<PathBuf>,
+    #[clap(
+        short = 'n',
+        long = "no-daemon",
+        help = "Stay in foreground, do not detach"
+    )]
+    no_daemon: bool,
+}
+
 fn get_timer_closure(surface_timer: Arc<Mutex<OutputTimer>>, tx: Sender<()>) -> impl Fn() {
     move || {
         if surface_timer.lock().unwrap().check_timeout() {
@@ -95,8 +116,21 @@ fn main() -> Result<()> {
         ColorChoice::Auto,
     )?;
 
-    let xdg_dirs = BaseDirectories::with_prefix("wpaper").unwrap();
-    let config_file = xdg_dirs.place_config_file("wpaperd.conf").unwrap();
+    let opts = Opts::parse();
+
+    if !opts.no_daemon {
+        match unsafe { fork()? } {
+            nix::unistd::ForkResult::Parent { child: _ } => exit(0),
+            nix::unistd::ForkResult::Child => {}
+        }
+    }
+
+    let config_file = if let Some(config_file) = opts.config {
+        config_file
+    } else {
+        let xdg_dirs = BaseDirectories::with_prefix("wpaper").unwrap();
+        xdg_dirs.place_config_file("wpaperd.conf").unwrap()
+    };
     ensure!(
         config_file.exists(),
         "Configuration file {:?} does not exists",

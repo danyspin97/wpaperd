@@ -8,6 +8,7 @@ edition = "2021"
 [dependencies]
 calloop = "0.9.3"
 chrono = "0.4.19"
+clap = { version = "3.0.0", features = ["derive"] }
 color-eyre = "0.5.11"
 dowser = "0.3.5"
 image = "0.23.14"
@@ -17,6 +18,7 @@ lazy_static = "1.4.0"
 log = "0.4.14"
 mime = "0.3.16"
 new_mime_guess = "4.0.0"
+nix = "0.23.1"
 rand = "0.8.4"
 serde = { version = "1.0.133", features = ["derive", "rc"] }
 simplelog = "0.11.1"
