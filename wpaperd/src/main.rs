@@ -131,12 +131,7 @@ fn main() -> Result<()> {
         let xdg_dirs = BaseDirectories::with_prefix("wpaper").unwrap();
         xdg_dirs.place_config_file("wpaperd.conf").unwrap()
     };
-    ensure!(
-        config_file.exists(),
-        "Configuration file {:?} does not exists",
-        config_file
-    );
-    let config = Arc::new(Mutex::new(Config::new_from_path(&config_file).unwrap()));
+    let config = Arc::new(Mutex::new(Config::new_from_path(&config_file)?));
     let display = Display::connect_to_env().unwrap();
     let mut queue = display.create_event_queue();
     let (outputs, xdg_output) =
@@ -181,7 +176,7 @@ fn main() -> Result<()> {
                     &layer_shell.clone(),
                     info.clone(),
                     pool,
-                    config_clone.lock().unwrap().get_output_by_name(&info.name),
+                    config.get_output_by_name(&info.name),
                 ),
             ));
         }
@@ -212,21 +207,17 @@ fn main() -> Result<()> {
         .unwrap();
 
     let ev_tx_clone = ev_tx.clone();
-    let config_reloaded = Arc::new(AtomicBool::new(false));
-    let config_reloaded_clone = Arc::clone(&config_reloaded);
     let config_clone = config.clone();
-    let config_file_clone = config_file.clone();
     let mut hotwatch = Hotwatch::new().context("hotwatch failed to initialize")?;
     hotwatch
         .watch(&config_file, move |event: Event| {
             if let Event::Write(_) = event {
-                let new_config = Config::new_from_path(&config_file_clone).with_context(|| {
-                    format!("reading configuration from file {:?}", config_file_clone)
-                });
+                let mut config = config_clone.lock().unwrap();
+                let new_config = Config::new_from_path(&config.path)
+                    .with_context(|| format!("reading configuration from file {:?}", config.path));
                 match new_config {
                     Ok(new_config) => {
-                        *config_clone.lock().unwrap() = new_config;
-                        config_reloaded_clone.store(true, Ordering::SeqCst);
+                        *config = new_config;
                         ev_tx_clone.send(()).unwrap();
                     }
                     Err(err) => {
@@ -259,14 +250,14 @@ fn main() -> Result<()> {
         };
     }
     loop {
-        if config_reloaded.load(Ordering::SeqCst) {
+        let reloaded = config.lock().unwrap().reloaded;
+        if reloaded {
             let config = config.lock().unwrap();
             let mut surfaces = surfaces.borrow_mut();
             for (_, surface) in surfaces.iter_mut() {
                 surface.update_output(config.get_output_by_name(&surface.info.name));
                 add_timer_on_draw!(surface);
             }
-            config_reloaded.store(false, Ordering::SeqCst);
         } else {
             // This is ugly, let's hope that some version of drain_filter() gets stabilized soon
             // https://github.com/rust-lang/rust/issues/43244
