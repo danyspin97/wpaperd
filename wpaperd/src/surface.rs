@@ -152,11 +152,7 @@ impl Surface {
                 let files = Vec::<PathBuf>::try_from(
                     Dowser::filtered(|p: &Path| {
                         if let Some(guess) = new_mime_guess::from_path(&p).first() {
-                            if guess.type_() == "image" {
-                                true
-                            } else {
-                                false
-                            }
+                            guess.type_() == "image"
                         } else {
                             false
                         }
