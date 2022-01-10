@@ -2,7 +2,7 @@
 
 **wpaper** is a minimal wallpaper daemon for Wayland. It allows the user to choose a different
 image for each output (aka for each monitor) just as *[swaybg]*. Moreover, a directory can be
-choosed and *wpaper* will randomly choose an image from it. Optionally, the user can set a
+chosen and *wpaper* will randomly choose an image from it. Optionally, the user can set a
 duration, after which the image displayed will be changed with another random one.
 
 ## Features
@@ -19,7 +19,8 @@ duration, after which the image displayed will be changed with another random on
 To install `wpaper`, clone the repository and build the project:
 
 ```bash
-$ git clone https://github.com/danyspin97/wpaperd
+$ git clone https://github.com/danyspin97/wpaper
+$ cd wpaper
 $ cargo build --release
 ```
 
