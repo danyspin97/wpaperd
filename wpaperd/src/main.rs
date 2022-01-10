@@ -9,15 +9,12 @@ use std::{
     path::PathBuf,
     process::exit,
     rc::Rc,
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc, Mutex,
-    },
+    sync::{Arc, Mutex},
 };
 
 use calloop::channel::Sender;
 use clap::Parser;
-use color_eyre::{eyre::ensure, eyre::WrapErr, Result};
+use color_eyre::{eyre::WrapErr, Result};
 use hotwatch::{Event, Hotwatch};
 use log::error;
 use nix::unistd::fork;
@@ -137,38 +134,50 @@ fn main() -> Result<()> {
     let (outputs, xdg_output) =
         smithay_client_toolkit::output::XdgOutputHandler::new_output_handlers();
 
-    let env = smithay_client_toolkit::environment::Environment::new(
-        &display.attach(queue.token()),
-        &mut queue,
-        Env {
-            compositor: SimpleGlobal::new(),
-            outputs,
-            shm: ShmHandler::new(),
-            xdg_output,
-            layer_shell: SimpleGlobal::new(),
-        },
-    )
-    .unwrap();
+    struct Status {
+        env: environment::Environment<Env>,
+        surfaces: RefCell<Vec<(u32, Surface)>>,
+    }
 
-    let surfaces = Rc::new(RefCell::new(Vec::new()));
+    let status = Rc::new(Status {
+        env: smithay_client_toolkit::environment::Environment::new(
+            &display.attach(queue.token()),
+            &mut queue,
+            Env {
+                compositor: SimpleGlobal::new(),
+                outputs,
+                shm: ShmHandler::new(),
+                xdg_output,
+                layer_shell: SimpleGlobal::new(),
+            },
+        )
+        .unwrap(),
+        surfaces: RefCell::new(Vec::new()),
+    });
+
+    let env = &status.env;
 
     let layer_shell = env.require_global::<zwlr_layer_shell_v1::ZwlrLayerShellV1>();
 
-    let env_handle = env.clone();
-    let surfaces_handle = Rc::clone(&surfaces);
     let config_clone = config.clone();
+    let status_rc = status.clone();
     let output_handler = move |output: wl_output::WlOutput, info: &OutputInfo| {
         if info.obsolete {
             // an output has been removed, release it
-            surfaces_handle.borrow_mut().retain(|(i, _)| *i != info.id);
+            status_rc
+                .surfaces
+                .borrow_mut()
+                .retain(|(i, _)| *i != info.id);
             output.release();
         } else {
             // an output has been created, construct a surface for it
-            let surface = env_handle.create_surface().detach();
-            let pool = env_handle
+            let surface = status_rc.env.create_surface().detach();
+            let pool = status_rc
+                .env
                 .create_auto_pool()
                 .expect("failed to create a memory pool!");
-            (*surfaces_handle.borrow_mut()).push((
+            let config = config_clone.lock().unwrap();
+            (*status_rc.surfaces.borrow_mut()).push((
                 info.id,
                 Surface::new(
                     &output,
@@ -250,10 +259,10 @@ fn main() -> Result<()> {
         };
     }
     loop {
+        let mut surfaces = status.surfaces.borrow_mut();
         let reloaded = config.lock().unwrap().reloaded;
         if reloaded {
             let config = config.lock().unwrap();
-            let mut surfaces = surfaces.borrow_mut();
             for (_, surface) in surfaces.iter_mut() {
                 surface.update_output(config.get_output_by_name(&surface.info.name));
                 add_timer_on_draw!(surface);
@@ -263,7 +272,6 @@ fn main() -> Result<()> {
             // https://github.com/rust-lang/rust/issues/43244
             let mut removal = Vec::new();
             {
-                let mut surfaces = surfaces.borrow_mut();
                 let mut i = 0;
                 while i != surfaces.len() {
                     let surface = &mut surfaces.get_mut(i).unwrap().1;
@@ -275,7 +283,6 @@ fn main() -> Result<()> {
                     i += 1;
                 }
             }
-            let mut surfaces = surfaces.borrow_mut();
             for i in removal {
                 timer_guards.remove(&surfaces.get(i).unwrap().1.info.id);
                 surfaces.remove(i);
