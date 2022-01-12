@@ -21,6 +21,7 @@ use smithay_client_toolkit::{
     },
     shm::AutoMemPool,
 };
+use wayland_client::protocol::wl_buffer::WlBuffer;
 
 use crate::output::Output;
 use crate::output_timer::OutputTimer;
@@ -41,6 +42,7 @@ pub struct Surface {
     pub output: Arc<Output>,
     need_redraw: bool,
     pub timer: Arc<Mutex<OutputTimer>>,
+    buffer: Option<WlBuffer>,
 }
 
 impl Surface {
@@ -103,6 +105,7 @@ impl Surface {
             need_redraw: false,
             output: output.clone(),
             timer: Arc::new(Mutex::new(OutputTimer::new(output))),
+            buffer: None,
         }
     }
 
@@ -141,6 +144,9 @@ impl Surface {
             .resize((stride * height) as usize)
             .context("resizing the wayland pool")?;
 
+        if let Some(buffer) = &self.buffer {
+            buffer.destroy();
+        }
         let (canvas, buffer) = self
             .pool
             .buffer(width, height, stride, wl_shm::Format::Abgr8888)
@@ -199,6 +205,8 @@ impl Surface {
 
         // Finally, commit the surface
         self.surface.commit();
+
+        self.buffer = Some(buffer);
 
         Ok(true)
     }
