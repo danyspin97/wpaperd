@@ -144,14 +144,6 @@ impl Surface {
             .resize((stride * height) as usize)
             .context("resizing the wayland pool")?;
 
-        if let Some(buffer) = &self.buffer {
-            buffer.destroy();
-        }
-        let (canvas, buffer) = self
-            .pool
-            .buffer(width, height, stride, wl_shm::Format::Abgr8888)
-            .context("creating the wayland buffer from the pool")?;
-
         let mut tries = 0;
         let image = if path.is_dir() {
             loop {
@@ -192,21 +184,34 @@ impl Surface {
             .resize_to_fill(width.try_into()?, height.try_into()?, FilterType::Lanczos3)
             .into_rgba8();
 
-        let mut writer = BufWriter::new(canvas);
-        writer
-            .write_all(image.as_raw())
-            .context("writing the image to the surface")?;
-        writer.flush().context("flushing the surface writer")?;
+        if let Some(buffer) = &self.buffer {
+            buffer.destroy();
+        }
+
+        self.buffer = Some(self.pool.try_draw::<_, color_eyre::eyre::Error>(
+            width,
+            height,
+            stride,
+            wl_shm::Format::Abgr8888,
+            |canvas: &mut [u8]| {
+                let mut writer = BufWriter::new(canvas);
+                writer
+                    .write_all(image.as_raw())
+                    .context("writing the image to the surface")?;
+                writer.flush().context("flushing the surface writer")?;
+
+                Ok(())
+            },
+        )?);
 
         // Attach the buffer to the surface and mark the entire surface as damaged
-        self.surface.attach(Some(&buffer), 0, 0);
+        self.surface
+            .attach(Some(&self.buffer.as_ref().unwrap()), 0, 0);
         self.surface
             .damage_buffer(0, 0, width as i32, height as i32);
 
         // Finally, commit the surface
         self.surface.commit();
-
-        self.buffer = Some(buffer);
 
         Ok(true)
     }
