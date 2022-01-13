@@ -1,6 +1,5 @@
 mod config;
 mod output;
-mod output_timer;
 mod surface;
 
 use std::{
@@ -12,13 +11,11 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use calloop::channel::Sender;
 use clap::Parser;
 use color_eyre::{eyre::WrapErr, Result};
 use hotwatch::{Event, Hotwatch};
 use log::error;
 use nix::unistd::fork;
-use output_timer::OutputTimer;
 use simplelog::{ColorChoice, LevelFilter, TermLogger, TerminalMode};
 use smithay_client_toolkit::{
     environment,
@@ -94,14 +91,6 @@ struct Opts {
         help = "Stay in foreground, do not detach"
     )]
     no_daemon: bool,
-}
-
-fn get_timer_closure(surface_timer: Arc<Mutex<OutputTimer>>, tx: Sender<()>) -> impl Fn() {
-    move || {
-        if surface_timer.lock().unwrap().check_timeout() {
-            tx.send(()).unwrap();
-        }
-    }
 }
 
 fn main() -> Result<()> {
@@ -249,11 +238,14 @@ fn main() -> Result<()> {
                 .with_context(|| format!("drawing surface for {}", $surface.info.name))?
             {
                 if let Some(duration) = $surface.output.duration {
+                    let ev_tx = ev_tx.clone();
                     timer_guards.insert(
                         $surface.info.id,
                         timer.schedule_with_delay(
                             chrono::Duration::seconds(duration.as_secs().try_into().unwrap()),
-                            get_timer_closure($surface.timer.clone(), ev_tx.clone()),
+                            move || {
+                                ev_tx.send(()).unwrap();
+                            },
                         ),
                     );
                 }

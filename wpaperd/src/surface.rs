@@ -2,7 +2,8 @@ use std::cell::Cell;
 use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use std::time::Instant;
 
 use color_eyre::eyre::{ensure, Context};
 use color_eyre::Result;
@@ -24,7 +25,6 @@ use smithay_client_toolkit::{
 use wayland_client::protocol::wl_buffer::WlBuffer;
 
 use crate::output::Output;
-use crate::output_timer::OutputTimer;
 
 #[derive(PartialEq, Copy, Clone)]
 enum RenderEvent {
@@ -41,8 +41,8 @@ pub struct Surface {
     dimensions: (u32, u32),
     pub output: Arc<Output>,
     need_redraw: bool,
-    pub timer: Arc<Mutex<OutputTimer>>,
     buffer: Option<WlBuffer>,
+    time_changed: Instant,
 }
 
 impl Surface {
@@ -104,8 +104,8 @@ impl Surface {
             dimensions: (0, 0),
             need_redraw: false,
             output: output.clone(),
-            timer: Arc::new(Mutex::new(OutputTimer::new(output))),
             buffer: None,
+            time_changed: Instant::now(),
         }
     }
 
@@ -125,14 +125,22 @@ impl Surface {
 
     /// Returns true if something has been drawn to the surface
     pub fn draw(&mut self) -> Result<bool> {
-        {
-            let mut output_timer = self.timer.lock().unwrap();
-            if !(self.need_redraw || output_timer.expired) || self.dimensions.0 == 0 {
-                return Ok(false);
+        let timer_expired = if let Some(duration) = self.output.duration {
+            let now = Instant::now();
+            if now.checked_duration_since(self.time_changed).unwrap() > duration {
+                self.time_changed = now;
+                true
+            } else {
+                false
             }
-            output_timer.expired = false;
-            self.need_redraw = false;
+        } else {
+            false
+        };
+
+        if !(self.need_redraw || timer_expired) || self.dimensions.0 == 0 {
+            return Ok(false);
         }
+        self.need_redraw = false;
 
         let path = self.output.path.as_ref().unwrap();
 
@@ -218,10 +226,6 @@ impl Surface {
 
     pub fn update_output(&mut self, output: Arc<Output>) {
         self.output = output;
-        self.timer
-            .lock()
-            .unwrap()
-            .update_output(self.output.clone());
 
         self.need_redraw = true;
     }
