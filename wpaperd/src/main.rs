@@ -128,7 +128,9 @@ fn main() -> Result<()> {
         let xdg_dirs = BaseDirectories::with_prefix("wpaper").unwrap();
         xdg_dirs.place_config_file("wpaperd.conf").unwrap()
     };
-    let config = Arc::new(Mutex::new(Config::new_from_path(&config_file)?));
+    let mut config = Config::new_from_path(&config_file)?;
+    config.reloaded = false;
+    let config = Arc::new(Mutex::new(config));
     let display = Display::connect_to_env().unwrap();
     let mut queue = display.create_event_queue();
     let (outputs, xdg_output) =
@@ -260,33 +262,35 @@ fn main() -> Result<()> {
     }
     loop {
         let mut surfaces = status.surfaces.borrow_mut();
-        let reloaded = config.lock().unwrap().reloaded;
-        if reloaded {
-            let config = config.lock().unwrap();
-            for (_, surface) in surfaces.iter_mut() {
-                surface.update_output(config.get_output_by_name(&surface.info.name));
-                add_timer_on_draw!(surface);
-            }
-        } else {
-            // This is ugly, let's hope that some version of drain_filter() gets stabilized soon
-            // https://github.com/rust-lang/rust/issues/43244
-            let mut removal = Vec::new();
-            {
-                let mut i = 0;
-                while i != surfaces.len() {
-                    let surface = &mut surfaces.get_mut(i).unwrap().1;
-                    if surface.handle_events() {
-                        removal.push(i);
-                    } else {
-                        add_timer_on_draw!(surface);
-                    }
-                    i += 1;
+        {
+            let mut config = config.lock().unwrap();
+            if config.reloaded {
+                for (_, surface) in surfaces.iter_mut() {
+                    surface.update_output(config.get_output_by_name(&surface.info.name));
+                    add_timer_on_draw!(surface);
                 }
+                config.reloaded = false;
             }
-            for i in removal {
-                timer_guards.remove(&surfaces.get(i).unwrap().1.info.id);
-                surfaces.remove(i);
+        }
+
+        // This is ugly, let's hope that some version of drain_filter() gets stabilized soon
+        // https://github.com/rust-lang/rust/issues/43244
+        let mut removal = Vec::new();
+        {
+            let mut i = 0;
+            while i != surfaces.len() {
+                let surface = &mut surfaces.get_mut(i).unwrap().1;
+                if surface.handle_events() {
+                    removal.push(i);
+                } else {
+                    add_timer_on_draw!(surface);
+                }
+                i += 1;
             }
+        }
+        for i in removal {
+            timer_guards.remove(&surfaces.get(i).unwrap().1.info.id);
+            surfaces.remove(i);
         }
 
         display.flush().context("flushing the display")?;

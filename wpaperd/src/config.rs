@@ -51,7 +51,7 @@ impl Config {
         }
 
         config_manager.path = path.to_path_buf();
-        config_manager.reloaded = false;
+        config_manager.reloaded = true;
         Ok(config_manager)
     }
 
