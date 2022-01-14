@@ -129,7 +129,7 @@ impl Surface {
         } else {
             false
         };
-        !(self.need_redraw || timer_expired) || self.dimensions.0 == 0
+        (self.need_redraw || timer_expired) && self.dimensions.0 != 0
     }
 
     /// Returns true if something has been drawn to the surface
