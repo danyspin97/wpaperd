@@ -7,8 +7,8 @@ edition = "2021"
 
 [dependencies]
 calloop = "0.9.3"
-clap = { version = "3.0.5", features = ["derive"] }
-color-eyre = "0.5.11"
+clap = { version = "3.0.7", features = ["derive"] }
+color-eyre = "0.6.0"
 dowser = "0.3.5"
 image = "0.23.14"
 hotwatch = "0.4.6"
