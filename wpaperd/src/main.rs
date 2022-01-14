@@ -4,7 +4,6 @@ mod surface;
 
 use std::{
     cell::RefCell,
-    collections::HashMap,
     path::PathBuf,
     process::exit,
     rc::Rc,
@@ -127,7 +126,7 @@ fn main() -> Result<()> {
 
     struct Status {
         env: environment::Environment<Env>,
-        surfaces: RefCell<Vec<(u32, Surface)>>,
+        surfaces: RefCell<Vec<(u32, Surface, Option<timer::Guard>)>>,
     }
 
     let status = Rc::new(Status {
@@ -158,7 +157,7 @@ fn main() -> Result<()> {
             status_rc
                 .surfaces
                 .borrow_mut()
-                .retain(|(i, _)| *i != info.id);
+                .retain(|(i, _, _)| *i != info.id);
             output.release();
         } else {
             // an output has been created, construct a surface for it
@@ -178,6 +177,7 @@ fn main() -> Result<()> {
                     pool,
                     config.get_output_by_name(&info.name),
                 ),
+                None,
             ));
         }
     };
@@ -230,57 +230,51 @@ fn main() -> Result<()> {
 
     let timer = timer::Timer::new();
 
-    let mut timer_guards = HashMap::new();
-    macro_rules! add_timer_on_draw {
-        ($surface:ident) => {
-            if $surface
-                .draw()
-                .with_context(|| format!("drawing surface for {}", $surface.info.name))?
-            {
-                if let Some(duration) = $surface.output.duration {
-                    let ev_tx = ev_tx.clone();
-                    timer_guards.insert(
-                        $surface.info.id,
-                        timer.schedule_with_delay(duration, move || {
-                            ev_tx.send(()).unwrap();
-                        }),
-                    );
-                }
-            }
-        };
-    }
     loop {
-        let mut surfaces = status.surfaces.borrow_mut();
         {
             let mut config = config.lock().unwrap();
             if config.reloaded {
-                for (_, surface) in surfaces.iter_mut() {
+                let mut surfaces = status.surfaces.borrow_mut();
+                for (_, surface, _) in surfaces.iter_mut() {
                     surface.update_output(config.get_output_by_name(&surface.info.name));
-                    add_timer_on_draw!(surface);
                 }
                 config.reloaded = false;
             }
         }
 
-        // This is ugly, let's hope that some version of drain_filter() gets stabilized soon
-        // https://github.com/rust-lang/rust/issues/43244
-        let mut removal = Vec::new();
-        {
-            let mut i = 0;
-            while i != surfaces.len() {
-                let surface = &mut surfaces.get_mut(i).unwrap().1;
-                if surface.handle_events() {
-                    removal.push(i);
-                } else {
-                    add_timer_on_draw!(surface);
-                }
-                i += 1;
-            }
-        }
-        for i in removal {
-            timer_guards.remove(&surfaces.get(i).unwrap().1.info.id);
-            surfaces.remove(i);
-        }
+        let surfaces = status.surfaces.take();
+        status.surfaces.replace(
+            surfaces
+                .into_iter()
+                .filter_map(
+                    |(id, mut surface, guard)| -> Option<(u32, Surface, Option<timer::Guard>)> {
+                        if surface.handle_events() {
+                            None
+                        } else {
+                            let guard = if surface
+                                .draw()
+                                .with_context(|| {
+                                    format!("drawing surface for {}", surface.info.name)
+                                })
+                                .unwrap()
+                            {
+                                if let Some(duration) = surface.output.duration {
+                                    let ev_tx = ev_tx.clone();
+                                    Some(timer.schedule_with_delay(duration, move || {
+                                        ev_tx.send(()).unwrap();
+                                    }))
+                                } else {
+                                    None
+                                }
+                            } else {
+                                guard
+                            };
+                            Some((id, surface, guard))
+                        }
+                    },
+                )
+                .collect::<Vec<(u32, Surface, Option<timer::Guard>)>>(),
+        );
 
         display.flush().context("flushing the display")?;
         event_loop
