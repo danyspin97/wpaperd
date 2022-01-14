@@ -241,12 +241,9 @@ fn main() -> Result<()> {
                     let ev_tx = ev_tx.clone();
                     timer_guards.insert(
                         $surface.info.id,
-                        timer.schedule_with_delay(
-                            chrono::Duration::seconds(duration.as_secs().try_into().unwrap()),
-                            move || {
-                                ev_tx.send(()).unwrap();
-                            },
-                        ),
+                        timer.schedule_with_delay(duration, move || {
+                            ev_tx.send(()).unwrap();
+                        }),
                     );
                 }
             }

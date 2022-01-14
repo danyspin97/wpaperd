@@ -1197,11 +1197,7 @@ dependencies = [
 [[package]]
 name = "timer"
 version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "31d42176308937165701f50638db1c31586f183f1aab416268216577aec7306b"
-dependencies = [
- "chrono",
-]
+source = "git+https://github.com/danyspin97/timer.rs#f99861cacd5f092b9f1099c5a025a0ba7492139a"
 
 [[package]]
 name = "toml"

@@ -7,7 +7,6 @@ edition = "2021"
 
 [dependencies]
 calloop = "0.9.3"
-chrono = "0.4.19"
 clap = { version = "3.0.5", features = ["derive"] }
 color-eyre = "0.5.11"
 dowser = "0.3.5"
@@ -23,7 +22,7 @@ rand = "0.8.4"
 serde = { version = "1.0.133", features = ["derive", "rc"] }
 simplelog = "0.11.2"
 smithay-client-toolkit = "0.15.3"
-timer = "0.2.0"
+timer = { git = "https://github.com/danyspin97/timer.rs" }
 toml = "0.5.8"
 wayland-client = "0.29.4"
 xdg = "2.4.0"
