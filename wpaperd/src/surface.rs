@@ -123,12 +123,9 @@ impl Surface {
         }
     }
 
-    /// Returns true if something has been drawn to the surface
-    pub fn draw(&mut self) -> Result<bool> {
+    pub fn should_draw(&self, now: &Instant) -> bool {
         let timer_expired = if let Some(duration) = self.output.duration {
-            let now = Instant::now();
             if now.checked_duration_since(self.time_changed).unwrap() > duration {
-                self.time_changed = now;
                 true
             } else {
                 false
@@ -136,12 +133,11 @@ impl Surface {
         } else {
             false
         };
+        !(self.need_redraw || timer_expired) || self.dimensions.0 == 0
+    }
 
-        if !(self.need_redraw || timer_expired) || self.dimensions.0 == 0 {
-            return Ok(false);
-        }
-        self.need_redraw = false;
-
+    /// Returns true if something has been drawn to the surface
+    pub fn draw(&mut self, now: Instant) -> Result<()> {
         let path = self.output.path.as_ref().unwrap();
 
         let stride = 4 * self.dimensions.0 as i32;
@@ -221,7 +217,10 @@ impl Surface {
         // Finally, commit the surface
         self.surface.commit();
 
-        Ok(true)
+        // Update status
+        self.need_redraw = false;
+        self.time_changed = now;
+        Ok(())
     }
 
     pub fn update_output(&mut self, output: Arc<Output>) {

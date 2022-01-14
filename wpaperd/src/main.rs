@@ -8,6 +8,7 @@ use std::{
     process::exit,
     rc::Rc,
     sync::{Arc, Mutex},
+    time::Instant,
 };
 
 use clap::Parser;
@@ -251,13 +252,14 @@ fn main() -> Result<()> {
                         if surface.handle_events() {
                             None
                         } else {
-                            let guard = if surface
-                                .draw()
-                                .with_context(|| {
-                                    format!("drawing surface for {}", surface.info.name)
-                                })
-                                .unwrap()
-                            {
+                            let now = Instant::now();
+                            let guard = if surface.should_draw(&now) {
+                                surface
+                                    .draw(now)
+                                    .with_context(|| {
+                                        format!("drawing surface for {}", surface.info.name)
+                                    })
+                                    .unwrap();
                                 if let Some(duration) = surface.output.duration {
                                     let ev_tx = ev_tx.clone();
                                     Some(timer.schedule_with_delay(duration, move || {
