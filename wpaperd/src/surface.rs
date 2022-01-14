@@ -103,7 +103,7 @@ impl Surface {
             pool,
             dimensions: (0, 0),
             need_redraw: false,
-            output: output.clone(),
+            output,
             buffer: None,
             time_changed: Instant::now(),
         }
@@ -125,11 +125,7 @@ impl Surface {
 
     pub fn should_draw(&self, now: &Instant) -> bool {
         let timer_expired = if let Some(duration) = self.output.duration {
-            if now.checked_duration_since(self.time_changed).unwrap() > duration {
-                true
-            } else {
-                false
-            }
+            now.checked_duration_since(self.time_changed).unwrap() > duration
         } else {
             false
         };
@@ -210,7 +206,7 @@ impl Surface {
 
         // Attach the buffer to the surface and mark the entire surface as damaged
         self.surface
-            .attach(Some(&self.buffer.as_ref().unwrap()), 0, 0);
+            .attach(Some(self.buffer.as_ref().unwrap()), 0, 0);
         self.surface
             .damage_buffer(0, 0, width as i32, height as i32);
 
