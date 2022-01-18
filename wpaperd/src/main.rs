@@ -1,17 +1,18 @@
+mod config;
 mod output;
 mod output_config;
 mod surface;
 
 use std::{
     cell::RefCell,
-    path::PathBuf,
+    fs,
     process::exit,
     rc::Rc,
     sync::{Arc, Mutex},
     time::Instant,
 };
 
-use clap::Parser;
+use clap::StructOpt;
 use color_eyre::{eyre::WrapErr, Result};
 use hotwatch::{Event, Hotwatch};
 use log::error;
@@ -44,6 +45,7 @@ use smithay_client_toolkit::{
 };
 use xdg::BaseDirectories;
 
+use crate::config::Config;
 use crate::output_config::OutputConfig;
 use crate::surface::Surface;
 
@@ -76,27 +78,6 @@ impl OutputHandling for Env {
     }
 }
 
-#[derive(Parser)]
-#[clap(
-    author = "Danilo Spinella <danilo.spinella@suse.com>",
-    version,
-    about = "A wallpaper manager for Wayland compositors"
-)]
-struct Opts {
-    #[clap(
-        short,
-        long = "output-config",
-        help = "Path to the output configuration to read from"
-    )]
-    output_config: Option<PathBuf>,
-    #[clap(
-        short = 'n',
-        long = "no-daemon",
-        help = "Stay in foreground, do not detach"
-    )]
-    no_daemon: bool,
-}
-
 fn main() -> Result<()> {
     color_eyre::install()?;
     TermLogger::init(
@@ -106,16 +87,30 @@ fn main() -> Result<()> {
         ColorChoice::Auto,
     )?;
 
-    let opts = Opts::parse();
+    let opts = Config::parse();
 
-    if !opts.no_daemon {
+    let config_file = if let Some(config_file) = &opts.config {
+        config_file.clone()
+    } else {
+        let xdg_dirs = BaseDirectories::with_prefix("wpaper").unwrap();
+        xdg_dirs.place_config_file("wpaperd.conf").unwrap()
+    };
+
+    let mut config: Config = if config_file.exists() {
+        toml::from_str(&fs::read_to_string(config_file)?)?
+    } else {
+        Config::default()
+    };
+    config.merge(opts);
+
+    if !config.no_daemon {
         match unsafe { fork()? } {
             nix::unistd::ForkResult::Parent { child: _ } => exit(0),
             nix::unistd::ForkResult::Child => {}
         }
     }
 
-    let output_config_file = if let Some(output_config_file) = opts.output_config {
+    let output_config_file = if let Some(output_config_file) = config.output_config {
         output_config_file
     } else {
         let xdg_dirs = BaseDirectories::with_prefix("wpaper").unwrap();
