@@ -11,7 +11,7 @@ use serde::Deserialize;
 use crate::output::Output;
 
 #[derive(Deserialize)]
-pub struct Config {
+pub struct OutputConfig {
     #[serde(flatten)]
     data: HashMap<String, Arc<Output>>,
     #[serde(skip)]
@@ -22,7 +22,7 @@ pub struct Config {
     pub reloaded: bool,
 }
 
-impl Config {
+impl OutputConfig {
     pub fn new_from_path(path: &Path) -> Result<Self> {
         ensure!(
             path.exists(),

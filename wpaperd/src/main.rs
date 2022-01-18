@@ -1,5 +1,5 @@
-mod config;
 mod output;
+mod output_config;
 mod surface;
 
 use std::{
@@ -44,7 +44,7 @@ use smithay_client_toolkit::{
 };
 use xdg::BaseDirectories;
 
-use crate::config::Config;
+use crate::output_config::OutputConfig;
 use crate::surface::Surface;
 
 struct Env {
@@ -83,8 +83,12 @@ impl OutputHandling for Env {
     about = "A wallpaper manager for Wayland compositors"
 )]
 struct Opts {
-    #[clap(short, long, help = "Path to the config to read")]
-    config: Option<PathBuf>,
+    #[clap(
+        short,
+        long = "output-config",
+        help = "Path to the output configuration to read from"
+    )]
+    output_config: Option<PathBuf>,
     #[clap(
         short = 'n',
         long = "no-daemon",
@@ -111,15 +115,15 @@ fn main() -> Result<()> {
         }
     }
 
-    let config_file = if let Some(config_file) = opts.config {
-        config_file
+    let output_config_file = if let Some(output_config_file) = opts.output_config {
+        output_config_file
     } else {
         let xdg_dirs = BaseDirectories::with_prefix("wpaper").unwrap();
-        xdg_dirs.place_config_file("wpaperd.conf").unwrap()
+        xdg_dirs.place_config_file("output.conf").unwrap()
     };
-    let mut config = Config::new_from_path(&config_file)?;
-    config.reloaded = false;
-    let config = Arc::new(Mutex::new(config));
+    let mut output_config = OutputConfig::new_from_path(&output_config_file)?;
+    output_config.reloaded = false;
+    let output_config = Arc::new(Mutex::new(output_config));
     let display = Display::connect_to_env().unwrap();
     let mut queue = display.create_event_queue();
     let (outputs, xdg_output) =
@@ -150,7 +154,7 @@ fn main() -> Result<()> {
 
     let layer_shell = env.require_global::<zwlr_layer_shell_v1::ZwlrLayerShellV1>();
 
-    let config_clone = config.clone();
+    let output_config_clone = output_config.clone();
     let status_rc = status.clone();
     let output_handler = move |output: wl_output::WlOutput, info: &OutputInfo| {
         if info.obsolete {
@@ -167,7 +171,7 @@ fn main() -> Result<()> {
                 .env
                 .create_auto_pool()
                 .expect("failed to create a memory pool!");
-            let config = config_clone.lock().unwrap();
+            let output_config = output_config_clone.lock().unwrap();
             (*status_rc.surfaces.borrow_mut()).push((
                 info.id,
                 Surface::new(
@@ -176,7 +180,7 @@ fn main() -> Result<()> {
                     &layer_shell.clone(),
                     info.clone(),
                     pool,
-                    config.get_output_by_name(&info.name),
+                    output_config.get_output_by_name(&info.name),
                 ),
                 None,
             ));
@@ -208,17 +212,19 @@ fn main() -> Result<()> {
         .unwrap();
 
     let ev_tx_clone = ev_tx.clone();
-    let config_clone = config.clone();
+    let output_config_clone = output_config.clone();
     let mut hotwatch = Hotwatch::new().context("hotwatch failed to initialize")?;
     hotwatch
-        .watch(&config_file, move |event: Event| {
+        .watch(&output_config_file, move |event: Event| {
             if let Event::Write(_) = event {
-                let mut config = config_clone.lock().unwrap();
-                let new_config = Config::new_from_path(&config.path)
-                    .with_context(|| format!("reading configuration from file {:?}", config.path));
+                let mut output_config = output_config_clone.lock().unwrap();
+                let new_config =
+                    OutputConfig::new_from_path(&output_config.path).with_context(|| {
+                        format!("reading configuration from file {:?}", output_config.path)
+                    });
                 match new_config {
                     Ok(new_config) => {
-                        *config = new_config;
+                        *output_config = new_config;
                         ev_tx_clone.send(()).unwrap();
                     }
                     Err(err) => {
@@ -227,19 +233,19 @@ fn main() -> Result<()> {
                 }
             }
         })
-        .with_context(|| format!("watching file {:?}", &config_file))?;
+        .with_context(|| format!("watching file {:?}", &output_config_file))?;
 
     let timer = timer::Timer::new();
 
     loop {
         {
-            let mut config = config.lock().unwrap();
-            if config.reloaded {
+            let mut output_config = output_config.lock().unwrap();
+            if output_config.reloaded {
                 let mut surfaces = status.surfaces.borrow_mut();
                 for (_, surface, _) in surfaces.iter_mut() {
-                    surface.update_output(config.get_output_by_name(&surface.info.name));
+                    surface.update_output(output_config.get_output_by_name(&surface.info.name));
                 }
-                config.reloaded = false;
+                output_config.reloaded = false;
             }
         }
 
