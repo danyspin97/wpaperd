@@ -16,6 +16,8 @@ duration, after which the image displayed will be changed with another random on
 
 ## Getting started
 
+### Build
+
 To install `wpaper`, clone the repository and build the project:
 
 ```bash
@@ -24,9 +26,19 @@ $ cd wpaper
 $ cargo build --release
 ```
 
-Now you can install it using rinstall:
+### Install
+
+You can install wpaper using cargo:
 
 ```bash
+$ cargo install --path=wpaperd
+```
+
+Otherwise you can install it using rinstall:
+
+```bash
+# First generate the man page
+$ scdoc < man/wpaper-output.5.scd > man/wpaper-output.5
 $ rinstall -y
 ```
 
@@ -37,9 +49,12 @@ $ wpaperd
 ```
 
 If you want to automatically run it at startup, add this line to your sway configuration
-(located in `$HOME/.config/sway/config`):
+(located in `$HOME/.config/sway/config`) depending on your installation method:
 
 ```
+# For installation using cargo
+exec ~/.cargo/bin/wpaperd
+# For installation using rinstall
 exec ~/.local/bin/wpaperd
 ```
 
