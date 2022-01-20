@@ -18,6 +18,7 @@ pub struct Config {
         long = "output-config",
         help = "Path to the configuration containing the outputs"
     )]
+    #[serde(rename = "output-config")]
     pub output_config: Option<PathBuf>,
     #[clap(
         short = 'n',
