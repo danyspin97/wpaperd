@@ -27,7 +27,7 @@ mime = "0.3.16"
 new_mime_guess = "4.0.0"
 nix = "0.23.1"
 rand = "0.8.4"
-serde = { version = "1.0.133", features = ["derive", "rc"] }
+serde = { version = "1.0.134", features = ["derive", "rc"] }
 simplelog = "0.11.2"
 smithay-client-toolkit = "0.15.3"
 timer = { git = "https://github.com/danyspin97/timer.rs" }
