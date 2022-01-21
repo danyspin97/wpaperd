@@ -157,9 +157,9 @@ impl Surface {
                     })
                     .with_path(path),
                 )
-                .with_context(|| format!("iterating files in directory {:?}", path))?;
+                .with_context(|| format!("iterating files in directory {path:?}"))?;
                 let img_path = files[rand::random::<usize>() % files.len()].clone();
-                match open(&img_path).with_context(|| format!("opening the image {:?}", img_path)) {
+                match open(&img_path).with_context(|| format!("opening the image {img_path:?}")) {
                     Ok(image) => {
                         break image;
                     }
@@ -171,13 +171,12 @@ impl Surface {
 
                 ensure!(
                     tries < 5,
-                    "tried reading an image from the directory {:?} without success",
-                    &path
+                    "tried reading an image from the directory {path:?} without success",
                 );
             }
         } else {
             let img_path = path.to_path_buf();
-            open(&img_path).with_context(|| format!("opening the image {:?}", img_path))?
+            open(&img_path).with_context(|| format!("opening the image {img_path:?}"))?
         };
 
         let image = image

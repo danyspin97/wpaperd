@@ -24,11 +24,7 @@ pub struct OutputConfig {
 
 impl OutputConfig {
     pub fn new_from_path(path: &Path) -> Result<Self> {
-        ensure!(
-            path.exists(),
-            "Configuration file {:?} does not exists",
-            path
-        );
+        ensure!(path.exists(), "Configuration file {path:?} does not exists",);
         let mut config_manager: Self = toml::from_str(&fs::read_to_string(path)?)?;
         config_manager.default_config = config_manager
             .data
@@ -39,14 +35,11 @@ impl OutputConfig {
             let path = config.path.as_ref().unwrap();
             ensure!(
                 path.exists(),
-                "File or directory {:?} for input {} does not exist",
-                path,
-                name
+                "File or directory {path:?} for input {name} does not exist"
             );
             ensure!(
                 config.duration.is_none() || path.is_dir(),
-                "Duration can only be set when path points to a directory, for input {}",
-                name
+                "Duration can only be set when path points to a directory, for input {name}"
             );
         }
 

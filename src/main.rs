@@ -227,7 +227,7 @@ fn main() -> Result<()> {
                 }
             }
         })
-        .with_context(|| format!("watching file {:?}", &output_config_file))?;
+        .with_context(|| format!("watching file {output_config_file:?}"))?;
 
     let timer = timer::Timer::new();
 
