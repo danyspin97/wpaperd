@@ -1,5 +1,9 @@
 # wpaperd
 
+![GitHub release (latest by date)](https://img.shields.io/github/v/release/danyspin97/wpaperd?logo=github&style=flat-square)
+[![GitHub license](https://img.shields.io/github/license/danyspin97/wpaperd?logo=github)](https://github.com/danyspin97/wpaperd/blob/main/LICENSE.md)
+![GitHub Workflow Status](https://img.shields.io/github/workflow/status/danyspin97/wpaperd/Continuous%20integration?logo=github&style=flat-square)
+
 **wpaperd** is a minimal wallpaper daemon for Wayland. It allows the user to choose a different
 image for each output (aka for each monitor) just as *[swaybg]*. Moreover, a directory can be
 chosen and *wpaperd* will randomly choose an image from it. Optionally, the user can set a
@@ -88,6 +92,13 @@ $ swaymsg -t get_outputs
 
 Every time you update the configuration while the program is running, the changes will
 be applied automatically.
+
+## TODO
+
+**wpaperd** is still a work in progress. The next things to do, in order, are:
+
+- Configurable upscaling algorithm, right now Lanzcos3 is always used
+- Add different modes to apply the wallpaper, i.e. `center`, `fit`, `original`
 
 ## License
 
