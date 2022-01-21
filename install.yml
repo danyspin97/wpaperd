@@ -6,3 +6,7 @@ pkgs:
       - wpaperd
     man:
       - man/wpaperd-output.5
+    licenses:
+      - LICENSE.md
+    docs:
+      - README.md
