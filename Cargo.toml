@@ -1,5 +1,29 @@
-[workspace]
+[package]
+name = "wpaperd"
+version = "0.1.0"
+edition = "2021"
 
-members = [
-    "wpaperd",
-]
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+calloop = "0.9.3"
+clap = { version = "3.0.10", features = ["derive"] }
+color-eyre = "0.6.0"
+dowser = "0.3.5"
+image = "0.23.14"
+hotwatch = "0.4.6"
+humantime-serde = "1.0.1"
+lazy_static = "1.4.0"
+log = "0.4.14"
+mime = "0.3.16"
+new_mime_guess = "4.0.0"
+nix = "0.23.1"
+rand = "0.8.4"
+serde = { version = "1.0.133", features = ["derive", "rc"] }
+simplelog = "0.11.2"
+smithay-client-toolkit = "0.15.3"
+timer = { git = "https://github.com/danyspin97/timer.rs" }
+toml = "0.5.8"
+wayland-client = "0.29.4"
+xdg = "2.4.0"
+

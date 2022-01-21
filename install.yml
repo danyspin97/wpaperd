@@ -5,4 +5,4 @@ pkgs:
     exe:
       - wpaperd
     man:
-      - man/wpaper-output.5
+      - man/wpaperd-output.5

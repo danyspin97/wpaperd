@@ -1,8 +1,8 @@
-# wpaper
+# wpaperd
 
-**wpaper** is a minimal wallpaper daemon for Wayland. It allows the user to choose a different
+**wpaperd** is a minimal wallpaper daemon for Wayland. It allows the user to choose a different
 image for each output (aka for each monitor) just as *[swaybg]*. Moreover, a directory can be
-chosen and *wpaper* will randomly choose an image from it. Optionally, the user can set a
+chosen and *wpaperd* will randomly choose an image from it. Optionally, the user can set a
 duration, after which the image displayed will be changed with another random one.
 
 ## Features
@@ -18,27 +18,27 @@ duration, after which the image displayed will be changed with another random on
 
 ### Build
 
-To install `wpaper`, clone the repository and build the project:
+To install `wpaperd`, clone the repository and build the project:
 
 ```bash
-$ git clone https://github.com/danyspin97/wpaper
-$ cd wpaper
+$ git clone https://github.com/danyspin97/wpaperd
+$ cd wpaperd
 $ cargo build --release
 ```
 
 ### Install
 
-You can install wpaper using cargo:
+You can install wpaperd using cargo:
 
 ```bash
-$ cargo install --path=wpaperd
+$ cargo install --path="."
 ```
 
 Otherwise you can install it using rinstall:
 
 ```bash
 # First generate the man page
-$ scdoc < man/wpaper-output.5.scd > man/wpaper-output.5
+$ scdoc < man/wpaperd-output.5.scd > man/wpaperd-output.5
 $ rinstall -y
 ```
 
@@ -58,10 +58,10 @@ exec ~/.cargo/bin/wpaperd
 exec ~/.local/bin/wpaperd
 ```
 
-## Configuration
+## Output Configuration
 
-The configuration file for *wpaper* is located in `XDG_CONFIG_HOME/wpaper/wpaperd.conf`
-(which defaults to `$HOME/.config/wpaper/wpaperd.conf`) and is a TOML file. Each section
+The output configuration file for *wpaperd* is located in `XDG_CONFIG_HOME/wpaperd/output.conf`
+(which defaults to `$HOME/.config/wpaperd/output.conf`) and is a TOML file. Each section
 represents a different output and contains the following keys:
 
 - `path`, path to the image/directory
@@ -91,6 +91,6 @@ be applied automatically.
 
 ## License
 
-**wpaper** is licensed under the [GPL-3.0+](/LICENSE.md) license.
+**wpaperd** is licensed under the [GPL-3.0+](/LICENSE.md) license.
 
 [swaybg]: https://github.com/swaywm/swaybg

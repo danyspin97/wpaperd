@@ -89,10 +89,10 @@ fn main() -> Result<()> {
 
     let opts = Config::parse();
 
+    let xdg_dirs = BaseDirectories::with_prefix("wpaperd").unwrap();
     let config_file = if let Some(config_file) = &opts.config {
         config_file.clone()
     } else {
-        let xdg_dirs = BaseDirectories::with_prefix("wpaper").unwrap();
         xdg_dirs.place_config_file("wpaperd.conf").unwrap()
     };
 
@@ -113,7 +113,6 @@ fn main() -> Result<()> {
     let output_config_file = if let Some(output_config_file) = config.output_config {
         output_config_file
     } else {
-        let xdg_dirs = BaseDirectories::with_prefix("wpaper").unwrap();
         xdg_dirs.place_config_file("output.conf").unwrap()
     };
     let mut output_config = OutputConfig::new_from_path(&output_config_file)?;
