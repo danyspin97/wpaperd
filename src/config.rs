@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use clap::Parser;
 use serde::Deserialize;
 
-#[derive(Parser, Deserialize)]
+#[derive(Default, Parser, Deserialize)]
 #[clap(
     author = "Danilo Spinella <danilo.spinella@suse.com>",
     version,
@@ -36,15 +36,5 @@ impl Config {
         }
 
         self.no_daemon |= o.no_daemon;
-    }
-}
-
-impl Default for Config {
-    fn default() -> Self {
-        Config {
-            config: None,
-            output_config: None,
-            no_daemon: false,
-        }
     }
 }
