@@ -27,7 +27,7 @@ jobs:
           args: --release --target ${{ matrix.target }}
       - name: Generate man pages
         run: |
-            apt-get install --force --yes scdoc
+            sudo apt-get install --yes scdoc
             scdoc < man/wpaperd-output.5.scd > man/wpaperd-output.5
       - name: Strip binary
         run: strip target/${{ matrix.target }}/release/wpaperd
