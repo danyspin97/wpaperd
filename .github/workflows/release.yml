@@ -1,0 +1,48 @@
+on:
+  push:
+    tags:
+      - '*.*.*'
+
+name: Release
+
+jobs:
+  release:
+    name: Release Packaging
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        target:  [x86_64-unknown-linux-musl]
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+          target: ${{ matrix.target }}
+      - name: Release Build
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --release --target ${{ matrix.target }}
+      - name: Generate man pages
+        run: |
+            apt-get install --force --yes scdoc
+            scdoc < man/wpaperd-output.5.scd > man/wpaperd-output.5
+      - name: Strip binary
+        run: strip target/${{ matrix.target }}/release/wpaperd
+      - name: Create tarball
+        run: |
+            touch .tarball
+            cp target/${{ matrix.target }}/release/wpaperd wpaperd
+            tar -cvf wpaperd-${{ matrix.target }}.tar.zst \
+                wpaperd \
+                man/wpaperd-output.5 \
+                README.md \
+                LICENSE.md \
+                install.yml \
+                .tarball
+      - name: Upload release tarball
+        uses: softprops/action-gh-release@v1
+        with:
+          files: wpaperd-${{ matrix.target }}.tar.zst
