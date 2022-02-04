@@ -14,10 +14,10 @@ use std::{
 
 use clap::StructOpt;
 use color_eyre::{eyre::WrapErr, Result};
+use flexi_logger::{Duplicate, FileSpec, Logger};
 use hotwatch::{Event, Hotwatch};
 use log::error;
 use nix::unistd::fork;
-use simplelog::{ColorChoice, LevelFilter, TermLogger, TerminalMode};
 use smithay_client_toolkit::{
     environment,
     environment::SimpleGlobal,
@@ -80,16 +80,10 @@ impl OutputHandling for Env {
 
 fn main() -> Result<()> {
     color_eyre::install()?;
-    TermLogger::init(
-        LevelFilter::Warn,
-        simplelog::Config::default(),
-        TerminalMode::Mixed,
-        ColorChoice::Auto,
-    )?;
+
+    let xdg_dirs = BaseDirectories::with_prefix("wpaperd")?;
 
     let opts = Config::parse();
-
-    let xdg_dirs = BaseDirectories::with_prefix("wpaperd").unwrap();
     let config_file = if let Some(config_file) = &opts.config {
         config_file.clone()
     } else {
@@ -103,12 +97,18 @@ fn main() -> Result<()> {
     };
     config.merge(opts);
 
-    if !config.no_daemon {
+    let mut logger = Logger::try_with_env_or_str("info")?;
+
+    if config.no_daemon {
+        logger = logger.duplicate_to_stderr(Duplicate::Warn)
+    } else {
+        logger = logger.log_to_file(FileSpec::default().directory(xdg_dirs.get_state_home()));
         match unsafe { fork()? } {
             nix::unistd::ForkResult::Parent { child: _ } => exit(0),
             nix::unistd::ForkResult::Child => {}
         }
     }
+    logger.start()?;
 
     let output_config_file = if let Some(output_config_file) = config.output_config {
         output_config_file
