@@ -127,7 +127,8 @@ impl Surface {
 
     pub fn should_draw(&self, now: &Instant) -> bool {
         let timer_expired = if let Some(duration) = self.output.duration {
-            now.checked_duration_since(self.time_changed).unwrap() > duration
+            let time_passed = now.checked_duration_since(self.time_changed).unwrap();
+            duration.saturating_sub(time_passed) == std::time::Duration::ZERO
         } else {
             false
         };
