@@ -115,8 +115,10 @@ impl Surface {
         match self.next_render_event.take() {
             Some(RenderEvent::Closed) => true,
             Some(RenderEvent::Configure { width, height }) => {
-                self.dimensions = (width, height);
-                self.need_redraw = true;
+                if self.dimensions != (width, height) {
+                    self.dimensions = (width, height);
+                    self.need_redraw = true;
+                }
                 false
             }
             None => false,
@@ -219,9 +221,11 @@ impl Surface {
     }
 
     pub fn update_output(&mut self, output: Arc<Output>) {
-        self.output = output;
+        if output.path != self.output.path {
+            self.need_redraw = true;
+        }
 
-        self.need_redraw = true;
+        self.output = output;
     }
 }
 
