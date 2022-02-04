@@ -10,7 +10,7 @@ use color_eyre::Result;
 use dowser::Dowser;
 use image::imageops::FilterType;
 use image::open;
-use log::warn;
+use log::{trace, warn};
 use smithay_client_toolkit::{
     output::OutputInfo,
     reexports::{
@@ -128,10 +128,14 @@ impl Surface {
     pub fn should_draw(&self, now: &Instant) -> bool {
         let timer_expired = if let Some(duration) = self.output.duration {
             let time_passed = now.checked_duration_since(self.time_changed).unwrap();
+            trace!("time passed: {time_passed:?}");
+            trace!("duration: {duration:?}");
             duration.saturating_sub(time_passed) == std::time::Duration::ZERO
         } else {
             false
         };
+        trace!("need redraw: {}", self.need_redraw);
+        trace!("timer expired: {timer_expired}");
         (self.need_redraw || timer_expired) && self.dimensions.0 != 0
     }
 

@@ -16,7 +16,7 @@ use clap::StructOpt;
 use color_eyre::{eyre::WrapErr, Result};
 use flexi_logger::{Duplicate, FileSpec, Logger};
 use hotwatch::{Event, Hotwatch};
-use log::error;
+use log::{error, trace};
 use nix::unistd::fork;
 use smithay_client_toolkit::{
     environment,
@@ -253,7 +253,9 @@ fn main() -> Result<()> {
                             None
                         } else {
                             let now = Instant::now();
+                            trace!("iterating over output {}", surface.info.name);
                             let guard = if surface.should_draw(&now) {
+                                trace!("drawing output {}", surface.info.name);
                                 surface
                                     .draw(now)
                                     .with_context(|| {
