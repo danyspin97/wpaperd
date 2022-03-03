@@ -5,8 +5,16 @@ pkgs:
     exe:
       - wpaperd
     man:
+      - man/wpaperd.1
       - man/wpaperd-output.5
     licenses:
       - LICENSE.md
     docs:
       - README.md
+    completions:
+      bash:
+        - completions/wpaperd.bash
+      fish:
+        - completions/wpaperd.fish
+      zsh:
+        - completions/_wpaperd
