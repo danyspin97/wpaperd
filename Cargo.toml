@@ -15,7 +15,7 @@ categories = ["command-line-utilities", "multimedia"]
 
 [dependencies]
 calloop = "0.9.3"
-clap = { version = "3.1.5", features = ["derive"] }
+clap = { version = "3.1.5", features = ["derive", "wrap_help"] }
 color-eyre = "0.6.1"
 dowser = "0.3.6"
 flexi_logger = "0.22.3"
