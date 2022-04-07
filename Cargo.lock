@@ -1228,12 +1228,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "scoped-tls"
-version = "1.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ea6a9290e3c9cf0f18145ef7ffa62d68ee0bf5fcd651017e586dc7fd5da448c2"
-
-[[package]]
 name = "scoped_threadpool"
 version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1590,7 +1584,6 @@ dependencies = [
  "downcast-rs",
  "libc",
  "nix 0.22.3",
- "scoped-tls",
  "wayland-commons",
  "wayland-scanner",
  "wayland-sys",
@@ -1648,8 +1641,6 @@ version = "0.29.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d9341df79a8975679188e37dab3889bfa57c44ac2cb6da166f519a81cbe452d4"
 dependencies = [
- "dlib",
- "lazy_static",
  "pkg-config",
 ]
 
@@ -1749,7 +1740,6 @@ checksum = "504a2476202769977a040c6364301a3f65d0cc9e3fb08600b2bda150a0488316"
 name = "wpaperd"
 version = "0.2.0"
 dependencies = [
- "calloop",
  "clap",
  "clap_complete",
  "clap_mangen",
@@ -1769,7 +1759,6 @@ dependencies = [
  "smithay-client-toolkit",
  "timer",
  "toml",
- "wayland-client",
  "xdg",
 ]
 

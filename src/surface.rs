@@ -14,7 +14,7 @@ use log::{trace, warn};
 use smithay_client_toolkit::{
     output::OutputInfo,
     reexports::{
-        client::protocol::{wl_output, wl_shm, wl_surface},
+        client::protocol::{wl_buffer, wl_output, wl_shm, wl_surface},
         client::{Attached, Main},
         protocols::wlr::unstable::layer_shell::v1::client::{
             zwlr_layer_shell_v1, zwlr_layer_surface_v1,
@@ -22,7 +22,6 @@ use smithay_client_toolkit::{
     },
     shm::AutoMemPool,
 };
-use wayland_client::protocol::wl_buffer::WlBuffer;
 
 use crate::output::Output;
 
@@ -41,7 +40,7 @@ pub struct Surface {
     dimensions: (u32, u32),
     pub output: Arc<Output>,
     need_redraw: bool,
-    buffer: Option<WlBuffer>,
+    buffer: Option<wl_buffer::WlBuffer>,
     time_changed: Instant,
 }
 

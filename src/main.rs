@@ -26,6 +26,7 @@ use smithay_client_toolkit::{
         XdgOutputHandler,
     },
     reexports::{
+        calloop,
         client::{
             protocol::{
                 wl_compositor::WlCompositor,
