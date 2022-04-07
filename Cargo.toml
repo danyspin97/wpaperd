@@ -28,7 +28,7 @@ new_mime_guess = "4.0.1"
 nix = "0.23.1"
 rand = "0.8.5"
 serde = { version = "1.0.136", features = ["derive", "rc"] }
-smithay-client-toolkit = "0.15.3"
+smithay-client-toolkit = { version = "0.15.3", default_features = false, features = [ "calloop" ]}
 timer = { git = "https://github.com/danyspin97/timer.rs" }
 toml = "0.5.8"
 xdg = "2.4.1"

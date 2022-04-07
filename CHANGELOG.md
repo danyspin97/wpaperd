@@ -1,5 +1,7 @@
 # 0.2.0 (unreleased)
 
+- Use rust implementation of wayland-client library
+
 # 0.1.1
 
 - Add wpaperd.1 manpage and completions
