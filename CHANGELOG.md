@@ -1,3 +1,5 @@
+# 0.2.0 (unreleased)
+
 # 0.1.1
 
 - Add wpaperd.1 manpage and completions
