@@ -6,6 +6,7 @@ mod surface;
 use std::{
     cell::RefCell,
     fs,
+    path::Path,
     process::exit,
     rc::Rc,
     sync::{Arc, Mutex},
@@ -26,7 +27,7 @@ use smithay_client_toolkit::{
         XdgOutputHandler,
     },
     reexports::{
-        calloop,
+        calloop::{self, channel::Sender},
         client::{
             protocol::{
                 wl_compositor::WlCompositor,
@@ -78,6 +79,11 @@ impl OutputHandling for Env {
     }
 }
 
+struct Status {
+    env: environment::Environment<Env>,
+    surfaces: RefCell<Vec<(u32, Surface, Option<timer::Guard>)>>,
+}
+
 fn main() -> Result<()> {
     color_eyre::install()?;
 
@@ -100,7 +106,7 @@ fn main() -> Result<()> {
     let mut logger = Logger::try_with_env_or_str("info")?;
 
     if config.no_daemon {
-        logger = logger.duplicate_to_stderr(Duplicate::Warn)
+        logger = logger.duplicate_to_stderr(Duplicate::Warn);
     } else {
         logger = logger.log_to_file(FileSpec::default().directory(xdg_dirs.get_state_home()));
         match unsafe { fork()? } {
@@ -123,11 +129,6 @@ fn main() -> Result<()> {
     let (outputs, xdg_output) =
         smithay_client_toolkit::output::XdgOutputHandler::new_output_handlers();
 
-    struct Status {
-        env: environment::Environment<Env>,
-        surfaces: RefCell<Vec<(u32, Surface, Option<timer::Guard>)>>,
-    }
-
     let status = Rc::new(Status {
         env: smithay_client_toolkit::environment::Environment::new(
             &display.attach(queue.token()),
@@ -145,42 +146,7 @@ fn main() -> Result<()> {
     });
 
     let env = &status.env;
-
-    let layer_shell = env.require_global::<zwlr_layer_shell_v1::ZwlrLayerShellV1>();
-
-    let output_config_clone = output_config.clone();
-    let status_rc = status.clone();
-    let output_handler = move |output: wl_output::WlOutput, info: &OutputInfo| {
-        if info.obsolete {
-            // an output has been removed, release it
-            status_rc
-                .surfaces
-                .borrow_mut()
-                .retain(|(i, _, _)| *i != info.id);
-            output.release();
-        } else {
-            // an output has been created, construct a surface for it
-            let surface = status_rc.env.create_surface().detach();
-            let pool = status_rc
-                .env
-                .create_auto_pool()
-                .expect("failed to create a memory pool!");
-            let output_config = output_config_clone.lock().unwrap();
-            (*status_rc.surfaces.borrow_mut()).push((
-                info.id,
-                Surface::new(
-                    &output,
-                    surface,
-                    &layer_shell.clone(),
-                    info.clone(),
-                    pool,
-                    output_config.get_output_by_name(&info.name),
-                ),
-                None,
-            ));
-        }
-    };
-
+    let mut output_handler = output_handler(status.clone(), output_config.clone());
     // Process currently existing outputs
     for output in env.get_all_outputs() {
         if let Some(info) = with_output_info(&output, Clone::clone) {
@@ -205,29 +171,7 @@ fn main() -> Result<()> {
         .insert_source(ev_rx, |_, _, _| {})
         .unwrap();
 
-    let ev_tx_clone = ev_tx.clone();
-    let output_config_clone = output_config.clone();
-    let mut hotwatch = Hotwatch::new().context("hotwatch failed to initialize")?;
-    hotwatch
-        .watch(&output_config_file, move |event: Event| {
-            if let Event::Write(_) = event {
-                let mut output_config = output_config_clone.lock().unwrap();
-                let new_config =
-                    OutputConfig::new_from_path(&output_config.path).with_context(|| {
-                        format!("reading configuration from file {:?}", output_config.path)
-                    });
-                match new_config {
-                    Ok(new_config) => {
-                        *output_config = new_config;
-                        ev_tx_clone.send(()).unwrap();
-                    }
-                    Err(err) => {
-                        error!("{:?}", err);
-                    }
-                }
-            }
-        })
-        .with_context(|| format!("watching file {output_config_file:?}"))?;
+    let _hotwatch = setup_hotwatch(&output_config_file, output_config.clone(), ev_tx.clone());
 
     let timer = timer::Timer::new();
 
@@ -244,39 +188,11 @@ fn main() -> Result<()> {
         }
 
         let surfaces = status.surfaces.take();
+        let process_surface_event = process_surface_event(&timer, ev_tx.clone());
         status.surfaces.replace(
             surfaces
                 .into_iter()
-                .filter_map(
-                    |(id, mut surface, guard)| -> Option<(u32, Surface, Option<timer::Guard>)> {
-                        if surface.handle_events() {
-                            None
-                        } else {
-                            let now = Instant::now();
-                            trace!("iterating over output {}", surface.info.name);
-                            let guard = if surface.should_draw(&now) {
-                                trace!("drawing output {}", surface.info.name);
-                                surface
-                                    .draw(now)
-                                    .with_context(|| {
-                                        format!("drawing surface for {}", surface.info.name)
-                                    })
-                                    .unwrap();
-                                if let Some(duration) = surface.output.duration {
-                                    let ev_tx = ev_tx.clone();
-                                    Some(timer.schedule_with_delay(duration, move || {
-                                        ev_tx.send(()).unwrap();
-                                    }))
-                                } else {
-                                    None
-                                }
-                            } else {
-                                guard
-                            };
-                            Some((id, surface, guard))
-                        }
-                    },
-                )
+                .filter_map(process_surface_event)
                 .collect::<Vec<(u32, Surface, Option<timer::Guard>)>>(),
         );
 
@@ -285,4 +201,108 @@ fn main() -> Result<()> {
             .dispatch(None, &mut ())
             .context("dispatching the event loop")?;
     }
+}
+
+fn output_handler(
+    status: Rc<Status>,
+    output_config: Arc<Mutex<OutputConfig>>,
+) -> Box<dyn FnMut(WlOutput, &OutputInfo)> {
+    let layer_shell = status
+        .env
+        .require_global::<zwlr_layer_shell_v1::ZwlrLayerShellV1>();
+
+    Box::new(move |output: wl_output::WlOutput, info: &OutputInfo| {
+        if info.obsolete {
+            // an output has been removed, release it
+            status
+                .surfaces
+                .borrow_mut()
+                .retain(|(i, _, _)| *i != info.id);
+            output.release();
+        } else {
+            // an output has been created, construct a surface for it
+            let surface = status.env.create_surface().detach();
+            let pool = status
+                .env
+                .create_auto_pool()
+                .expect("failed to create a memory pool!");
+            let output_config = output_config.lock().unwrap();
+            (*status.surfaces.borrow_mut()).push((
+                info.id,
+                Surface::new(
+                    &output,
+                    surface,
+                    &layer_shell.clone(),
+                    info.clone(),
+                    pool,
+                    output_config.get_output_by_name(&info.name),
+                ),
+                None,
+            ));
+        }
+    })
+}
+
+fn setup_hotwatch(
+    output_config_file: &Path,
+    output_config: Arc<Mutex<OutputConfig>>,
+    ev_tx: Sender<()>,
+) -> Result<Hotwatch> {
+    let mut hotwatch = Hotwatch::new().context("hotwatch failed to initialize")?;
+    hotwatch
+        .watch(&output_config_file, move |event: Event| {
+            if let Event::Write(_) = event {
+                let mut output_config = output_config.lock().unwrap();
+                let new_config =
+                    OutputConfig::new_from_path(&output_config.path).with_context(|| {
+                        format!("reading configuration from file {:?}", output_config.path)
+                    });
+                match new_config {
+                    Ok(new_config) => {
+                        *output_config = new_config;
+                        ev_tx.send(()).unwrap();
+                    }
+                    Err(err) => {
+                        error!("{:?}", err);
+                    }
+                }
+            }
+        })
+        .with_context(|| format!("watching file {output_config_file:?}"))?;
+    Ok(hotwatch)
+}
+
+type SurfaceEvent = (u32, Surface, Option<timer::Guard>);
+
+fn process_surface_event<'a>(
+    timer: &'a timer::Timer,
+    ev_tx: Sender<()>,
+) -> Box<dyn FnMut(SurfaceEvent) -> Option<SurfaceEvent> + 'a> {
+    Box::new(move |(id, mut surface, guard): (u32, Surface, Option<timer::Guard>)|
+      -> Option<(u32, Surface, Option<timer::Guard>)> {
+    if surface.handle_events() {
+        None
+    } else {
+        let now = Instant::now();
+        trace!("iterating over output {}", surface.info.name);
+        let guard = if surface.should_draw(&now) {
+            trace!("drawing output {}", surface.info.name);
+            surface
+                .draw(now)
+                .with_context(|| format!("drawing surface for {}", surface.info.name))
+                .unwrap();
+            if let Some(duration) = surface.output.duration {
+                let ev_tx = ev_tx.clone();
+                Some(timer.schedule_with_delay(duration, move || {
+                    ev_tx.send(()).unwrap();
+                }))
+            } else {
+                None
+            }
+        } else {
+            guard
+        };
+        Some((id, surface, guard))
+    }
+    })
 }

@@ -1,10 +1,11 @@
 use std::cell::Cell;
 use std::io::{BufWriter, Write};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Instant;
 
+use crate::output::Output;
 use color_eyre::eyre::{ensure, Context};
 use color_eyre::Result;
 use dowser::Dowser;
@@ -22,8 +23,6 @@ use smithay_client_toolkit::{
     },
     shm::AutoMemPool,
 };
-
-use crate::output::Output;
 
 #[derive(PartialEq, Copy, Clone)]
 enum RenderEvent {
@@ -180,7 +179,7 @@ impl Surface {
                 );
             }
         } else {
-            let img_path = path.to_path_buf();
+            let img_path = path.clone();
             open(&img_path).with_context(|| format!("opening the image {img_path:?}"))?
         };
 
