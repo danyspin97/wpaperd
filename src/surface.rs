@@ -153,17 +153,16 @@ impl Surface {
         let mut tries = 0;
         let image = if path.is_dir() {
             loop {
-                let files = Vec::<PathBuf>::try_from(
-                    Dowser::filtered(|p: &Path| {
+                let files: Vec<PathBuf> = Dowser::default()
+                    .with_path(path)
+                    .filter(|p| {
                         if let Some(guess) = new_mime_guess::from_path(&p).first() {
                             guess.type_() == "image"
                         } else {
                             false
                         }
                     })
-                    .with_path(path),
-                )
-                .with_context(|| format!("iterating files in directory {path:?}"))?;
+                    .collect();
                 let img_path = files[rand::random::<usize>() % files.len()].clone();
                 match open(&img_path).with_context(|| format!("opening the image {img_path:?}")) {
                     Ok(image) => {
