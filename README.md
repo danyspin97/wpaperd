@@ -16,9 +16,19 @@ duration, after which the image displayed will be changed with another random on
 - Change the random image after a set duration
 - Configurable via a TOML configuration file
 - Reload config at runtime and apply new settings
-- Written entirely in Rust, it has no system dependencies
 
 ## Getting started
+
+### Dependencies
+
+*wpaperd* is written entirely in Rust and, other than the crates it depends
+on, it has the following dependencies:
+
+- `pkg-config` (_build-time_)
+- `libxkbcommon`
+
+It does not depend on `wayland-client` C library, but it instead uses a Rust
+implementation.
 
 ### Build
 
@@ -60,6 +70,21 @@ If you want to automatically run it at startup, add this line to your sway confi
 exec ~/.cargo/bin/wpaperd
 # For installation using rinstall
 exec ~/.local/bin/wpaperd
+```
+
+## Images format support
+
+*wpaperd* relies on the `image` crate for loading and dislaying images. By default it
+supports for the following formats:
+
+- `jpeg`
+- `png`
+- `webp`
+
+Optionally, support for `avif` images can be enabled by adding its respective feature:
+
+```bash
+$ cargo build --release --features avif
 ```
 
 ## Output Configuration
