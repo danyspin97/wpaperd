@@ -38,3 +38,7 @@ clap_complete = "3.1.1"
 clap_mangen = "0.1.2"
 # used for the imports in src/config.rs
 serde = { version = "1.0.136", features = ["derive"] }
+
+[features]
+avif = ["image/avif-decoder"]
+
