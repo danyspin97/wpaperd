@@ -336,15 +336,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "dactyl"
-version = "0.3.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c5765747ddc67e7bf6ad4999957ab1a878dd044a9af32ad8d350c032b061bc55"
-dependencies = [
- "num-traits",
-]
-
-[[package]]
 name = "dav1d"
 version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -416,17 +407,6 @@ name = "downcast-rs"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9ea835d29036a4087793836fa931b08837ad5e957da9e23886b29586fb9b6650"
-
-[[package]]
-name = "dowser"
-version = "0.4.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "769427abc1400ad5687e728d2ce00fe1f5d2d4e4aa674cf1e2e3e60c24ff6272"
-dependencies = [
- "ahash",
- "dactyl",
- "rayon",
-]
 
 [[package]]
 name = "either"
@@ -1657,7 +1637,6 @@ dependencies = [
  "clap_complete",
  "clap_mangen",
  "color-eyre",
- "dowser",
  "flexi_logger",
  "hotwatch",
  "humantime-serde",
@@ -1671,6 +1650,7 @@ dependencies = [
  "smithay-client-toolkit",
  "timer",
  "toml",
+ "walkdir",
  "xdg",
 ]
 

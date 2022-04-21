@@ -8,7 +8,6 @@ use std::time::Instant;
 use crate::output::Output;
 use color_eyre::eyre::{ensure, Context};
 use color_eyre::Result;
-use dowser::Dowser;
 use image::imageops::FilterType;
 use image::open;
 use log::{trace, warn};
@@ -23,6 +22,7 @@ use smithay_client_toolkit::{
     },
     shm::AutoMemPool,
 };
+use walkdir::WalkDir;
 
 #[derive(PartialEq, Copy, Clone)]
 enum RenderEvent {
@@ -152,15 +152,17 @@ impl Surface {
         let mut tries = 0;
         let image = if path.is_dir() {
             loop {
-                let files: Vec<PathBuf> = Dowser::default()
-                    .with_path(path)
-                    .filter(|p| {
-                        if let Some(guess) = new_mime_guess::from_path(&p).first() {
+                let files: Vec<PathBuf> = WalkDir::new(path)
+                    .into_iter()
+                    .filter_map(|e| e.ok())
+                    .filter(|e| {
+                        if let Some(guess) = new_mime_guess::from_path(&e.path()).first() {
                             guess.type_() == "image"
                         } else {
                             false
                         }
                     })
+                    .map(|e| e.path().to_path_buf())
                     .collect();
                 let img_path = files[rand::random::<usize>() % files.len()].clone();
                 match open(&img_path).with_context(|| format!("opening the image {img_path:?}")) {
