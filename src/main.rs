@@ -174,6 +174,7 @@ fn main() -> Result<()> {
     let _hotwatch = setup_hotwatch(&output_config_file, output_config.clone(), ev_tx.clone());
 
     let timer = timer::Timer::new();
+    let mut process_surface_event = process_surface_event(&timer, ev_tx.clone());
 
     loop {
         {
@@ -188,11 +189,10 @@ fn main() -> Result<()> {
         }
 
         let surfaces = status.surfaces.take();
-        let process_surface_event = process_surface_event(&timer, ev_tx.clone());
         status.surfaces.replace(
             surfaces
                 .into_iter()
-                .filter_map(process_surface_event)
+                .filter_map(|x| process_surface_event(x))
                 .collect::<Vec<(u32, Surface, Option<timer::Guard>)>>(),
         );
 
