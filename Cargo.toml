@@ -14,7 +14,7 @@ categories = ["command-line-utilities", "multimedia"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-clap = { version = "3.1.8", features = ["derive", "wrap_help"] }
+clap = { version = "3.1.10", features = ["derive", "wrap_help"] }
 color-eyre = { version = "0.6.1", default_features = false }
 flexi_logger = { version = "0.22.3", default_features = false, features = ["colors"] }
 image = { version = "0.24.1", default_features = false, features = ["jpeg", "jpeg_rayon", "png", "webp"] }
@@ -23,19 +23,19 @@ humantime-serde = "1.1.1"
 log = "0.4.16"
 mime = "0.3.16"
 new_mime_guess = "4.0.1"
-nix = "0.23.1"
+nix = "0.24.0"
 rand = "0.8.5"
 serde = { version = "1.0.136", features = ["derive", "rc"] }
 smithay-client-toolkit = { version = "0.15.4", default_features = false, features = [ "calloop" ] }
 timer = { git = "https://github.com/danyspin97/timer.rs" }
-toml = "0.5.8"
+toml = "0.5.9"
 xdg = "2.4.1"
 walkdir = "2.3.2"
 
 [build-dependencies]
-clap = { version = "3.1.8", features = ["derive", "cargo"] }
-clap_complete = "3.1.1"
-clap_mangen = "0.1.2"
+clap = { version = "3.1.10", features = ["derive", "cargo"] }
+clap_complete = "3.1.2"
+clap_mangen = "0.1.6"
 # used for the imports in src/config.rs
 serde = { version = "1.0.136", features = ["derive"] }
 
