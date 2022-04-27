@@ -116,8 +116,8 @@ fn main() -> Result<()> {
     }
     logger.start()?;
 
-    let output_config_file = if let Some(output_config_file) = config.output_config {
-        output_config_file
+    let output_config_file = if let Some(output_config_file) = &config.output_config {
+        output_config_file.to_path_buf()
     } else {
         xdg_dirs.place_config_file("output.conf").unwrap()
     };
@@ -146,7 +146,7 @@ fn main() -> Result<()> {
     });
 
     let env = &status.env;
-    let mut output_handler = output_handler(status.clone(), output_config.clone());
+    let mut output_handler = output_handler(status.clone(), output_config.clone(), &config);
     // Process currently existing outputs
     for output in env.get_all_outputs() {
         if let Some(info) = with_output_info(&output, Clone::clone) {
@@ -206,10 +206,12 @@ fn main() -> Result<()> {
 fn output_handler(
     status: Rc<Status>,
     output_config: Arc<Mutex<OutputConfig>>,
+    config: &Config,
 ) -> Box<dyn FnMut(WlOutput, &OutputInfo)> {
     let layer_shell = status
         .env
         .require_global::<zwlr_layer_shell_v1::ZwlrLayerShellV1>();
+    let use_scaled_window = config.use_scaled_window;
 
     Box::new(move |output: wl_output::WlOutput, info: &OutputInfo| {
         if info.obsolete {
@@ -222,6 +224,12 @@ fn output_handler(
         } else {
             // an output has been created, construct a surface for it
             let surface = status.env.create_surface().detach();
+            let scale = if use_scaled_window {
+                1
+            } else {
+                surface.set_buffer_scale(info.scale_factor);
+                info.scale_factor
+            };
             let pool = status
                 .env
                 .create_auto_pool()
@@ -236,6 +244,7 @@ fn output_handler(
                     info.clone(),
                     pool,
                     output_config.get_output_by_name(&info.name),
+                    scale,
                 ),
                 None,
             ));

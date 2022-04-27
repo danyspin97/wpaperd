@@ -41,6 +41,7 @@ pub struct Surface {
     need_redraw: bool,
     buffer: Option<wl_buffer::WlBuffer>,
     time_changed: Instant,
+    scale: i32,
 }
 
 impl Surface {
@@ -51,6 +52,7 @@ impl Surface {
         info: OutputInfo,
         pool: AutoMemPool,
         output: Arc<Output>,
+        scale: i32,
     ) -> Self {
         let layer_surface = layer_shell.get_layer_surface(
             &surface,
@@ -104,6 +106,7 @@ impl Surface {
             output,
             buffer: None,
             time_changed: Instant::now(),
+            scale,
         }
     }
 
@@ -141,9 +144,9 @@ impl Surface {
     pub fn draw(&mut self, now: Instant) -> Result<()> {
         let path = self.output.path.as_ref().unwrap();
 
-        let stride = 4 * self.dimensions.0 as i32;
-        let width = self.dimensions.0 as i32;
-        let height = self.dimensions.1 as i32;
+        let stride = 4 * self.dimensions.0 as i32 * self.scale;
+        let width = self.dimensions.0 as i32 * self.scale;
+        let height = self.dimensions.1 as i32 * self.scale;
 
         self.pool
             .resize((stride * height) as usize)

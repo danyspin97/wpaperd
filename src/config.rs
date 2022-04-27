@@ -27,6 +27,12 @@ pub struct Config {
     )]
     #[serde(rename = "no-daemon")]
     pub no_daemon: bool,
+    #[clap(
+        long = "use-scaled-window",
+        help = "Draw the wallpaper as a scaled window. The compositor will upscale the wallpaper instead"
+    )]
+    #[serde(rename = "use-scaled-window")]
+    pub use_scaled_window: bool,
 }
 
 impl Config {
