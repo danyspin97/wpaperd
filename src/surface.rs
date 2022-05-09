@@ -9,7 +9,7 @@ use crate::output::Output;
 use color_eyre::eyre::{ensure, Context};
 use color_eyre::Result;
 use image::imageops::FilterType;
-use image::open;
+use image::{open, DynamicImage, Pixel};
 use log::{trace, warn};
 use smithay_client_toolkit::{
     output::OutputInfo,
@@ -188,9 +188,36 @@ impl Surface {
             open(&img_path).with_context(|| format!("opening the image {img_path:?}"))?
         };
 
-        let image = image
+        let mut image = image
             .resize_to_fill(width.try_into()?, height.try_into()?, FilterType::Lanczos3)
             .into_rgba8();
+
+        if self.output.apply_shadow.unwrap_or(false) {
+            const GRADIENT_HEIGHT: u32 = 11;
+            type RgbaImage = image::ImageBuffer<image::Rgba<u8>, Vec<u8>>;
+            let gradient = DynamicImage::ImageRgba8(
+                RgbaImage::from_raw(
+                    1,
+                    GRADIENT_HEIGHT,
+                    vec![
+                        0, 0, 0, 225, 0, 0, 0, 202, 0, 0, 0, 178, 0, 0, 0, 154, 0, 0, 0, 130, 0, 0,
+                        0, 107, 0, 0, 0, 83, 0, 0, 0, 59, 0, 0, 0, 36, 0, 0, 0, 12, 0, 0, 0, 0,
+                    ],
+                )
+                .unwrap(),
+            )
+            .resize_exact(
+                width.try_into()?,
+                GRADIENT_HEIGHT * 4 * self.scale as u32,
+                FilterType::Triangle,
+            )
+            .into_rgba8();
+
+            image
+                .pixels_mut()
+                .zip(gradient.pixels())
+                .for_each(|(p, g)| p.blend(g));
+        }
 
         if let Some(buffer) = &self.buffer {
             buffer.destroy();

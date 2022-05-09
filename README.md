@@ -16,6 +16,7 @@ duration, after which the image displayed will be changed with another random on
 - Change the random image after a set duration
 - Configurable via a TOML configuration file
 - Reload config at runtime and apply new settings
+- (optional) Apply a shadow on the top of the wallpaper
 
 ## Getting started
 
@@ -96,6 +97,8 @@ represents a different output and contains the following keys:
 - `path`, path to the image/directory
 - `duration`, how much time the image should be displayed until it is changed with a new one.
   This is only valid when path points to a directory. (_Optional_)
+- `apply-shadow`, apply a shadow on the top part of the image, to work as a shadow effect
+  of the status bar. This is particularly suited for window managers like sway. (_Optional_)
 
 The section `default` will be used as fallback for the all the outputs that aren't listed in
 the config file. This is an example configuration:
@@ -107,6 +110,7 @@ duration = "30m"
 
 [eDP-1]
 path = "/home/danyspin97/Pictures/Wallpapers/github_octupus.png"
+apply-shadow = true
 ```
 
 If you're running sway, you can look for the available outputs and their ID by running:

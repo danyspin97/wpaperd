@@ -8,4 +8,6 @@ pub struct Output {
     pub mode: Option<()>,
     #[serde(default, with = "humantime_serde")]
     pub duration: Option<Duration>,
+    #[serde(rename = "apply-shadow")]
+    pub apply_shadow: Option<bool>,
 }
