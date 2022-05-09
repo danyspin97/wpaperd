@@ -296,10 +296,14 @@ fn process_surface_event<'a>(
         trace!("iterating over output {}", surface.info.name);
         let guard = if surface.should_draw(&now) {
             trace!("drawing output {}", surface.info.name);
-            surface
-                .draw(now)
-                .with_context(|| format!("drawing surface for {}", surface.info.name))
-                .unwrap();
+                let res= surface
+                        .draw(now)
+                        .with_context(|| format!("drawing surface for {}", surface.info.name));
+                match res{
+                    Ok(t) => t,
+                    // Do not panic here, there could be other display working
+                    Err(e) => error!("{e:?}"),
+                }
             if let Some(duration) = surface.output.duration {
                 let ev_tx = ev_tx.clone();
                 Some(timer.schedule_with_delay(duration, move || {
