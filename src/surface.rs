@@ -60,7 +60,7 @@ impl Surface {
             &surface,
             Some(wl_output),
             zwlr_layer_shell_v1::Layer::Background,
-            "example".to_owned(),
+            format!("wpaperd-{}", info.name),
         );
 
         layer_surface.set_size(0, 0);
