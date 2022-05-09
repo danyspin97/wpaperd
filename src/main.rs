@@ -81,7 +81,7 @@ impl OutputHandling for Env {
 
 struct Status {
     env: environment::Environment<Env>,
-    surfaces: RefCell<Vec<(u32, Surface, Option<timer::Guard>)>>,
+    surfaces: RefCell<Vec<Surface>>,
 }
 
 fn main() -> Result<()> {
@@ -181,20 +181,15 @@ fn main() -> Result<()> {
             let mut output_config = output_config.lock().unwrap();
             if output_config.reloaded {
                 let mut surfaces = status.surfaces.borrow_mut();
-                for (_, surface, _) in surfaces.iter_mut() {
+                for surface in surfaces.iter_mut() {
                     surface.update_output(output_config.get_output_by_name(&surface.info.name));
                 }
                 output_config.reloaded = false;
             }
         }
 
-        let surfaces = status.surfaces.take();
-        status.surfaces.replace(
-            surfaces
-                .into_iter()
-                .filter_map(|x| process_surface_event(x))
-                .collect::<Vec<(u32, Surface, Option<timer::Guard>)>>(),
-        );
+        let mut surfaces = status.surfaces.borrow_mut();
+        surfaces.iter_mut().for_each(|x| process_surface_event(x));
 
         display.flush().context("flushing the display")?;
         event_loop
@@ -219,7 +214,7 @@ fn output_handler(
             status
                 .surfaces
                 .borrow_mut()
-                .retain(|(i, _, _)| *i != info.id);
+                .retain(|surface| surface.info.id != info.id);
             output.release();
         } else {
             // an output has been created, construct a surface for it
@@ -235,18 +230,14 @@ fn output_handler(
                 .create_auto_pool()
                 .expect("failed to create a memory pool!");
             let output_config = output_config.lock().unwrap();
-            (*status.surfaces.borrow_mut()).push((
-                info.id,
-                Surface::new(
-                    &output,
-                    surface,
-                    &layer_shell.clone(),
-                    info.clone(),
-                    pool,
-                    output_config.get_output_by_name(&info.name),
-                    scale,
-                ),
-                None,
+            (*status.surfaces.borrow_mut()).push(Surface::new(
+                &output,
+                surface,
+                &layer_shell.clone(),
+                info.clone(),
+                pool,
+                output_config.get_output_by_name(&info.name),
+                scale,
             ));
         }
     })
@@ -281,41 +272,31 @@ fn setup_hotwatch(
     Ok(hotwatch)
 }
 
-type SurfaceEvent = (u32, Surface, Option<timer::Guard>);
-
 fn process_surface_event<'a>(
     timer: &'a timer::Timer,
     ev_tx: Sender<()>,
-) -> Box<dyn FnMut(SurfaceEvent) -> Option<SurfaceEvent> + 'a> {
-    Box::new(move |(id, mut surface, guard): (u32, Surface, Option<timer::Guard>)|
-      -> Option<(u32, Surface, Option<timer::Guard>)> {
-    if surface.handle_events() {
-        None
-    } else {
-        let now = Instant::now();
-        trace!("iterating over output {}", surface.info.name);
-        let guard = if surface.should_draw(&now) {
-            trace!("drawing output {}", surface.info.name);
-                let res= surface
-                        .draw(now)
-                        .with_context(|| format!("drawing surface for {}", surface.info.name));
-                match res{
+) -> Box<dyn FnMut(&mut Surface) + 'a> {
+    Box::new(move |surface: &mut Surface| {
+        if !surface.handle_events() {
+            let now = Instant::now();
+            trace!("iterating over output {}", surface.info.name);
+            if surface.should_draw(&now) {
+                trace!("drawing output {}", surface.info.name);
+                let res = surface
+                    .draw(now)
+                    .with_context(|| format!("drawing surface for {}", surface.info.name));
+                match res {
                     Ok(t) => t,
                     // Do not panic here, there could be other display working
                     Err(e) => error!("{e:?}"),
                 }
-            if let Some(duration) = surface.output.duration {
-                let ev_tx = ev_tx.clone();
-                Some(timer.schedule_with_delay(duration, move || {
-                    ev_tx.send(()).unwrap();
-                }))
-            } else {
-                None
+                if let Some(duration) = surface.output.duration {
+                    let ev_tx = ev_tx.clone();
+                    surface.guard = Some(timer.schedule_with_delay(duration, move || {
+                        ev_tx.send(()).unwrap();
+                    }));
+                }
             }
-        } else {
-            guard
-        };
-        Some((id, surface, guard))
-    }
+        }
     })
 }

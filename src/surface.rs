@@ -42,6 +42,7 @@ pub struct Surface {
     buffer: Option<wl_buffer::WlBuffer>,
     time_changed: Instant,
     scale: i32,
+    pub guard: Option<timer::Guard>,
 }
 
 impl Surface {
@@ -107,6 +108,7 @@ impl Surface {
             buffer: None,
             time_changed: Instant::now(),
             scale,
+            guard: None,
         }
     }
 
