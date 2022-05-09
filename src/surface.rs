@@ -42,6 +42,7 @@ pub struct Surface {
     buffer: Option<wl_buffer::WlBuffer>,
     time_changed: Instant,
     scale: i32,
+    current_img: Option<PathBuf>,
     pub guard: Option<timer::Guard>,
 }
 
@@ -108,6 +109,7 @@ impl Surface {
             buffer: None,
             time_changed: Instant::now(),
             scale,
+            current_img: None,
             guard: None,
         }
     }
@@ -155,7 +157,7 @@ impl Surface {
             .context("resizing the wayland pool")?;
 
         let mut tries = 0;
-        let image = if path.is_dir() {
+        let (img_path, image) = if path.is_dir() {
             loop {
                 let files: Vec<PathBuf> = WalkDir::new(path)
                     .into_iter()
@@ -172,10 +174,10 @@ impl Surface {
                 let img_path = files[rand::random::<usize>() % files.len()].clone();
                 match open(&img_path).with_context(|| format!("opening the image {img_path:?}")) {
                     Ok(image) => {
-                        break image;
+                        break (img_path, image);
                     }
                     Err(err) => {
-                        warn!("{:?}", err);
+                        warn!("{err:?}");
                         tries += 1;
                     }
                 }
@@ -186,9 +188,13 @@ impl Surface {
                 );
             }
         } else {
-            let img_path = path.clone();
-            open(&img_path).with_context(|| format!("opening the image {img_path:?}"))?
+            (
+                path.clone(),
+                open(&path).with_context(|| format!("opening the image {:?}", &path))?,
+            )
         };
+
+        self.current_img = Some(img_path);
 
         let mut image = image
             .resize_to_fill(width.try_into()?, height.try_into()?, FilterType::Lanczos3)
