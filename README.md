@@ -126,8 +126,10 @@ be applied automatically.
 
 **wpaperd** is still a work in progress. The next things to do, in order, are:
 
-- Configurable upscaling algorithm, right now Lanzcos3 is always used
-- Add different modes to apply the wallpaper, i.e. `center`, `fit`, `original`
+- [ ] Configurable upscaling algorithm, right now Lanzcos3 is always used
+- [ ] Add different modes to apply the wallpaper, i.e. `center`, `fit`, `original`
+- [ ] Add IPC and a client to control wpaperd
+- [ ] Update smithay-client-toolkit to next version (still unreleased)
 
 ## License
 
