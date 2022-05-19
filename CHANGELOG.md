@@ -1,9 +1,10 @@
-# 0.2.0 (unreleased)
+# 0.2.0
 
 - Use rust implementation of wayland-client library
 - Draw to native resolution by default, add --use-scaled-window to
   match old behavior. Previously the wallpaper was drawn to the scaled
   resolution for the output selected and the compositor was doing the scaling.
+- Add apply-shadow option
 
 # 0.1.1
 
