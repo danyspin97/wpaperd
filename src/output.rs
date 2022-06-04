@@ -1,3 +1,4 @@
+use dirs::home_dir;
 use std::{path::Path, path::PathBuf, time::Duration};
 
 use serde::Deserialize;
@@ -17,13 +18,13 @@ pub fn path<'de, D>(deserializer: D) -> Result<Option<PathBuf>, D::Error>
 where
     D: serde::Deserializer<'de>,
 {
-    let path = String::deserialize(deserializer)?;
-    match shellexpand::full(&path) {
-        Ok(path) => {
-            let mut pathbuf = PathBuf::new();
-            pathbuf.push(Path::new(&*path));
-            Ok(Some(pathbuf))
-        }
-        Err(_) => Ok(None),
+    let mut path = String::deserialize(deserializer)?;
+    if path.starts_with("~/") {
+        let home = home_dir().unwrap();
+        path = path.replacen('~', home.to_str().unwrap(), 1);
     }
+
+    let mut pathbuf = PathBuf::new();
+    pathbuf.push(Path::new(&path));
+    Ok(Some(pathbuf))
 }
