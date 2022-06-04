@@ -145,8 +145,15 @@ fn main() -> Result<()> {
         surfaces: RefCell::new(Vec::new()),
     });
 
+    let mutex = Arc::new(Mutex::new(0));
+
     let env = &status.env;
-    let mut output_handler = output_handler(status.clone(), output_config.clone(), &config);
+    let mut output_handler = output_handler(
+        status.clone(),
+        output_config.clone(),
+        &config,
+        Arc::clone(&mutex),
+    );
     // Process currently existing outputs
     for output in env.get_all_outputs() {
         if let Some(info) = with_output_info(&output, Clone::clone) {
@@ -174,9 +181,11 @@ fn main() -> Result<()> {
     let _hotwatch = setup_hotwatch(&output_config_file, output_config.clone(), ev_tx.clone());
 
     let timer = timer::Timer::new();
-    let mut process_surface_event = process_surface_event(&timer, ev_tx.clone());
+    let mut process_surface_event = process_surface_event(&timer, ev_tx);
 
     loop {
+        let _guard = mutex.lock().unwrap();
+
         {
             let mut output_config = output_config.lock().unwrap();
             if output_config.reloaded {
@@ -202,6 +211,7 @@ fn output_handler(
     status: Rc<Status>,
     output_config: Arc<Mutex<OutputConfig>>,
     config: &Config,
+    mutex: Arc<Mutex<i32>>,
 ) -> Box<dyn FnMut(WlOutput, &OutputInfo)> {
     let layer_shell = status
         .env
@@ -209,6 +219,8 @@ fn output_handler(
     let use_scaled_window = config.use_scaled_window;
 
     Box::new(move |output: wl_output::WlOutput, info: &OutputInfo| {
+        let _guard = mutex.lock().unwrap();
+
         if info.obsolete {
             // an output has been removed, release it
             status
