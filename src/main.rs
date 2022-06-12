@@ -4,7 +4,6 @@ mod output_config;
 mod surface;
 
 use std::{
-    cell::RefCell,
     fs,
     path::Path,
     process::exit,
@@ -81,7 +80,7 @@ impl OutputHandling for Env {
 
 struct Status {
     env: environment::Environment<Env>,
-    surfaces: RefCell<Vec<Surface>>,
+    surfaces: Mutex<Vec<Surface>>,
 }
 
 fn main() -> Result<()> {
@@ -142,7 +141,7 @@ fn main() -> Result<()> {
             },
         )
         .unwrap(),
-        surfaces: RefCell::new(Vec::new()),
+        surfaces: Mutex::new(Vec::new()),
     });
 
     let env = &status.env;
@@ -174,13 +173,13 @@ fn main() -> Result<()> {
     let _hotwatch = setup_hotwatch(&output_config_file, output_config.clone(), ev_tx.clone());
 
     let timer = timer::Timer::new();
-    let mut process_surface_event = process_surface_event(&timer, ev_tx.clone());
+    let mut process_surface_event = process_surface_event(&timer, ev_tx);
 
     loop {
         {
             let mut output_config = output_config.lock().unwrap();
             if output_config.reloaded {
-                let mut surfaces = status.surfaces.borrow_mut();
+                let mut surfaces = status.surfaces.lock().unwrap();
                 for surface in surfaces.iter_mut() {
                     surface.update_output(output_config.get_output_by_name(&surface.info.name));
                 }
@@ -188,7 +187,7 @@ fn main() -> Result<()> {
             }
         }
 
-        let mut surfaces = status.surfaces.borrow_mut();
+        let mut surfaces = status.surfaces.lock().unwrap();
         surfaces.iter_mut().for_each(|x| process_surface_event(x));
 
         display.flush().context("flushing the display")?;
@@ -213,7 +212,8 @@ fn output_handler(
             // an output has been removed, release it
             status
                 .surfaces
-                .borrow_mut()
+                .lock()
+                .unwrap()
                 .retain(|surface| surface.info.id != info.id);
             output.release();
         } else {
@@ -230,7 +230,7 @@ fn output_handler(
                 .create_auto_pool()
                 .expect("failed to create a memory pool!");
             let output_config = output_config.lock().unwrap();
-            (*status.surfaces.borrow_mut()).push(Surface::new(
+            (*status.surfaces.lock().unwrap()).push(Surface::new(
                 &output,
                 surface,
                 &layer_shell.clone(),
