@@ -83,38 +83,7 @@ struct Status {
     surfaces: Mutex<Vec<Surface>>,
 }
 
-fn main() -> Result<()> {
-    color_eyre::install()?;
-
-    let xdg_dirs = BaseDirectories::with_prefix("wpaperd")?;
-
-    let opts = Config::parse();
-    let config_file = if let Some(config_file) = &opts.config {
-        config_file.clone()
-    } else {
-        xdg_dirs.place_config_file("wpaperd.conf").unwrap()
-    };
-
-    let mut config: Config = if config_file.exists() {
-        toml::from_str(&fs::read_to_string(config_file)?)?
-    } else {
-        Config::default()
-    };
-    config.merge(opts);
-
-    let mut logger = Logger::try_with_env_or_str("info")?;
-
-    if config.no_daemon {
-        logger = logger.duplicate_to_stderr(Duplicate::Warn);
-    } else {
-        logger = logger.log_to_file(FileSpec::default().directory(xdg_dirs.get_state_home()));
-        match unsafe { fork()? } {
-            nix::unistd::ForkResult::Parent { child: _ } => exit(0),
-            nix::unistd::ForkResult::Child => {}
-        }
-    }
-    logger.start()?;
-
+fn run(config: Config, xdg_dirs: BaseDirectories) -> Result<()> {
     let output_config_file = if let Some(output_config_file) = &config.output_config {
         output_config_file.to_path_buf()
     } else {
@@ -241,6 +210,47 @@ fn output_handler(
             ));
         }
     })
+}
+
+fn main() -> Result<()> {
+    color_eyre::install()?;
+
+    let xdg_dirs = BaseDirectories::with_prefix("wpaperd")?;
+
+    let opts = Config::parse();
+    let config_file = if let Some(config_file) = &opts.config {
+        config_file.clone()
+    } else {
+        xdg_dirs.place_config_file("wpaperd.conf").unwrap()
+    };
+
+    let mut config: Config = if config_file.exists() {
+        toml::from_str(&fs::read_to_string(config_file)?)?
+    } else {
+        Config::default()
+    };
+    config.merge(opts);
+
+    let mut logger = Logger::try_with_env_or_str("info")?;
+
+    if config.no_daemon {
+        logger = logger.duplicate_to_stderr(Duplicate::Warn);
+    } else {
+        logger = logger.log_to_file(FileSpec::default().directory(xdg_dirs.get_state_home()));
+        match unsafe { fork()? } {
+            nix::unistd::ForkResult::Parent { child: _ } => exit(0),
+            nix::unistd::ForkResult::Child => {}
+        }
+    }
+
+    logger.start()?;
+
+    if let Err(err) = run(config, xdg_dirs) {
+        error!("{err:?}");
+        Err(err)
+    } else {
+        Ok(())
+    }
 }
 
 fn setup_hotwatch(
