@@ -10,10 +10,11 @@ use serde::Deserialize;
     about = "A wallpaper manager for Wayland compositors"
 )]
 pub struct Config {
-    #[clap(short, long, help = "Path to the configuration to read from")]
+    #[clap(action, short, long, help = "Path to the configuration to read from")]
     #[serde(skip)]
     pub config: Option<PathBuf>,
     #[clap(
+        action,
         short,
         long = "output-config",
         help = "Path to the configuration containing the outputs"
@@ -21,6 +22,7 @@ pub struct Config {
     #[serde(rename = "output-config")]
     pub output_config: Option<PathBuf>,
     #[clap(
+        action,
         short = 'n',
         long = "no-daemon",
         help = "Stay in foreground, do not detach"
@@ -28,6 +30,7 @@ pub struct Config {
     #[serde(rename = "no-daemon")]
     pub no_daemon: bool,
     #[clap(
+        action,
         long = "use-scaled-window",
         help = "Draw the wallpaper as a scaled window. The compositor will upscale the wallpaper instead"
     )]
