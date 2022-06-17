@@ -1632,6 +1632,7 @@ dependencies = [
  "clap_complete",
  "clap_mangen",
  "color-eyre",
+ "dirs",
  "flexi_logger",
  "hotwatch",
  "humantime-serde",

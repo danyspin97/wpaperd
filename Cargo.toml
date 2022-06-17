@@ -31,6 +31,7 @@ timer = { git = "https://github.com/danyspin97/timer.rs" }
 toml = "0.5.9"
 xdg = "2.4.1"
 walkdir = "2.3.2"
+dirs = "4.0.0"
 
 [build-dependencies]
 clap = { version = "3.2.2", features = ["derive", "cargo"] }
@@ -41,4 +42,3 @@ serde = { version = "1.0.137", features = ["derive"] }
 
 [features]
 avif = ["image/avif-decoder"]
-
