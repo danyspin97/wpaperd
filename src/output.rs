@@ -5,7 +5,7 @@ use serde::Deserialize;
 
 #[derive(Default, Deserialize)]
 pub struct Output {
-    #[serde(deserialize_with = "path")]
+    #[serde(deserialize_with = "tilde_expansion_deserialize")]
     pub path: Option<PathBuf>,
     pub mode: Option<()>,
     #[serde(default, with = "humantime_serde")]
@@ -14,17 +14,15 @@ pub struct Output {
     pub apply_shadow: Option<bool>,
 }
 
-pub fn path<'de, D>(deserializer: D) -> Result<Option<PathBuf>, D::Error>
+pub fn tilde_expansion_deserialize<'de, D>(deserializer: D) -> Result<Option<PathBuf>, D::Error>
 where
     D: serde::Deserializer<'de>,
 {
-    let mut path = String::deserialize(deserializer)?;
-    if path.starts_with("~/") {
-        let home = home_dir().unwrap();
-        path = path.replacen('~', home.to_str().unwrap(), 1);
-    }
+    let path = String::deserialize(deserializer)?;
+    let path = Path::new(&path);
 
-    let mut pathbuf = PathBuf::new();
-    pathbuf.push(Path::new(&path));
-    Ok(Some(pathbuf))
+    Ok(Some(
+        path.strip_prefix("~")
+            .map_or(path.to_path_buf(), |p| home_dir().unwrap().join(p)),
+    ))
 }
