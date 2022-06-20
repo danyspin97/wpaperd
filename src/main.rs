@@ -188,12 +188,6 @@ fn output_handler(
         } else {
             // an output has been created, construct a surface for it
             let surface = status.env.create_surface().detach();
-            let scale = if use_scaled_window {
-                1
-            } else {
-                surface.set_buffer_scale(info.scale_factor);
-                info.scale_factor
-            };
             let pool = status
                 .env
                 .create_auto_pool()
@@ -206,7 +200,7 @@ fn output_handler(
                 info.clone(),
                 pool,
                 output_config.get_output_by_name(&info.name),
-                scale,
+                use_scaled_window,
             ));
         }
     })

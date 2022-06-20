@@ -44,6 +44,7 @@ pub struct Surface {
     scale: i32,
     current_img: Option<PathBuf>,
     pub guard: Option<timer::Guard>,
+    use_scaled_window: bool,
 }
 
 impl Surface {
@@ -54,8 +55,14 @@ impl Surface {
         info: OutputInfo,
         pool: AutoMemPool,
         output: Arc<Output>,
-        scale: i32,
+        use_scaled_window: bool,
     ) -> Self {
+        let scale = if use_scaled_window {
+            1
+        } else {
+            surface.set_buffer_scale(info.scale_factor);
+            info.scale_factor
+        };
         let layer_surface = layer_shell.get_layer_surface(
             &surface,
             Some(wl_output),
@@ -111,6 +118,7 @@ impl Surface {
             scale,
             current_img: None,
             guard: None,
+            use_scaled_window,
         }
     }
 
@@ -122,6 +130,10 @@ impl Surface {
             Some(RenderEvent::Configure { width, height }) => {
                 if self.dimensions != (width, height) {
                     self.dimensions = (width, height);
+                    self.need_redraw = true;
+                } else if self.info.scale_factor != self.scale && !self.use_scaled_window {
+                    self.scale = self.info.scale_factor;
+                    self.surface.set_buffer_scale(self.scale);
                     self.need_redraw = true;
                 }
                 false
