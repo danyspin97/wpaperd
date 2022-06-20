@@ -24,7 +24,7 @@ use smithay_client_toolkit::{
 };
 use walkdir::WalkDir;
 
-#[derive(PartialEq, Copy, Clone)]
+#[derive(PartialEq, Eq, Copy, Clone)]
 enum RenderEvent {
     Configure { width: u32, height: u32 },
     Closed,
