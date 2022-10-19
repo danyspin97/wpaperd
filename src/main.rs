@@ -12,7 +12,7 @@ use std::{
     time::Instant,
 };
 
-use clap::StructOpt;
+use clap::Parser;
 use color_eyre::{eyre::WrapErr, Result};
 use flexi_logger::{Duplicate, FileSpec, Logger};
 use hotwatch::{Event, Hotwatch};

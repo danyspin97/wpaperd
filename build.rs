@@ -1,4 +1,4 @@
-use clap::{ArgEnum, IntoApp};
+use clap::{CommandFactory, ValueEnum};
 use clap_complete::{generate_to, Shell};
 use clap_mangen::Man;
 use std::fs::File;
