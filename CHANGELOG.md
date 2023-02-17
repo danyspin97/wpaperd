@@ -1,3 +1,12 @@
+# 1.0.0 (WIP)
+
+- Replace timer library with calloop::sources::Timer (fixes #13)
+- Refactor wpaperd to use wayland-rs 0.30 and latest smithay-client-toolkit
+  (fixes #14)
+- Do not crash when a new display is added or removed
+- The wallpaper duration setting is now more reliable
+- Cleanup code
+
 # 0.2.0
 
 - Use rust implementation of wayland-client library

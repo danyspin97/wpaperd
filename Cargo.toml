@@ -1,6 +1,6 @@
 [package]
 name = "wpaperd"
-version = "0.2.0"
+version = "1.0.0"
 edition = "2021"
 authors = ["Danilo Spinella <danilo.spinella@suse.com>"]
 description = "Wallpaper daemon for Wayland"
@@ -15,31 +15,30 @@ rust-version = "1.58.1"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-clap = { version = "4.0.18", features = ["derive", "wrap_help"] }
+clap = { version = "4.1.6", features = ["derive", "wrap_help"] }
 color-eyre = { version = "0.6.2", default_features = false }
-flexi_logger = { version = "0.24.1", default_features = false, features = ["colors"] }
-image = { version = "0.24.4", default_features = false, features = ["jpeg", "jpeg_rayon", "png", "webp"] }
+flexi_logger = { version = "0.25.1", default_features = false, features = ["colors"] }
+image = { version = "0.24.5", default_features = false, features = ["jpeg", "jpeg_rayon", "png", "webp"] }
 hotwatch = "0.4.6"
 humantime-serde = "1.1.1"
 log = "0.4.17"
 mime = "0.3.16"
 new_mime_guess = "4.0.1"
-nix = "0.25.0"
+nix = "0.26.2"
 rand = "0.8.5"
-serde = { version = "1.0.147", features = ["derive", "rc"] }
-smithay-client-toolkit = { version = "0.16.0", default_features = false, features = [ "calloop" ] }
-timer = { git = "https://github.com/danyspin97/timer.rs" }
-toml = "0.5.9"
+serde = { version = "1.0.152", features = ["derive", "rc"] }
+smithay-client-toolkit = { git = "https://github.com/Smithay/client-toolkit", default_features = false, features = [ "calloop" ] }
+toml = "0.7.2"
 xdg = "2.4.1"
 walkdir = "2.3.2"
 dirs = "4.0.0"
 
 [build-dependencies]
-clap = { version = "4.0.18", features = ["derive", "cargo"] }
-clap_complete = "4.0.3"
-clap_mangen = "0.2.4"
+clap = { version = "4.1.6", features = ["derive", "cargo"] }
+clap_complete = "4.1.2"
+clap_mangen = "0.2.8"
 # used for the imports in src/config.rs
-serde = { version = "1.0.147", features = ["derive"] }
+serde = { version = "1.0.152", features = ["derive"] }
 
 [features]
 avif = ["image/avif-decoder"]

@@ -12,7 +12,7 @@ fn build_shell_completion(outdir: &Path) -> Result<(), Error> {
     let shells = Shell::value_variants();
 
     for shell in shells {
-        generate_to(*shell, &mut app, "wpaperd", &outdir)?;
+        generate_to(*shell, &mut app, "wpaperd", outdir)?;
     }
 
     Ok(())
@@ -22,7 +22,7 @@ fn build_manpages(outdir: &Path) -> Result<(), Error> {
     let app = Config::command();
 
     let file = Path::new(&outdir).join("wpaperd.1");
-    let mut file = File::create(&file)?;
+    let mut file = File::create(file)?;
 
     Man::new(app).render(&mut file)?;
 

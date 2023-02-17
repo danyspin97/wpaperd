@@ -1,13 +1,14 @@
 mod config;
-mod output;
-mod output_config;
 mod surface;
+mod wallpaper_config;
+mod wallpaper_info;
+mod wpaperd;
 
 use std::{
+    collections::HashSet,
     fs,
     path::Path,
     process::exit,
-    rc::Rc,
     sync::{Arc, Mutex},
     time::Instant,
 };
@@ -16,72 +17,17 @@ use clap::Parser;
 use color_eyre::{eyre::WrapErr, Result};
 use flexi_logger::{Duplicate, FileSpec, Logger};
 use hotwatch::{Event, Hotwatch};
-use log::{error, trace};
+use log::error;
 use nix::unistd::fork;
-use smithay_client_toolkit::{
-    environment,
-    environment::SimpleGlobal,
-    output::{
-        with_output_info, OutputHandler, OutputHandling, OutputInfo, OutputStatusListener,
-        XdgOutputHandler,
-    },
-    reexports::{
-        calloop::{self, channel::Sender},
-        client::{
-            protocol::{
-                wl_compositor::WlCompositor,
-                wl_output::{self, WlOutput},
-                wl_shm::WlShm,
-            },
-            DispatchData, Display,
-        },
-        protocols::{
-            unstable::xdg_output::v1::client::zxdg_output_manager_v1,
-            wlr::unstable::layer_shell::v1::client::zwlr_layer_shell_v1,
-        },
-    },
-    shm::ShmHandler,
-    WaylandSource,
+use smithay_client_toolkit::reexports::{
+    calloop::{self, channel::Sender},
+    client::{globals::registry_queue_init, Connection, WaylandSource},
 };
 use xdg::BaseDirectories;
 
 use crate::config::Config;
-use crate::output_config::OutputConfig;
-use crate::surface::Surface;
-
-struct Env {
-    compositor: SimpleGlobal<WlCompositor>,
-    outputs: OutputHandler,
-    shm: ShmHandler,
-    xdg_output: XdgOutputHandler,
-    layer_shell: SimpleGlobal<zwlr_layer_shell_v1::ZwlrLayerShellV1>,
-}
-
-environment!(Env,
-    singles = [
-        WlCompositor => compositor,
-        WlShm => shm,
-        zwlr_layer_shell_v1::ZwlrLayerShellV1 => layer_shell,
-        zxdg_output_manager_v1::ZxdgOutputManagerV1 => xdg_output,
-    ],
-    multis = [
-        WlOutput => outputs,
-    ]
-);
-
-impl OutputHandling for Env {
-    fn listen<F>(&mut self, f: F) -> OutputStatusListener
-    where
-        F: FnMut(WlOutput, &OutputInfo, DispatchData) + 'static,
-    {
-        self.outputs.listen(f)
-    }
-}
-
-struct Status {
-    env: environment::Environment<Env>,
-    surfaces: Mutex<Vec<Surface>>,
-}
+use crate::wallpaper_config::WallpaperConfig;
+use crate::wpaperd::Wpaperd;
 
 fn run(config: Config, xdg_dirs: BaseDirectories) -> Result<()> {
     let output_config_file = if let Some(output_config_file) = &config.output_config {
@@ -89,48 +35,19 @@ fn run(config: Config, xdg_dirs: BaseDirectories) -> Result<()> {
     } else {
         xdg_dirs.place_config_file("output.conf").unwrap()
     };
-    let mut output_config = OutputConfig::new_from_path(&output_config_file)?;
-    output_config.reloaded = false;
-    let output_config = Arc::new(Mutex::new(output_config));
-    let display = Display::connect_to_env().unwrap();
-    let mut queue = display.create_event_queue();
-    let (outputs, xdg_output) =
-        smithay_client_toolkit::output::XdgOutputHandler::new_output_handlers();
+    let mut wallpaper_config = WallpaperConfig::new_from_path(&output_config_file)?;
+    wallpaper_config.reloaded = false;
+    let wallpaper_config = Arc::new(Mutex::new(wallpaper_config));
 
-    let status = Rc::new(Status {
-        env: smithay_client_toolkit::environment::Environment::new(
-            &display.attach(queue.token()),
-            &mut queue,
-            Env {
-                compositor: SimpleGlobal::new(),
-                outputs,
-                shm: ShmHandler::new(),
-                xdg_output,
-                layer_shell: SimpleGlobal::new(),
-            },
-        )
-        .unwrap(),
-        surfaces: Mutex::new(Vec::new()),
-    });
+    let conn = Connection::connect_to_env().unwrap();
 
-    let env = &status.env;
-    let mut output_handler = output_handler(status.clone(), output_config.clone(), &config);
-    // Process currently existing outputs
-    for output in env.get_all_outputs() {
-        if let Some(info) = with_output_info(&output, Clone::clone) {
-            output_handler(output, &info);
-        }
-    }
+    let (globals, event_queue) = registry_queue_init(&conn).unwrap();
+    let qh = event_queue.handle();
 
-    // Setup a listener for changes
-    // The listener will live for as long as we keep this handle alive
-    let _listner_handle =
-        env.listen_for_outputs(move |output, info, _| output_handler(output, info));
+    let mut event_loop = calloop::EventLoop::<Wpaperd>::try_new()?;
 
-    let mut event_loop = calloop::EventLoop::<()>::try_new()?;
-
-    WaylandSource::new(queue)
-        .quick_insert(event_loop.handle())
+    WaylandSource::new(event_queue)?
+        .insert(event_loop.handle())
         .unwrap();
 
     let (ev_tx, ev_rx) = calloop::channel::channel();
@@ -139,71 +56,94 @@ fn run(config: Config, xdg_dirs: BaseDirectories) -> Result<()> {
         .insert_source(ev_rx, |_, _, _| {})
         .unwrap();
 
-    let _hotwatch = setup_hotwatch(&output_config_file, output_config.clone(), ev_tx.clone());
+    let _hotwatch = setup_hotwatch(&output_config_file, wallpaper_config.clone(), ev_tx);
 
-    let timer = timer::Timer::new();
-    let mut process_surface_event = process_surface_event(&timer, ev_tx);
+    let mut wpaperd = Wpaperd::new(
+        &qh,
+        &globals,
+        &conn,
+        wallpaper_config.clone(),
+        config.use_scaled_window,
+    )?;
 
+    // Loop until the wayland server has sent us the configure event and
+    // scale for all the displays
     loop {
-        {
-            let mut output_config = output_config.lock().unwrap();
-            if output_config.reloaded {
-                let mut surfaces = status.surfaces.lock().unwrap();
-                for surface in surfaces.iter_mut() {
-                    surface.update_output(output_config.get_output_by_name(&surface.info.name));
-                }
-                output_config.reloaded = false;
-            }
+        let now = Instant::now();
+        let mut configured = HashSet::new();
+        let all_configured = if wpaperd.surfaces.is_empty() {
+            wpaperd
+                .surfaces
+                .iter_mut()
+                .map(|surface| {
+                    let res = surface
+                        .draw(&now)
+                        .with_context(|| format!("drawing surface for {}", surface.name()));
+                    match res {
+                        Ok(t) => t,
+                        // Do not panic here, there could be other display working
+                        Err(e) => error!("{e:?}"),
+                    }
+
+                    // We need to add the first timer here, so that in the next
+                    // loop we will always receive timeout events and create
+                    // them when that happens
+                    if surface.configured && !configured.contains(surface.name()) {
+                        configured.insert(surface.name());
+                        surface.set_next_duration(event_loop.handle());
+                    }
+
+                    surface.configured
+                })
+                .all(|b| b)
+        } else {
+            false
+        };
+
+        // Break to the actual event_loop
+        if all_configured {
+            break;
         }
 
-        let mut surfaces = status.surfaces.lock().unwrap();
-        surfaces.iter_mut().for_each(|x| process_surface_event(x));
-
-        display.flush().context("flushing the display")?;
         event_loop
-            .dispatch(None, &mut ())
+            .dispatch(None, &mut wpaperd)
             .context("dispatching the event loop")?;
     }
-}
 
-fn output_handler(
-    status: Rc<Status>,
-    output_config: Arc<Mutex<OutputConfig>>,
-    config: &Config,
-) -> Box<dyn FnMut(WlOutput, &OutputInfo)> {
-    let layer_shell = status
-        .env
-        .require_global::<zwlr_layer_shell_v1::ZwlrLayerShellV1>();
-    let use_scaled_window = config.use_scaled_window;
-
-    Box::new(move |output: wl_output::WlOutput, info: &OutputInfo| {
-        if info.obsolete {
-            // an output has been removed, release it
-            status
-                .surfaces
-                .lock()
-                .unwrap()
-                .retain(|surface| surface.info.id != info.id);
-            output.release();
-        } else {
-            // an output has been created, construct a surface for it
-            let surface = status.env.create_surface().detach();
-            let pool = status
-                .env
-                .create_auto_pool()
-                .expect("failed to create a memory pool!");
-            let output_config = output_config.lock().unwrap();
-            (*status.surfaces.lock().unwrap()).push(Surface::new(
-                &output,
-                surface,
-                &layer_shell.clone(),
-                info.clone(),
-                pool,
-                output_config.get_output_by_name(&info.name),
-                use_scaled_window,
-            ));
+    loop {
+        let mut output_config = wallpaper_config.lock().unwrap();
+        if output_config.reloaded {
+            wpaperd.surfaces.iter_mut().for_each(|surface| {
+                let wallpaper_info = output_config.get_output_by_name(surface.name());
+                if surface.update_wallpaper_info(wallpaper_info) {
+                    // The new config could have a new duration that is less
+                    // then the previous one. Add it to the event_loop
+                    surface.set_next_duration(event_loop.handle());
+                }
+            });
+            output_config.reloaded = false;
         }
-    })
+        drop(output_config);
+
+        let now = Instant::now();
+        // Iterate over all surfaces and check if we should change the
+        // wallpaper or draw it again
+        wpaperd.surfaces.iter_mut().for_each(|surface| {
+            surface.update_duration(event_loop.handle(), &now);
+            let res = surface
+                .draw(&now)
+                .with_context(|| format!("drawing surface for {}", surface.name()));
+            match res {
+                Ok(t) => t,
+                // Do not panic here, there could be other display working
+                Err(e) => error!("{e:?}"),
+            }
+        });
+
+        event_loop
+            .dispatch(None, &mut wpaperd)
+            .context("dispatching the event loop")?;
+    }
 }
 
 fn main() -> Result<()> {
@@ -249,22 +189,26 @@ fn main() -> Result<()> {
 
 fn setup_hotwatch(
     output_config_file: &Path,
-    output_config: Arc<Mutex<OutputConfig>>,
+    output_config: Arc<Mutex<WallpaperConfig>>,
     ev_tx: Sender<()>,
 ) -> Result<Hotwatch> {
     let mut hotwatch = Hotwatch::new().context("hotwatch failed to initialize")?;
     hotwatch
-        .watch(&output_config_file, move |event: Event| {
+        .watch(output_config_file, move |event: Event| {
             if let Event::Write(_) = event {
+                // When the config file has been written into
                 let mut output_config = output_config.lock().unwrap();
                 let new_config =
-                    OutputConfig::new_from_path(&output_config.path).with_context(|| {
+                    WallpaperConfig::new_from_path(&output_config.path).with_context(|| {
                         format!("reading configuration from file {:?}", output_config.path)
                     });
                 match new_config {
-                    Ok(new_config) => {
+                    Ok(new_config) if new_config != *output_config => {
                         *output_config = new_config;
                         ev_tx.send(()).unwrap();
+                    }
+                    Ok(_) => {
+                        // Do nothing, the new config is the same as the loaded one
                     }
                     Err(err) => {
                         error!("{:?}", err);
@@ -274,33 +218,4 @@ fn setup_hotwatch(
         })
         .with_context(|| format!("watching file {output_config_file:?}"))?;
     Ok(hotwatch)
-}
-
-fn process_surface_event<'a>(
-    timer: &'a timer::Timer,
-    ev_tx: Sender<()>,
-) -> Box<dyn FnMut(&mut Surface) + 'a> {
-    Box::new(move |surface: &mut Surface| {
-        if !surface.handle_events() {
-            let now = Instant::now();
-            trace!("iterating over output {}", surface.info.name);
-            if surface.should_draw(&now) {
-                trace!("drawing output {}", surface.info.name);
-                let res = surface
-                    .draw(now)
-                    .with_context(|| format!("drawing surface for {}", surface.info.name));
-                match res {
-                    Ok(t) => t,
-                    // Do not panic here, there could be other display working
-                    Err(e) => error!("{e:?}"),
-                }
-                if let Some(duration) = surface.output.duration {
-                    let ev_tx = ev_tx.clone();
-                    surface.guard = Some(timer.schedule_with_delay(duration, move || {
-                        ev_tx.send(()).unwrap();
-                    }));
-                }
-            }
-        }
-    })
 }

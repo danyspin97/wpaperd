@@ -3,8 +3,8 @@ use std::{path::Path, path::PathBuf, time::Duration};
 
 use serde::Deserialize;
 
-#[derive(Default, Deserialize)]
-pub struct Output {
+#[derive(Default, Deserialize, PartialEq)]
+pub struct WallpaperInfo {
     #[serde(deserialize_with = "tilde_expansion_deserialize")]
     pub path: Option<PathBuf>,
     pub mode: Option<()>,
