@@ -71,7 +71,7 @@ fn run(config: Config, xdg_dirs: BaseDirectories) -> Result<()> {
     loop {
         let now = Instant::now();
         let mut configured = HashSet::new();
-        let all_configured = if wpaperd.surfaces.is_empty() {
+        let all_configured = if !wpaperd.surfaces.is_empty() {
             wpaperd
                 .surfaces
                 .iter_mut()

@@ -35,7 +35,6 @@ pub struct Surface {
     pub time_changed: Instant,
     pub current_img: PathBuf,
     pub info: OutputInfo,
-    pub first_configure: bool,
     pub configured: bool,
 }
 
@@ -71,7 +70,7 @@ impl Surface {
             output,
             layer,
             dimensions: (0, 0),
-            scale: 1,
+            scale: info.scale_factor,
             pool,
             surface,
             info,
@@ -80,7 +79,6 @@ impl Surface {
             timer_expired: true,
             time_changed: Instant::now(),
             current_img: PathBuf::from("/"),
-            first_configure: false,
             configured: false,
         }
     }
