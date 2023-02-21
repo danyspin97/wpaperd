@@ -67,10 +67,13 @@ impl CompositorHandler for Wpaperd {
             .find(|(_, s)| surface == &s.surface)
             .unwrap()
             .1;
-        surface.scale = new_factor;
-        surface.surface.set_buffer_scale(new_factor);
-        surface.need_redraw = true;
-        surface.configured = true;
+
+        // Ignore unnecessary updates
+        if surface.scale != new_factor {
+            surface.scale = new_factor;
+            surface.surface.set_buffer_scale(new_factor);
+            surface.need_redraw = true;
+        }
     }
 
     fn frame(
@@ -165,19 +168,14 @@ impl LayerShellHandler for Wpaperd {
             .find(|surface| &surface.layer == layer)
             // We always know the surface that it is being configured
             .unwrap();
-        debug_assert!(configure.new_size.0 == 0 || configure.new_size.1 == 0);
+
         if surface.dimensions != configure.new_size {
+            // Update dimensions
+            surface.dimensions = configure.new_size;
             surface.need_redraw = true;
         }
 
-        // Update dimensions
-        surface.dimensions = configure.new_size;
-
-        if !surface.first_configure {
-            surface.first_configure = true;
-        } else if !surface.configured && surface.info.scale_factor == 1 {
-            surface.configured = true;
-        }
+        surface.configured = true;
     }
 }
 
