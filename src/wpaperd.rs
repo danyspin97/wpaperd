@@ -3,17 +3,17 @@ use std::sync::{Arc, Mutex};
 use color_eyre::Result;
 use smithay_client_toolkit::compositor::{CompositorHandler, CompositorState};
 use smithay_client_toolkit::output::{OutputHandler, OutputState};
-use smithay_client_toolkit::reexports::client::globals::{GlobalList, GlobalListContents};
-use smithay_client_toolkit::reexports::client::protocol::wl_registry;
+use smithay_client_toolkit::reexports::client::globals::GlobalList;
 use smithay_client_toolkit::reexports::client::protocol::{wl_output, wl_surface};
-use smithay_client_toolkit::reexports::client::{Connection, Dispatch, QueueHandle};
+use smithay_client_toolkit::reexports::client::{Connection, QueueHandle};
 use smithay_client_toolkit::registry::{ProvidesRegistryState, RegistryState};
 use smithay_client_toolkit::shell::layer::{
     LayerShell, LayerShellHandler, LayerSurface, LayerSurfaceConfigure,
 };
 use smithay_client_toolkit::shm::{ShmHandler, ShmState};
 use smithay_client_toolkit::{
-    delegate_compositor, delegate_layer, delegate_output, delegate_shm, registry_handlers,
+    delegate_compositor, delegate_layer, delegate_output, delegate_registry, delegate_shm,
+    registry_handlers,
 };
 
 use crate::surface::Surface;
@@ -188,7 +188,7 @@ impl ShmHandler for Wpaperd {
 delegate_compositor!(Wpaperd);
 delegate_output!(Wpaperd);
 delegate_shm!(Wpaperd);
-
+delegate_registry!(Wpaperd);
 delegate_layer!(Wpaperd);
 
 impl ProvidesRegistryState for Wpaperd {
@@ -196,17 +196,4 @@ impl ProvidesRegistryState for Wpaperd {
         &mut self.registry_state
     }
     registry_handlers![OutputState];
-}
-
-impl Dispatch<wl_registry::WlRegistry, GlobalListContents> for Wpaperd {
-    fn event(
-        _state: &mut Self,
-        _registry: &wl_registry::WlRegistry,
-        _event: wl_registry::Event,
-        _data: &GlobalListContents,
-        _conn: &Connection,
-        _qh: &QueueHandle<Self>,
-    ) {
-        // We don't need any other globals.
-    }
 }
