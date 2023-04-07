@@ -1,6 +1,6 @@
 [package]
 name = "wpaperd"
-version = "1.0.0"
+version = "0.3.0"
 edition = "2021"
 authors = ["Danilo Spinella <danilo.spinella@suse.com>"]
 description = "Wallpaper daemon for Wayland"

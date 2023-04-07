@@ -1,10 +1,15 @@
-# 1.0.0 (WIP)
+# 0.3.0 (WIP)
 
 - Replace timer library with calloop::sources::Timer (fixes #13)
 - Refactor wpaperd to use wayland-rs 0.30 and latest smithay-client-toolkit
   (fixes #14)
 - Do not crash when a new display is added or removed
 - The wallpaper duration setting is now more reliable
+- Fix panic when a directory is empty (fixes #27)
+- Remove `output-config` from config
+- Remove `--config` argument from cli
+- Rename wpaperd.conf to wpaperd.toml and output.conf to wallpaper.toml
+  (fixes #25)
 - Cleanup code
 
 # 0.2.0
