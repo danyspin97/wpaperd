@@ -157,16 +157,20 @@ fn main() -> Result<()> {
 
     let xdg_dirs = BaseDirectories::with_prefix("wpaperd")?;
 
-    let opts = Config::parse();
-    let config_file = if let Some(config_file) = &opts.config {
-        config_file.clone()
-    } else {
-        xdg_dirs.place_config_file("wpaperd.conf").unwrap()
-    };
+    let mut config = Figment::new();
 
-    let config: Config = Figment::new()
-        .merge(Toml::file(config_file))
-        .merge(Serialized::defaults(opts))
+    // Otherwise read the new config or the legacy file
+    let legacy_config = xdg_dirs.place_config_file("wpaperd.conf").unwrap();
+    if legacy_config.exists() {
+        config = config.merge(Toml::file(legacy_config));
+    } else {
+        config = config.merge(Toml::file(
+            xdg_dirs.place_config_file("wpaperd.toml").unwrap(),
+        ))
+    }
+
+    let config: Config = config
+        .merge(Serialized::defaults(Config::parse()))
         .extract()?;
 
     let mut logger = Logger::try_with_env_or_str("info")?;

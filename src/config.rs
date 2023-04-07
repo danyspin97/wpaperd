@@ -10,17 +10,12 @@ use serde::{Deserialize, Serialize};
     about = "A wallpaper manager for Wayland compositors"
 )]
 pub struct Config {
-    #[clap(action, short, long, help = "Path to the configuration to read from")]
-    #[serde(skip)]
-    pub config: Option<PathBuf>,
     #[clap(
         action,
         short,
         long = "output-config",
         help = "Path to the configuration containing the outputs"
     )]
-    #[serde(rename = "output-config")]
-    pub output_config: Option<PathBuf>,
     #[clap(
         action,
         short = 'n',
