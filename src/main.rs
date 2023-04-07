@@ -117,19 +117,19 @@ fn run(config: Config, xdg_dirs: BaseDirectories) -> Result<()> {
     }
 
     loop {
-        let mut output_config = wallpaper_config.lock().unwrap();
-        if output_config.reloaded {
+        let mut wallpaper_config = wallpaper_config.lock().unwrap();
+        if wallpaper_config.reloaded {
             wpaperd.surfaces.iter_mut().for_each(|surface| {
-                let wallpaper_info = output_config.get_output_by_name(surface.name());
+                let wallpaper_info = wallpaper_config.get_output_by_name(surface.name());
                 if surface.update_wallpaper_info(wallpaper_info) {
                     // The new config could have a new duration that is less
                     // then the previous one. Add it to the event_loop
                     surface.set_next_duration(event_loop.handle());
                 }
             });
-            output_config.reloaded = false;
+            wallpaper_config.reloaded = false;
         }
-        drop(output_config);
+        drop(wallpaper_config);
 
         let now = Instant::now();
         // Iterate over all surfaces and check if we should change the
@@ -196,23 +196,26 @@ fn main() -> Result<()> {
 }
 
 fn setup_hotwatch(
-    output_config_file: &Path,
-    output_config: Arc<Mutex<WallpaperConfig>>,
+    wallpaper_config_file: &Path,
+    wallpaper_config: Arc<Mutex<WallpaperConfig>>,
     ev_tx: Sender<()>,
 ) -> Result<Hotwatch> {
     let mut hotwatch = Hotwatch::new().context("hotwatch failed to initialize")?;
     hotwatch
-        .watch(output_config_file, move |event: Event| {
+        .watch(wallpaper_config_file, move |event: Event| {
             if let Event::Write(_) = event {
                 // When the config file has been written into
-                let mut output_config = output_config.lock().unwrap();
-                let new_config =
-                    WallpaperConfig::new_from_path(&output_config.path).with_context(|| {
-                        format!("reading configuration from file {:?}", output_config.path)
+                let mut wallpaper_config = wallpaper_config.lock().unwrap();
+                let new_config = WallpaperConfig::new_from_path(&wallpaper_config.path)
+                    .with_context(|| {
+                        format!(
+                            "reading configuration from file {:?}",
+                            wallpaper_config.path
+                        )
                     });
                 match new_config {
-                    Ok(new_config) if new_config != *output_config => {
-                        *output_config = new_config;
+                    Ok(new_config) if new_config != *wallpaper_config => {
+                        *wallpaper_config = new_config;
                         ev_tx.send(()).unwrap();
                     }
                     Ok(_) => {
@@ -224,6 +227,6 @@ fn setup_hotwatch(
                 }
             }
         })
-        .with_context(|| format!("watching file {output_config_file:?}"))?;
+        .with_context(|| format!("watching file {wallpaper_config_file:?}"))?;
     Ok(hotwatch)
 }
