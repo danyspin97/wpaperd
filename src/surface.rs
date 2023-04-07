@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
 
-use color_eyre::eyre::{ensure, Context};
+use color_eyre::eyre::{bail, ensure, Context};
 use color_eyre::Result;
 use image::imageops::FilterType;
 use image::{open, DynamicImage, ImageBuffer, Pixel, Rgba};
@@ -191,6 +191,13 @@ impl Surface {
                     })
                     .map(|e| e.path().to_path_buf())
                     .collect();
+
+                if files.len() == 0 {
+                    // There are no images, forcefully break out of the loop
+                    // modulus operator panics when the right argument is 0
+                    bail!("Directory {path:?} is empty");
+                }
+
                 let img_path = files[rand::random::<usize>() % files.len()].clone();
                 match open(&img_path).with_context(|| format!("opening the image {img_path:?}")) {
                     Ok(image) => {
