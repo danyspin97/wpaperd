@@ -33,12 +33,15 @@ use crate::wallpaper_config::WallpaperConfig;
 use crate::wpaperd::Wpaperd;
 
 fn run(config: Config, xdg_dirs: BaseDirectories) -> Result<()> {
-    let output_config_file = if let Some(output_config_file) = &config.output_config {
-        output_config_file.to_path_buf()
+    // Read the new config or the legacy file
+    let legacy_config_file = xdg_dirs.place_config_file("output.conf").unwrap();
+    let wallpaper_config_file = if legacy_config_file.exists() {
+        legacy_config_file
     } else {
-        xdg_dirs.place_config_file("output.conf").unwrap()
+        xdg_dirs.place_config_file("wallpaper.toml").unwrap()
     };
-    let mut wallpaper_config = WallpaperConfig::new_from_path(&output_config_file)?;
+
+    let mut wallpaper_config = WallpaperConfig::new_from_path(&wallpaper_config_file)?;
     wallpaper_config.reloaded = false;
     let wallpaper_config = Arc::new(Mutex::new(wallpaper_config));
 
@@ -59,7 +62,7 @@ fn run(config: Config, xdg_dirs: BaseDirectories) -> Result<()> {
         .insert_source(ev_rx, |_, _, _| {})
         .unwrap();
 
-    let _hotwatch = setup_hotwatch(&output_config_file, wallpaper_config.clone(), ev_tx);
+    let _hotwatch = setup_hotwatch(&wallpaper_config_file, wallpaper_config.clone(), ev_tx);
 
     let mut wpaperd = Wpaperd::new(
         &qh,

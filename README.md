@@ -88,10 +88,10 @@ Optionally, support for `avif` images can be enabled by adding its respective fe
 $ cargo build --release --features avif
 ```
 
-## Output Configuration
+## Wallpaper Configuration
 
-The output configuration file for *wpaperd* is located in `XDG_CONFIG_HOME/wpaperd/output.conf`
-(which defaults to `$HOME/.config/wpaperd/output.conf`) and is a TOML file. Each section
+The wallpaper configuration file for *wpaperd* is located in `XDG_CONFIG_HOME/wpaperd/wallpaper.toml`
+(which defaults to `$HOME/.config/wpaperd/wallpaper.toml`) and is a TOML file. Each section
 represents a different output and contains the following keys:
 
 - `path`, path to the image/directory
