@@ -6,7 +6,6 @@ mod wpaperd;
 
 use std::{
     collections::HashSet,
-    fs,
     path::Path,
     process::exit,
     sync::{Arc, Mutex},
@@ -15,6 +14,10 @@ use std::{
 
 use clap::Parser;
 use color_eyre::{eyre::WrapErr, Result};
+use figment::{
+    providers::{Format, Serialized, Toml},
+    Figment,
+};
 use flexi_logger::{Duplicate, FileSpec, Logger};
 use hotwatch::{Event, Hotwatch};
 use log::error;
@@ -158,12 +161,10 @@ fn main() -> Result<()> {
         xdg_dirs.place_config_file("wpaperd.conf").unwrap()
     };
 
-    let mut config: Config = if config_file.exists() {
-        toml::from_str(&fs::read_to_string(config_file)?)?
-    } else {
-        Config::default()
-    };
-    config.merge(opts);
+    let config: Config = Figment::new()
+        .merge(Toml::file(config_file))
+        .merge(Serialized::defaults(opts))
+        .extract()?;
 
     let mut logger = Logger::try_with_env_or_str("info")?;
 

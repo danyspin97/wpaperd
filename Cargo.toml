@@ -17,6 +17,7 @@ rust-version = "1.58.1"
 [dependencies]
 clap = { version = "4.1.6", features = ["derive", "wrap_help"] }
 color-eyre = { version = "0.6.2", default_features = false }
+figment = { version = "0.10.8", features = ["toml"] }
 flexi_logger = { version = "0.25.1", default_features = false, features = ["colors"] }
 image = { version = "0.24.5", default_features = false, features = ["jpeg", "jpeg_rayon", "png", "webp"] }
 hotwatch = "0.4.6"

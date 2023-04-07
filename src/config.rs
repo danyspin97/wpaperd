@@ -1,9 +1,9 @@
 use std::path::PathBuf;
 
 use clap::Parser;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
-#[derive(Default, Parser, Deserialize)]
+#[derive(Default, Parser, Serialize, Deserialize)]
 #[clap(
     author = "Danilo Spinella <danilo.spinella@suse.com>",
     version,
@@ -36,14 +36,4 @@ pub struct Config {
     )]
     #[serde(rename = "use-scaled-window")]
     pub use_scaled_window: bool,
-}
-
-impl Config {
-    pub fn merge(&mut self, o: Self) {
-        if let Some(output_config) = o.output_config {
-            self.output_config = Some(output_config);
-        }
-
-        self.no_daemon |= o.no_daemon;
-    }
 }
