@@ -14,9 +14,9 @@ use smithay_client_toolkit::reexports::calloop::LoopHandle;
 use smithay_client_toolkit::reexports::client::protocol::wl_output::WlOutput;
 use smithay_client_toolkit::reexports::client::protocol::{wl_shm, wl_surface};
 use smithay_client_toolkit::reexports::client::QueueHandle;
-use smithay_client_toolkit::shell::layer::{Anchor, LayerShell, LayerSurface};
+use smithay_client_toolkit::shell::wlr_layer::{Anchor, Layer, LayerShell, LayerSurface};
 use smithay_client_toolkit::shm::slot::SlotPool;
-use smithay_client_toolkit::shm::ShmState;
+use smithay_client_toolkit::shm::Shm;
 use walkdir::WalkDir;
 
 use crate::wallpaper_info::WallpaperInfo;
@@ -44,24 +44,21 @@ impl Surface {
         output: WlOutput,
         layer_state: &LayerShell,
         surface: wl_surface::WlSurface,
-        shm_state: &ShmState,
+        shm_state: &Shm,
         info: OutputInfo,
         wallpaper_info: Arc<WallpaperInfo>,
     ) -> Self {
         // TODO: error handling
-        let layer = LayerSurface::builder()
-            .namespace(format!("wpaperd-{}", info.name.as_ref().unwrap()))
-            .anchor(Anchor::TOP | Anchor::LEFT | Anchor::RIGHT | Anchor::BOTTOM)
-            .exclusive_zone(-1)
-            .size((0, 0))
-            .output(&output)
-            .map(
-                qh,
-                layer_state,
-                surface.clone(),
-                smithay_client_toolkit::shell::layer::Layer::Background,
-            )
-            .unwrap();
+        let layer = layer_state.create_layer_surface(
+            qh,
+            surface.clone(),
+            Layer::Background,
+            Some(format!("wpaperd-{}", info.name.as_ref().unwrap())),
+            Some(&output),
+        );
+        layer.set_anchor(Anchor::TOP | Anchor::LEFT | Anchor::RIGHT | Anchor::BOTTOM);
+        layer.set_exclusive_zone(-1);
+        layer.set_size(0, 0);
 
         // Commit the surface
         surface.commit();

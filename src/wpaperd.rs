@@ -7,10 +7,10 @@ use smithay_client_toolkit::reexports::client::globals::GlobalList;
 use smithay_client_toolkit::reexports::client::protocol::{wl_output, wl_surface};
 use smithay_client_toolkit::reexports::client::{Connection, QueueHandle};
 use smithay_client_toolkit::registry::{ProvidesRegistryState, RegistryState};
-use smithay_client_toolkit::shell::layer::{
+use smithay_client_toolkit::shell::wlr_layer::{
     LayerShell, LayerShellHandler, LayerSurface, LayerSurfaceConfigure,
 };
-use smithay_client_toolkit::shm::{ShmHandler, ShmState};
+use smithay_client_toolkit::shm::{Shm, ShmHandler};
 use smithay_client_toolkit::{
     delegate_compositor, delegate_layer, delegate_output, delegate_registry, delegate_shm,
     registry_handlers,
@@ -22,7 +22,7 @@ use crate::wallpaper_config::WallpaperConfig;
 pub struct Wpaperd {
     pub compositor_state: CompositorState,
     pub output_state: OutputState,
-    pub shm_state: ShmState,
+    pub shm_state: Shm,
     pub layer_state: LayerShell,
     pub registry_state: RegistryState,
     pub surfaces: Vec<Surface>,
@@ -38,7 +38,7 @@ impl Wpaperd {
         wallpaper_config: Arc<Mutex<WallpaperConfig>>,
         use_scaled_window: bool,
     ) -> Result<Self> {
-        let shm_state = ShmState::bind(globals, qh)?;
+        let shm_state = Shm::bind(globals, qh)?;
         Ok(Self {
             compositor_state: CompositorState::bind(globals, qh)?,
             output_state: OutputState::new(globals, qh),
@@ -180,7 +180,7 @@ impl LayerShellHandler for Wpaperd {
 }
 
 impl ShmHandler for Wpaperd {
-    fn shm_state(&mut self) -> &mut ShmState {
+    fn shm_state(&mut self) -> &mut Shm {
         &mut self.shm_state
     }
 }
