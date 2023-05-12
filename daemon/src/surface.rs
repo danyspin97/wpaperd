@@ -189,7 +189,7 @@ impl Surface {
                     .map(|e| e.path().to_path_buf())
                     .collect();
 
-                if files.len() == 0 {
+                if files.is_empty() {
                     // There are no images, forcefully break out of the loop
                     // modulus operator panics when the right argument is 0
                     bail!("Directory {path:?} is empty");
