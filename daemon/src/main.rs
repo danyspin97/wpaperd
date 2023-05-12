@@ -36,12 +36,17 @@ use crate::wallpaper_config::WallpaperConfig;
 use crate::wpaperd::Wpaperd;
 
 fn run(config: Config, xdg_dirs: BaseDirectories) -> Result<()> {
-    // Read the new config or the legacy file
-    let legacy_config_file = xdg_dirs.place_config_file("output.conf").unwrap();
-    let wallpaper_config_file = if legacy_config_file.exists() {
-        legacy_config_file
+    // Path passed from the CLI or the wpaperd.toml file has precedence
+    let wallpaper_config_file = if let Some(wallpaper_config) = config.wallpaper_config {
+        wallpaper_config
     } else {
-        xdg_dirs.place_config_file("wallpaper.toml").unwrap()
+        // Read the new config or the legacy file
+        let legacy_config_file = xdg_dirs.place_config_file("output.conf").unwrap();
+        if legacy_config_file.exists() {
+            legacy_config_file
+        } else {
+            xdg_dirs.place_config_file("wallpaper.toml").unwrap()
+        }
     };
 
     let mut wallpaper_config = WallpaperConfig::new_from_path(&wallpaper_config_file)?;
@@ -163,20 +168,23 @@ fn main() -> Result<()> {
     let xdg_dirs = BaseDirectories::with_prefix("wpaperd")?;
 
     let mut config = Figment::new();
+    let opts = Config::parse();
 
-    // Otherwise read the new config or the legacy file
-    let legacy_config = xdg_dirs.place_config_file("wpaperd.conf").unwrap();
-    if legacy_config.exists() {
-        config = config.merge(Toml::file(legacy_config));
+    if let Some(opts_config) = &opts.config {
+        config = config.merge(Toml::file(opts_config));
     } else {
-        config = config.merge(Toml::file(
-            xdg_dirs.place_config_file("wpaperd.toml").unwrap(),
-        ))
+        // Otherwise read the new config or the legacy file
+        let legacy_config = xdg_dirs.place_config_file("wpaperd.conf").unwrap();
+        if legacy_config.exists() {
+            config = config.merge(Toml::file(legacy_config));
+        } else {
+            config = config.merge(Toml::file(
+                xdg_dirs.place_config_file("wpaperd.toml").unwrap(),
+            ))
+        }
     }
 
-    let config: Config = config
-        .merge(Serialized::defaults(Config::parse()))
-        .extract()?;
+    let config: Config = config.merge(Serialized::defaults(opts)).extract()?;
 
     let mut logger = Logger::try_with_env_or_str(if config.verbose { "info" } else { "warn" })?;
 

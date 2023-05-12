@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use clap::Parser;
 use serde::{Deserialize, Serialize};
 
@@ -11,9 +13,18 @@ pub struct Config {
     #[clap(
         action,
         short,
-        long = "output-config",
-        help = "Path to the configuration containing the outputs"
+        long,
+        help = "Path to the configuration (XDG_CONFIG_HOME/wpaperd/wpaperd.toml by default)"
     )]
+    #[serde(skip)]
+    pub config: Option<PathBuf>,
+    #[clap(
+        action,
+        short,
+        long = "wallpaper-config",
+        help = "Path to the configuration of the wallpaper (XDG_CONFIG_HOME/wpaperd/wallpaper.toml by default)"
+    )]
+    pub wallpaper_config: Option<PathBuf>,
     #[clap(
         action,
         short = 'n',
