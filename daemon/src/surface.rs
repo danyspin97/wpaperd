@@ -7,7 +7,7 @@ use color_eyre::eyre::{bail, ensure, Context};
 use color_eyre::Result;
 use image::imageops::FilterType;
 use image::{open, DynamicImage, ImageBuffer, Pixel, Rgba};
-use log::warn;
+use log::{info, warn};
 use smithay_client_toolkit::output::OutputInfo;
 use smithay_client_toolkit::reexports::calloop::timer::{TimeoutAction, Timer};
 use smithay_client_toolkit::reexports::calloop::LoopHandle;
@@ -198,6 +198,7 @@ impl Surface {
                 let img_path = files[rand::random::<usize>() % files.len()].clone();
                 match open(&img_path).with_context(|| format!("opening the image {img_path:?}")) {
                     Ok(image) => {
+                        info!("New image for monitor {:?}: {img_path:?}", self.name());
                         self.time_changed = *now;
                         self.current_img = img_path;
                         break Ok(image);

@@ -29,4 +29,6 @@ pub struct Config {
     )]
     #[serde(rename = "use-scaled-window")]
     pub use_scaled_window: bool,
+    #[clap(short, long, help = "Increase the verbosity of wpaperd")]
+    pub verbose: bool,
 }

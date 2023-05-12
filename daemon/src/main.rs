@@ -178,7 +178,7 @@ fn main() -> Result<()> {
         .merge(Serialized::defaults(Config::parse()))
         .extract()?;
 
-    let mut logger = Logger::try_with_env_or_str("info")?;
+    let mut logger = Logger::try_with_env_or_str(if config.verbose { "info" } else { "warn" })?;
 
     if config.no_daemon {
         logger = logger.duplicate_to_stderr(Duplicate::Warn);
