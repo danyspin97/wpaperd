@@ -2048,6 +2048,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "wpaperctl"
+version = "0.1.0"
+dependencies = [
+ "clap 4.2.7",
+ "serde_json",
+ "wpaperd-ipc",
+]
+
+[[package]]
 name = "wpaperd"
 version = "0.3.0"
 dependencies = [
@@ -2071,6 +2080,15 @@ dependencies = [
  "smithay-client-toolkit",
  "toml 0.7.3",
  "walkdir",
+ "wpaperd-ipc",
+ "xdg",
+]
+
+[[package]]
+name = "wpaperd-ipc"
+version = "0.1.0"
+dependencies = [
+ "serde",
  "xdg",
 ]
 

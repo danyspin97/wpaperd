@@ -1,0 +1,11 @@
+[package]
+name = "wpaperctl"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+wpaperd-ipc = { path = "../ipc" }
+clap = { version = "4.2.7", features = ["derive", "wrap_help"] }
+serde_json = "1.0.96"

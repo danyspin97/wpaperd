@@ -33,13 +33,17 @@ jobs:
             sudo apt-get install --yes scdoc
             scdoc < man/wpaperd-output.5.scd > man/wpaperd-output.5
       - name: Strip binary
-        run: strip target/${{ matrix.target }}/release/wpaperd
+        run: |
+            strip target/${{ matrix.target }}/release/wpaperd
+            strip target/${{ matrix.target }}/release/wpaperctl
       - name: Create tarball
         run: |
             touch .tarball
             cp target/${{ matrix.target }}/release/wpaperd wpaperd
+            cp target/${{ matrix.target }}/release/wpaperctl wpaperctl
             tar -cvf wpaperd-${{ matrix.target }}.tar.zst \
                 wpaperd \
+                wpaperctl \
                 man/wpaperd-output.5 \
                 README.md \
                 LICENSE.md \

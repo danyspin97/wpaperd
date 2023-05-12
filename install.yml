@@ -4,6 +4,7 @@ pkgs:
     type: rust
     exe:
       - wpaperd
+      - wpaperctl
     man:
       - man/wpaperd.1
       - man/wpaperd-output.5

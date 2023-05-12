@@ -28,6 +28,7 @@ use smithay_client_toolkit::reexports::{
     calloop::{self, channel::Sender},
     client::{globals::registry_queue_init, Connection, WaylandSource},
 };
+use wpaperd_ipc::socket_path;
 use xdg::BaseDirectories;
 
 use crate::config::Config;
@@ -118,8 +119,7 @@ fn run(config: Config, xdg_dirs: BaseDirectories) -> Result<()> {
             .context("dispatching the event loop")?;
     }
 
-    let socket_path = xdg_dirs.get_runtime_directory()?.join("wpaperd.sock");
-    ipc_server::spawn_ipc_socket(&event_loop.handle(), &socket_path).unwrap();
+    ipc_server::spawn_ipc_socket(&event_loop.handle(), &socket_path()?).unwrap();
 
     loop {
         let mut wallpaper_config = wallpaper_config.lock().unwrap();
