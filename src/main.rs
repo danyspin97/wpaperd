@@ -1,4 +1,6 @@
 mod config;
+mod ipc_server;
+mod socket;
 mod surface;
 mod wallpaper_config;
 mod wallpaper_info;
@@ -115,6 +117,9 @@ fn run(config: Config, xdg_dirs: BaseDirectories) -> Result<()> {
             .dispatch(None, &mut wpaperd)
             .context("dispatching the event loop")?;
     }
+
+    let socket_path = xdg_dirs.get_runtime_directory()?.join("wpaperd.sock");
+    ipc_server::spawn_ipc_socket(&event_loop.handle(), &socket_path).unwrap();
 
     loop {
         let mut wallpaper_config = wallpaper_config.lock().unwrap();
