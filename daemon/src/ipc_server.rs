@@ -6,7 +6,6 @@ use std::fs;
 use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
-use std::time::Instant;
 
 use color_eyre::eyre::Context;
 use color_eyre::Result;
@@ -77,11 +76,10 @@ fn handle_message(buffer: &mut String, ustream: UnixStream, wpaperd: &mut Wpaper
         IpcMessage::NextWallpaper { monitors } => {
             let mut err = None;
             for monitor in &monitors {
-                if wpaperd
+                if !wpaperd
                     .surfaces
                     .iter()
-                    .find(|surface| surface.name() == monitor)
-                    .is_none()
+                    .any(|surface| surface.name() == monitor)
                 {
                     err = Some(IpcError::MonitorNotFound {
                         monitor: monitor.to_owned(),
