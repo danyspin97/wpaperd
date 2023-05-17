@@ -1,8 +1,8 @@
 # wpaperd
 
 ![GitHub release (latest by date)](https://img.shields.io/github/v/release/danyspin97/wpaperd?logo=github&style=flat-square)
-[![GitHub license](https://img.shields.io/github/license/danyspin97/wpaperd?logo=github)](https://github.com/danyspin97/wpaperd/blob/main/LICENSE.md)
-![GitHub Workflow Status](https://img.shields.io/github/workflow/status/danyspin97/wpaperd/Continuous%20integration?logo=github&style=flat-square)
+[![GitHub license](https://img.shields.io/github/license/danyspin97/wpaperd?logo=github&style=flat-square)](https://github.com/danyspin97/wpaperd/blob/main/LICENSE.md)
+![GitHub Workflow Status](https://img.shields.io/github/actions/workflow/status/danyspin97/wpaperd/cargo.yml?branch=main&logo=github&style=flat-square)
 
 **wpaperd** is a minimal wallpaper daemon for Wayland. It allows the user to choose a different
 image for each output (aka for each monitor) just as *[swaybg]*. Moreover, a directory can be
