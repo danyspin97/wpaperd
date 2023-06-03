@@ -225,7 +225,7 @@ fn setup_hotwatch(
     let mut hotwatch = Hotwatch::new().context("hotwatch failed to initialize")?;
     hotwatch
         .watch(wallpaper_config_file, move |event: Event| {
-            if let Event::Write(_) = event {
+            if let hotwatch::EventKind::Modify(_) = event.kind {
                 // When the config file has been written into
                 let mut wallpaper_config = wallpaper_config.lock().unwrap();
                 let new_config = WallpaperConfig::new_from_path(&wallpaper_config.path)
