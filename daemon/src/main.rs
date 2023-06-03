@@ -8,6 +8,9 @@ mod wpaperd;
 
 use std::{
     collections::HashSet,
+    fs::File,
+    io::Write,
+    os::fd::FromRawFd,
     path::Path,
     process::exit,
     sync::{Arc, Mutex},
@@ -125,6 +128,12 @@ fn run(config: Config, xdg_dirs: BaseDirectories) -> Result<()> {
     }
 
     ipc_server::spawn_ipc_socket(&event_loop.handle(), &socket_path()?).unwrap();
+    if let Some(notify) = config.notify {
+        let mut f = unsafe { File::from_raw_fd(notify as i32) };
+        if let Err(err) = write!(f, "\n") {
+            error!("Could not write to FD {notify}: {err}");
+        }
+    }
 
     loop {
         let mut wallpaper_config = wallpaper_config.lock().unwrap();

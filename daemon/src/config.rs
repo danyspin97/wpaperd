@@ -42,4 +42,9 @@ pub struct Config {
     pub use_scaled_window: bool,
     #[clap(short, long, help = "Increase the verbosity of wpaperd")]
     pub verbose: bool,
+    #[clap(
+        long,
+        help = "Fd to write once wpaperd is running (used for readiness)"
+    )]
+    pub notify: Option<u8>,
 }
