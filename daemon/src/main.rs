@@ -130,7 +130,7 @@ fn run(config: Config, xdg_dirs: BaseDirectories) -> Result<()> {
     ipc_server::spawn_ipc_socket(&event_loop.handle(), &socket_path()?).unwrap();
     if let Some(notify) = config.notify {
         let mut f = unsafe { File::from_raw_fd(notify as i32) };
-        if let Err(err) = write!(f, "\n") {
+        if let Err(err) = writeln!(f) {
             error!("Could not write to FD {notify}: {err}");
         }
     }
