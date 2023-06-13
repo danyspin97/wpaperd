@@ -8,15 +8,15 @@ use color_eyre::Result;
 use image::imageops::FilterType;
 use image::{open, DynamicImage, ImageBuffer, Pixel, Rgba};
 use log::{info, warn};
+use smithay_client_toolkit::compositor::Region;
 use smithay_client_toolkit::output::OutputInfo;
 use smithay_client_toolkit::reexports::calloop::timer::{TimeoutAction, Timer};
 use smithay_client_toolkit::reexports::calloop::LoopHandle;
 use smithay_client_toolkit::reexports::client::protocol::wl_output::WlOutput;
 use smithay_client_toolkit::reexports::client::protocol::{wl_shm, wl_surface};
 use smithay_client_toolkit::reexports::client::QueueHandle;
-use smithay_client_toolkit::shell::wlr_layer::{Anchor, Layer, LayerShell, LayerSurface};
+use smithay_client_toolkit::shell::wlr_layer::{Anchor, Layer, LayerSurface};
 use smithay_client_toolkit::shm::slot::SlotPool;
-use smithay_client_toolkit::shm::Shm;
 use walkdir::WalkDir;
 
 use crate::wallpaper_info::WallpaperInfo;
@@ -41,15 +41,14 @@ pub struct Surface {
 impl Surface {
     pub fn new(
         qh: &QueueHandle<Wpaperd>,
+        wpaperd: &Wpaperd,
         output: WlOutput,
-        layer_state: &LayerShell,
         surface: wl_surface::WlSurface,
-        shm_state: &Shm,
         info: OutputInfo,
         wallpaper_info: Arc<WallpaperInfo>,
     ) -> Self {
         // TODO: error handling
-        let layer = layer_state.create_layer_surface(
+        let layer = wpaperd.layer_state.create_layer_surface(
             qh,
             surface.clone(),
             Layer::Background,
@@ -60,9 +59,20 @@ impl Surface {
         layer.set_exclusive_zone(-1);
         layer.set_size(0, 0);
 
+        // Wayland clients are expected to render the cursor on their input region. By setting the
+        // input region to an empty region, the compositor renders the default cursor. Without
+        // this, and empty desktop won't render a cursor.
+        let empty_region = Region::new(&wpaperd.compositor_state).unwrap();
+        surface.set_input_region(Some(empty_region.wl_region()));
+
+        // From `wl_surface::set_opaque_region`:
+        // > Setting the pending opaque region has copy semantics, and the
+        // > wl_region object can be destroyed immediately.
+        empty_region.wl_region().destroy();
+
         // Commit the surface
         surface.commit();
-        let pool = SlotPool::new(1200, shm_state).unwrap();
+        let pool = SlotPool::new(1200, &wpaperd.shm_state).unwrap();
         Self {
             output,
             layer,
@@ -93,6 +103,8 @@ impl Surface {
         let width = self.dimensions.0 as i32 * self.scale;
         let height = self.dimensions.1 as i32 * self.scale;
         let size = (stride * height) as usize;
+
+        // let egl_window = WlEglSurface::new(self.surface.id(), width, height);
 
         self.pool
             .resize(size)

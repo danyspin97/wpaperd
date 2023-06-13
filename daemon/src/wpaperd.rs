@@ -60,7 +60,7 @@ impl CompositorHandler for Wpaperd {
         surface: &wl_surface::WlSurface,
         new_factor: i32,
     ) {
-        let mut surface = self
+        let surface = self
             .surfaces
             .iter_mut()
             .enumerate()
@@ -112,10 +112,9 @@ impl OutputHandler for Wpaperd {
 
         self.surfaces.push(Surface::new(
             qh,
+            self,
             output,
-            &self.layer_state,
             surface,
-            &self.shm_state,
             info,
             self.wallpaper_config
                 .lock()
