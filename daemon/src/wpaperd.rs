@@ -1,3 +1,4 @@
+use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 
 use color_eyre::eyre::Context;
@@ -27,6 +28,7 @@ pub struct Wpaperd {
     pub layer_state: LayerShell,
     pub registry_state: RegistryState,
     pub surfaces: Vec<Surface>,
+    pub egl_display: Rc<egl::Display>,
     wallpaper_config: Arc<Mutex<WallpaperConfig>>,
     use_scaled_window: bool,
 }
@@ -38,6 +40,7 @@ impl Wpaperd {
         _conn: &Connection,
         wallpaper_config: Arc<Mutex<WallpaperConfig>>,
         use_scaled_window: bool,
+        egl_display: egl::Display,
     ) -> Result<Self> {
         let shm_state = Shm::bind(globals, qh)?;
         Ok(Self {
@@ -49,6 +52,7 @@ impl Wpaperd {
             surfaces: Vec::new(),
             wallpaper_config,
             use_scaled_window,
+            egl_display: Rc::new(egl_display),
         })
     }
 

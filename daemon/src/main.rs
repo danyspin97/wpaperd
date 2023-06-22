@@ -1,10 +1,13 @@
 mod config;
 mod ipc_server;
+mod render;
 mod socket;
 mod surface;
 mod wallpaper_config;
 mod wallpaper_info;
 mod wpaperd;
+
+extern crate khronos_egl as egl;
 
 use std::{
     collections::HashSet,
@@ -19,6 +22,7 @@ use std::{
 
 use clap::Parser;
 use color_eyre::{eyre::WrapErr, Result};
+use egl::API as egl;
 use figment::{
     providers::{Format, Serialized, Toml},
     Figment,
@@ -27,6 +31,7 @@ use flexi_logger::{Duplicate, FileSpec, Logger};
 use hotwatch::{Event, Hotwatch};
 use log::error;
 use nix::unistd::fork;
+use smithay_client_toolkit::reexports::client::{Proxy, QueueHandle};
 use smithay_client_toolkit::reexports::{
     calloop::{self, channel::Sender},
     calloop_wayland_source::WaylandSource,
@@ -57,7 +62,15 @@ fn run(config: Config, xdg_dirs: BaseDirectories) -> Result<()> {
     wallpaper_config.reloaded = false;
     let wallpaper_config = Arc::new(Mutex::new(wallpaper_config));
 
+    egl.bind_api(egl::OPENGL_ES_API)
+        .expect("unable to select OpenGL API");
+
     let conn = Connection::connect_to_env().unwrap();
+
+    let egl_display = egl
+        .get_display(conn.display().id().as_ptr() as *mut std::ffi::c_void)
+        .unwrap();
+    egl.initialize(egl_display).unwrap();
 
     let (globals, event_queue) = registry_queue_init(&conn).unwrap();
     let qh = event_queue.handle();
@@ -82,6 +95,7 @@ fn run(config: Config, xdg_dirs: BaseDirectories) -> Result<()> {
         &conn,
         wallpaper_config.clone(),
         config.use_scaled_window,
+        egl_display,
     )?;
 
     // Loop until the wayland server has sent us the configure event and
