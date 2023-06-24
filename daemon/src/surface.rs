@@ -220,17 +220,18 @@ impl Surface {
                 // than reading paths off the disk, right?
                 let img_path = match self.wallpaper_info.sorting {
                     Sorting::Random => {
-                        files[rand::random::<usize>() % files.len()].clone()
+                        let index = rand::random::<usize>() % files.len();
+                        files.into_iter().nth(index).unwrap()
                       }
                     Sorting::Natural => {
                         let mut sorted = files;
                         sorted.sort();
-                        sorted[self.idx].clone()
+                        sorted.remove(self.idx)
                     },
                     Sorting::Reverse => {
                         let mut sorted = files;
                         sorted.sort_by(|a,b| b.cmp(a));
-                        sorted[self.idx].clone()
+                        sorted.remove(self.idx)
                     },
                 };
 
