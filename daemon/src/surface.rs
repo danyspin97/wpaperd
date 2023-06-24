@@ -36,6 +36,8 @@ pub struct Surface {
     pub current_img: PathBuf,
     pub info: OutputInfo,
     pub configured: bool,
+    pub image_paths: Vec<PathBuf>,
+    pub current_index: usize,
 }
 
 impl Surface {
@@ -87,6 +89,8 @@ impl Surface {
             time_changed: Instant::now(),
             current_img: PathBuf::from("/"),
             configured: false,
+            image_paths: Vec::new(),
+            current_index: 0,
         }
     }
 
@@ -174,6 +178,21 @@ impl Surface {
         }
     }
 
+    fn get_image_files_from_dir(&self, dir_path: &PathBuf) -> Vec<PathBuf> {
+        WalkDir::new(dir_path)
+            .into_iter()
+            .filter_map(|e| e.ok())
+            .filter(|e| {
+                if let Some(guess) = new_mime_guess::from_path(e.path()).first() {
+                    guess.type_() == "image"
+                } else {
+                    false
+                }
+            })
+            .map(|e| e.path().to_path_buf())
+            .collect()
+    }
+
     fn get_image(
         &mut self,
         update: bool,
@@ -188,26 +207,31 @@ impl Surface {
                 }
             }
             loop {
-                let files: Vec<PathBuf> = WalkDir::new(path)
-                    .into_iter()
-                    .filter_map(|e| e.ok())
-                    .filter(|e| {
-                        if let Some(guess) = new_mime_guess::from_path(e.path()).first() {
-                            guess.type_() == "image"
-                        } else {
-                            false
+                let is_zero = self.current_index == 0;
+                let is_below_len =
+                    !self.image_paths.is_empty() && self.current_index < self.image_paths.len();
+
+                let img_path = match (is_zero, is_below_len) {
+                    // Use
+                    (false, true) => self.image_paths[self.current_index].clone(),
+                    (true, true) => self.image_paths[0].clone(),
+                    _ => {
+                        let files = self.get_image_files_from_dir(path);
+                        // There are no images, forcefully break out of the loop
+                        if files.is_empty() {
+                            bail!("Directory {path:?} is empty");
                         }
-                    })
-                    .map(|e| e.path().to_path_buf())
-                    .collect();
 
-                if files.is_empty() {
-                    // There are no images, forcefully break out of the loop
-                    // modulus operator panics when the right argument is 0
-                    bail!("Directory {path:?} is empty");
-                }
+                        let img_path = files[rand::random::<usize>() % files.len()].clone();
 
-                let img_path = files[rand::random::<usize>() % files.len()].clone();
+                        self.image_paths.push(img_path.clone());
+                        // Ensure index is not past len
+                        self.current_index = self.image_paths.len() - 1;
+
+                        img_path
+                    } // if self.current_index < self.image_paths.len() - 1 {
+                };
+
                 match open(&img_path).with_context(|| format!("opening the image {img_path:?}")) {
                     Ok(image) => {
                         info!("New image for monitor {:?}: {img_path:?}", self.name());
@@ -229,6 +253,32 @@ impl Surface {
         } else {
             open(path).with_context(|| format!("opening the image {:?}", &path))
         }
+    }
+
+    /// Update wallpaper by going down 1 index through the cached image paths
+    /// Wallpaper will not update if the current wallpaper is already using the first cached image
+    /// paths. The expiry timer will however be reset.
+    pub fn previous_image(&mut self) {
+        self.timer_expired = true;
+
+        if self.current_index == 0 {
+            return;
+        };
+
+        self.current_index -= 1;
+    }
+
+    /// Update wallpaper by going up 1 index through the cached image paths
+    /// If the current wallpaper is already the last cached image path, cache a new image path and
+    /// use that insteady
+    pub fn next_image(&mut self) {
+        self.timer_expired = true;
+
+        if self.current_index > self.image_paths.len() {
+            return;
+        };
+
+        self.current_index += 1;
     }
 
     /// Update the wallpaper_info of this Surface

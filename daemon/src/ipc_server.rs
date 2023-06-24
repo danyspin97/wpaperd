@@ -39,6 +39,35 @@ pub fn spawn_ipc_socket(event_loop: &LoopHandle<Wpaperd>, socket_path: &Path) ->
     Ok(())
 }
 
+fn check_monitors(wpaperd: &Wpaperd, monitors: &Vec<String>) -> Result<(), IpcError> {
+    for monitor in monitors {
+        if !wpaperd
+            .surfaces
+            .iter()
+            .any(|surface| surface.name() == monitor)
+        {
+            return Err(IpcError::MonitorNotFound {
+                monitor: monitor.to_owned(),
+            });
+        }
+    }
+
+    Ok(())
+}
+
+fn collect_surfaces(wpaperd: &mut Wpaperd, monitors: Vec<String>) -> Vec<&mut Surface> {
+    let monitors: HashSet<String> = HashSet::from_iter(monitors.into_iter());
+    if monitors.is_empty() {
+        return wpaperd.surfaces.iter_mut().collect();
+    };
+
+    wpaperd
+        .surfaces
+        .iter_mut()
+        .filter(|surface| monitors.contains(surface.name()))
+        .collect()
+}
+
 /// Handle IPC socket messages.
 fn handle_message(buffer: &mut String, ustream: UnixStream, wpaperd: &mut Wpaperd) -> Result<()> {
     buffer.clear();
@@ -73,41 +102,24 @@ fn handle_message(buffer: &mut String, ustream: UnixStream, wpaperd: &mut Wpaper
                 .map(|surface| (surface.name().to_string(), surface.current_img.clone()))
                 .collect::<Vec<(String, PathBuf)>>(),
         }),
-        IpcMessage::NextWallpaper { monitors } => {
-            let mut err = None;
-            for monitor in &monitors {
-                if !wpaperd
-                    .surfaces
-                    .iter()
-                    .any(|surface| surface.name() == monitor)
-                {
-                    err = Some(IpcError::MonitorNotFound {
-                        monitor: monitor.to_owned(),
-                    });
-                }
-            }
 
-            if let Some(err) = err {
-                Err(err)
-            } else {
-                let monitors: HashSet<String> = HashSet::from_iter(monitors.into_iter());
-                let surfaces: Vec<&mut Surface> = if monitors.is_empty() {
-                    wpaperd.surfaces.iter_mut().collect()
-                } else {
-                    wpaperd
-                        .surfaces
-                        .iter_mut()
-                        .filter(|surface| monitors.contains(surface.name()))
-                        .collect()
-                };
-
-                for surface in surfaces {
-                    surface.timer_expired = true;
+        IpcMessage::PreviousWallpaper { monitors } => {
+            check_monitors(wpaperd, &monitors).map(|_| {
+                for surface in collect_surfaces(wpaperd, monitors) {
+                    surface.previous_image();
                 }
 
-                Ok(IpcResponse::Ok)
-            }
+                IpcResponse::Ok
+            })
         }
+
+        IpcMessage::NextWallpaper { monitors } => check_monitors(wpaperd, &monitors).map(|_| {
+            for surface in collect_surfaces(wpaperd, monitors) {
+                surface.next_image();
+            }
+
+            IpcResponse::Ok
+        }),
     };
 
     let mut stream = BufWriter::new(ustream);
