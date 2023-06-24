@@ -220,10 +220,9 @@ impl Surface {
                             guess.type_() == "image"
                         } else {
                             false
-                        }
-                    })
-                    .map(|e| e.path().to_path_buf())
-                    .collect();
+                let is_zero = self.current_index == 0;
+                let is_below_len =
+                    !self.image_paths.is_empty() && self.current_index < self.image_paths.len();
 
                 let img_path = if is_below_len {
                     self.image_paths[self.current_index].clone()
@@ -235,6 +234,25 @@ impl Surface {
                     }
 
                     files[rand::random::<usize>() % files.len()].clone()
+                let img_path = match (is_zero, is_below_len) {
+                    // Use
+                    (false, true) => self.image_paths[self.current_index].clone(),
+                    (true, true) => self.image_paths[0].clone(),
+                    _ => {
+                        let files = self.get_image_files_from_dir(path);
+                        // There are no images, forcefully break out of the loop
+                        if files.is_empty() {
+                            bail!("Directory {path:?} is empty");
+                        }
+
+                        let img_path = files[rand::random::<usize>() % files.len()].clone();
+
+                        self.image_paths.push(img_path.clone());
+                        // Ensure index is not past len
+                        self.current_index = self.image_paths.len() - 1;
+
+                        img_path
+                    } // if self.current_index < self.image_paths.len() - 1 {
                 };
 
                 // Set index for the various sorting methods
