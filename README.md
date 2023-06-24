@@ -107,10 +107,15 @@ the config file. This is an example configuration:
 [default]
 path = "/home/danyspin97/Pictures/Wallpapers/"
 duration = "30m"
+sorting = "random"
 
 [eDP-1]
 path = "/home/danyspin97/Pictures/Wallpapers/github_octupus.png"
 apply-shadow = true
+
+[DP-2]
+path = "/home/danyspin97/Pictures/Landscapes/"
+sorting = "reverse"
 ```
 
 If you're running sway, you can look for the available outputs and their ID by running:

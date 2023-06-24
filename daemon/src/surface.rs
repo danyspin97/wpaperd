@@ -36,6 +36,7 @@ pub struct Surface {
     pub current_img: PathBuf,
     pub info: OutputInfo,
     pub configured: bool,
+    pub idx: usize,
 }
 
 impl Surface {
@@ -87,6 +88,7 @@ impl Surface {
             time_changed: Instant::now(),
             current_img: PathBuf::from("/"),
             configured: false,
+            idx: 0,
         }
     }
 
@@ -207,12 +209,35 @@ impl Surface {
                     bail!("Directory {path:?} is empty");
                 }
 
-                let img_path = files[rand::random::<usize>() % files.len()].clone();
+                // Reset our index if we'd be out of bounds
+                if self.idx >= files.len() {
+                    self.idx = 0
+                };
+
+                // This is a bit unweildy. We're sorting every time thru this loop. But since we're
+                // walking the directory each time, I guess it's not that bad. Sorting can't be slower
+                // than reading paths off the disk, right?
+                let img_path = if self.wallpaper_info.sorting.eq(&Some(String::from("natural"))) {
+                    // You can't sort an immutable Vec, so we have to clone it as mutable.
+                    let mut sorted: Vec<PathBuf> = files.clone();
+                    sorted.sort();
+                    sorted[self.idx].clone()
+                } else if self.wallpaper_info.sorting.eq(&Some(String::from("reverse"))) {
+                    // You can't sort an immutable Vec, so we have to clone it as mutable.
+                    let mut reversed: Vec<PathBuf> = files.clone();
+                    reversed.sort_by(|a,b| b.cmp(a));
+                    reversed[self.idx].clone()
+                } else {
+                    files[rand::random::<usize>() % files.len()].clone()
+                };
+
                 match open(&img_path).with_context(|| format!("opening the image {img_path:?}")) {
                     Ok(image) => {
                         info!("New image for monitor {:?}: {img_path:?}", self.name());
                         self.time_changed = *now;
                         self.current_img = img_path;
+                        // Only ever up. We reverse the order of the files rather than count down
+                        self.idx += 1;
                         break Ok(image);
                     }
                     Err(err) => {
