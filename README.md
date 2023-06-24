@@ -43,10 +43,10 @@ $ cargo build --release
 
 ### Install
 
-You can install wpaperd using cargo:
+You can install the daemon (`wpaperd`) and cli (`wpaperctl`) using cargo:
 
 ```bash
-$ cargo install --path="."
+$ cargo install --path="./daemon" && cargo install --path="./cli"
 ```
 
 Otherwise you can install it using rinstall:
