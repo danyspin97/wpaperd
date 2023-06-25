@@ -222,13 +222,13 @@ impl Surface {
                     Sorting::Random => {
                         let index = rand::random::<usize>() % files.len();
                         files.into_iter().nth(index).unwrap()
-                      }
-                    Sorting::Natural => {
+                    },
+                    Sorting::Ascending => {
                         let mut sorted = files;
                         sorted.sort();
                         sorted.remove(self.idx)
                     },
-                    Sorting::Reverse => {
+                    Sorting::Descending => {
                         let mut sorted = files;
                         sorted.sort_by(|a,b| b.cmp(a));
                         sorted.remove(self.idx)

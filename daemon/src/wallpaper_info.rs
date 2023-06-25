@@ -17,12 +17,14 @@ pub struct WallpaperInfo {
 }
 
 #[derive(Debug, Copy, Clone, Default, Eq, PartialEq,Deserialize)]
-#[serde(rename = "kebab-case")]
 pub enum Sorting {
     #[default]
+    #[serde(alias="Random", alias="random", alias="RANDOM")]
     Random,
-    Natural,
-    Reverse,
+    #[serde(alias="Ascending", alias="ascending", alias="ASCENDING")]
+    Ascending,
+    #[serde(alias="Descending", alias="descending", alias="DESCENDING")]
+    Descending,
 }
 
 pub fn tilde_expansion_deserialize<'de, D>(deserializer: D) -> Result<Option<PathBuf>, D::Error>

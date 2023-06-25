@@ -99,8 +99,8 @@ represents a different output and contains the following keys:
   This is only valid when path points to a directory. (_Optional_)
 - `apply-shadow`, apply a shadow on the top part of the image, to work as a shadow effect
   of the status bar. This is particularly suited for window managers like sway. (_Optional_)
-- `sorting`, choose the sorting order. Valid options are `Natural`, `Reverse`, and `Random`,
-  with the unspecified or default being `Random` (_Optional_)
+- `sorting`, choose the sorting order. Valid options are `ascending`, `descending`, and `random`,
+  with the unspecified or default being `random` (_Optional_)
 
 The section `default` will be used as fallback for the all the outputs that aren't listed in
 the config file. This is an example configuration:
@@ -109,7 +109,7 @@ the config file. This is an example configuration:
 [default]
 path = "/home/danyspin97/Pictures/Wallpapers/"
 duration = "30m"
-sorting = "Natural"
+sorting = "ascending"
 
 [eDP-1]
 path = "/home/danyspin97/Pictures/Wallpapers/github_octupus.png"
@@ -117,7 +117,7 @@ apply-shadow = true
 
 [DP-2]
 path = "/home/danyspin97/Pictures/Landscapes/"
-sorting = "Reverse"
+sorting = "descending"
 ```
 
 If you're running sway, you can look for the available outputs and their ID by running:
