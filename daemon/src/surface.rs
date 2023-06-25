@@ -37,7 +37,6 @@ pub struct Surface {
     pub current_img: PathBuf,
     pub info: OutputInfo,
     pub configured: bool,
-    pub idx: usize,
 }
 
 impl Surface {
@@ -89,7 +88,6 @@ impl Surface {
             time_changed: Instant::now(),
             current_img: PathBuf::from("/"),
             configured: false,
-            idx: 0,
         }
     }
 
@@ -192,6 +190,7 @@ impl Surface {
             }
             loop {
                 let files: Vec<PathBuf> = WalkDir::new(path)
+                    .sort_by_file_name()
                     .into_iter()
                     .filter_map(|e| e.ok())
                     .filter(|e| {
@@ -210,38 +209,50 @@ impl Surface {
                     bail!("Directory {path:?} is empty");
                 }
 
-                // Reset our index if we'd be out of bounds
-                if self.idx >= files.len() {
-                    self.idx = 0
-                };
-
-                // This is a bit unweildy. We're sorting every time thru this loop. But since we're
-                // walking the directory each time, I guess it's not that bad. Sorting can't be slower
-                // than reading paths off the disk, right?
-                let img_path = match self.wallpaper_info.sorting {
+                // Set index for the various sorting methods
+                let index = match self.wallpaper_info.sorting {
                     Sorting::Random => {
-                        let index = rand::random::<usize>() % files.len();
-                        files.into_iter().nth(index).unwrap()
+                        rand::random::<usize>() % files.len()
                     },
                     Sorting::Ascending => {
-                        let mut sorted = files;
-                        sorted.sort();
-                        sorted.remove(self.idx)
+                        let idx = match files.binary_search(&self.current_img) {
+                            Ok(n) => n,
+                            Err(err) => {
+                                info!("Current image not found, defaulting to first image ({:?})", err);
+                                // set idx to > slice length so the guard sets it correctly for us
+                                files.len()
+                            }
+                        };
+                        if idx >= files.len() {
+                            0
+                        } else {
+                            idx + 1
+                        }
                     },
                     Sorting::Descending => {
-                        let mut sorted = files;
-                        sorted.sort_by(|a,b| b.cmp(a));
-                        sorted.remove(self.idx)
+                        let idx = match files.binary_search(&self.current_img) {
+                            Ok(n) => n,
+                            Err(err) => {
+                                info!("Current image not found, defaulting to last image ({:?})", err);
+                                files.len()
+                            }
+                        };
+                        if idx == 0 {
+                            files.len()-1
+                        } else {
+                            idx - 1
+                        }
                     },
                 };
+
+                // Actually grab the image with our new index
+                let img_path = files.into_iter().nth(index).unwrap();
 
                 match open(&img_path).with_context(|| format!("opening the image {img_path:?}")) {
                     Ok(image) => {
                         info!("New image for monitor {:?}: {img_path:?}", self.name());
                         self.time_changed = *now;
                         self.current_img = img_path;
-                        // Only ever up. We reverse the order of the files rather than count down
-                        self.idx += 1;
                         break Ok(image);
                     }
                     Err(err) => {
