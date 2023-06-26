@@ -17,13 +17,11 @@ pub struct WallpaperInfo {
 }
 
 #[derive(Debug, Copy, Clone, Default, Eq, PartialEq,Deserialize)]
+#[serde(rename_all="lowercase")]
 pub enum Sorting {
     #[default]
-    #[serde(alias="Random", alias="random", alias="RANDOM")]
     Random,
-    #[serde(alias="Ascending", alias="ascending", alias="ASCENDING")]
     Ascending,
-    #[serde(alias="Descending", alias="descending", alias="DESCENDING")]
     Descending,
 }
 
