@@ -216,17 +216,19 @@ impl Surface {
                     },
                     Sorting::Ascending => {
                         let idx = match files.binary_search(&self.current_img) {
-                            Ok(n) => n,
+			    // Perform increment here, do validation/bounds checking below
+                            Ok(n) => n+1,
                             Err(err) => {
                                 info!("Current image not found, defaulting to first image ({:?})", err);
                                 // set idx to > slice length so the guard sets it correctly for us
                                 files.len()
                             }
                         };
+
                         if idx >= files.len() {
                             0
                         } else {
-                            idx + 1
+                            idx
                         }
                     },
                     Sorting::Descending => {
@@ -237,6 +239,8 @@ impl Surface {
                                 files.len()
                             }
                         };
+
+			// Here, bounds checking is strictly ==, as we cannot go lower than 0 for usize
                         if idx == 0 {
                             files.len()-1
                         } else {
@@ -245,8 +249,9 @@ impl Surface {
                     },
                 };
 
+
                 // Actually grab the image with our new index
-                let img_path = files.into_iter().nth(index).unwrap();
+		let img_path = files[index].clone();
 
                 match open(&img_path).with_context(|| format!("opening the image {img_path:?}")) {
                     Ok(image) => {
