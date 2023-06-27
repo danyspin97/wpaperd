@@ -16,8 +16,8 @@ pub struct WallpaperInfo {
     pub sorting: Sorting,
 }
 
-#[derive(Debug, Copy, Clone, Default, Eq, PartialEq,Deserialize)]
-#[serde(rename_all="lowercase")]
+#[derive(Debug, Copy, Clone, Default, Eq, PartialEq, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum Sorting {
     #[default]
     Random,
