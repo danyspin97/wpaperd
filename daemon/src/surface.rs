@@ -20,6 +20,7 @@ use smithay_client_toolkit::shm::slot::SlotPool;
 use walkdir::WalkDir;
 
 use crate::wallpaper_info::WallpaperInfo;
+use crate::wallpaper_info::Sorting;
 use crate::wpaperd::Wpaperd;
 
 pub struct Surface {
@@ -189,6 +190,7 @@ impl Surface {
             }
             loop {
                 let files: Vec<PathBuf> = WalkDir::new(path)
+                    .sort_by_file_name()
                     .into_iter()
                     .filter_map(|e| e.ok())
                     .filter(|e| {
@@ -207,7 +209,50 @@ impl Surface {
                     bail!("Directory {path:?} is empty");
                 }
 
-                let img_path = files[rand::random::<usize>() % files.len()].clone();
+                // Set index for the various sorting methods
+                let index = match self.wallpaper_info.sorting {
+                    Sorting::Random => {
+                        rand::random::<usize>() % files.len()
+                    },
+                    Sorting::Ascending => {
+                        let idx = match files.binary_search(&self.current_img) {
+			    // Perform increment here, do validation/bounds checking below
+                            Ok(n) => n+1,
+                            Err(err) => {
+                                info!("Current image not found, defaulting to first image ({:?})", err);
+                                // set idx to > slice length so the guard sets it correctly for us
+                                files.len()
+                            }
+                        };
+
+                        if idx >= files.len() {
+                            0
+                        } else {
+                            idx
+                        }
+                    },
+                    Sorting::Descending => {
+                        let idx = match files.binary_search(&self.current_img) {
+                            Ok(n) => n,
+                            Err(err) => {
+                                info!("Current image not found, defaulting to last image ({:?})", err);
+                                files.len()
+                            }
+                        };
+
+			// Here, bounds checking is strictly ==, as we cannot go lower than 0 for usize
+                        if idx == 0 {
+                            files.len()-1
+                        } else {
+                            idx - 1
+                        }
+                    },
+                };
+
+
+                // Actually grab the image with our new index
+		let img_path = files[index].clone();
+
                 match open(&img_path).with_context(|| format!("opening the image {img_path:?}")) {
                     Ok(image) => {
                         info!("New image for monitor {:?}: {img_path:?}", self.name());

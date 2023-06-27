@@ -12,6 +12,17 @@ pub struct WallpaperInfo {
     pub duration: Option<Duration>,
     #[serde(rename = "apply-shadow")]
     pub apply_shadow: Option<bool>,
+    #[serde(default)]
+    pub sorting: Sorting,
+}
+
+#[derive(Debug, Copy, Clone, Default, Eq, PartialEq,Deserialize)]
+#[serde(rename_all="lowercase")]
+pub enum Sorting {
+    #[default]
+    Random,
+    Ascending,
+    Descending,
 }
 
 pub fn tilde_expansion_deserialize<'de, D>(deserializer: D) -> Result<Option<PathBuf>, D::Error>
