@@ -245,14 +245,7 @@ impl Surface {
                             bail!("Directory {path:?} is empty");
                         }
 
-                        let img_path = files[rand::random::<usize>() % files.len()].clone();
-
-                        self.image_paths.push(img_path.clone());
-                        // Ensure index is not past len
-                        self.current_index = self.image_paths.len() - 1;
-
-                        img_path
-                    } // if self.current_index < self.image_paths.len() - 1 {
+                    files[rand::random::<usize>() % files.len()].clone()
                 };
 
                 // Set index for the various sorting methods
