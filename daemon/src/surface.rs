@@ -206,44 +206,42 @@ impl Surface {
                     return Ok(image);
                 }
             }
+
             loop {
-                let is_zero = self.current_index == 0;
                 let is_below_len =
                     !self.image_paths.is_empty() && self.current_index < self.image_paths.len();
 
-                let img_path = match (is_zero, is_below_len) {
-                    // Use
-                    (false, true) => self.image_paths[self.current_index].clone(),
-                    (true, true) => self.image_paths[0].clone(),
-                    _ => {
-                        let files = self.get_image_files_from_dir(path);
-                        // There are no images, forcefully break out of the loop
-                        if files.is_empty() {
-                            bail!("Directory {path:?} is empty");
-                        }
+                let img_path = if is_below_len {
+                    self.image_paths[self.current_index].clone()
+                } else {
+                    let files = self.get_image_files_from_dir(path);
+                    // There are no images, forcefully break out of the loop
+                    if files.is_empty() {
+                        bail!("Directory {path:?} does not contain any valid image files.");
+                    }
 
-                        let img_path = files[rand::random::<usize>() % files.len()].clone();
-
-                        self.image_paths.push(img_path.clone());
-                        // Ensure index is not past len
-                        self.current_index = self.image_paths.len() - 1;
-
-                        img_path
-                    } // if self.current_index < self.image_paths.len() - 1 {
+                    files[rand::random::<usize>() % files.len()].clone()
                 };
 
                 match open(&img_path).with_context(|| format!("opening the image {img_path:?}")) {
                     Ok(image) => {
                         info!("New image for monitor {:?}: {img_path:?}", self.name());
+
+                        if !self.image_paths.contains(&img_path) {
+                            self.image_paths.push(img_path.clone());
+                            self.current_index = self.image_paths.len() - 1;
+                        };
+
                         self.time_changed = *now;
                         self.current_img = img_path;
+
                         break Ok(image);
                     }
                     Err(err) => {
                         warn!("{err:?}");
                         tries += 1;
                     }
-                }
+                };
 
                 ensure!(
                     tries < 5,
@@ -306,7 +304,7 @@ impl Surface {
         if let Some(duration) = self.wallpaper_info.duration {
             let time_passed = now.checked_duration_since(self.time_changed).unwrap();
             if duration.saturating_sub(time_passed) == std::time::Duration::ZERO {
-                self.timer_expired = true;
+                self.next_image();
                 return true;
             }
         }
