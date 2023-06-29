@@ -21,6 +21,7 @@ use walkdir::WalkDir;
 
 use crate::wallpaper_info::Sorting;
 use crate::wallpaper_info::WallpaperInfo;
+use crate::wallpaper_info::Sorting;
 use crate::wpaperd::Wpaperd;
 
 pub struct Surface {
