@@ -3,7 +3,7 @@ use std::{path::Path, path::PathBuf, time::Duration};
 
 use serde::Deserialize;
 
-#[derive(Default, Deserialize, PartialEq)]
+#[derive(Default, Deserialize, PartialEq, Debug)]
 pub struct WallpaperInfo {
     #[serde(deserialize_with = "tilde_expansion_deserialize")]
     pub path: Option<PathBuf>,
@@ -16,8 +16,8 @@ pub struct WallpaperInfo {
     pub sorting: Sorting,
 }
 
-#[derive(Debug, Copy, Clone, Default, Eq, PartialEq,Deserialize)]
-#[serde(rename_all="lowercase")]
+#[derive(Debug, Copy, Clone, Default, Eq, PartialEq, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum Sorting {
     #[default]
     Random,

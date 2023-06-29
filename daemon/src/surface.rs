@@ -19,8 +19,8 @@ use smithay_client_toolkit::shell::wlr_layer::{Anchor, Layer, LayerSurface};
 use smithay_client_toolkit::shm::slot::SlotPool;
 use walkdir::WalkDir;
 
-use crate::wallpaper_info::WallpaperInfo;
 use crate::wallpaper_info::Sorting;
+use crate::wallpaper_info::WallpaperInfo;
 use crate::wpaperd::Wpaperd;
 
 pub struct Surface {
@@ -179,8 +179,55 @@ impl Surface {
         }
     }
 
+    /// Get index for the next image based on the sorting method
+    fn get_new_image_index(&self, files: &Vec<PathBuf>) -> usize {
+        match self.wallpaper_info.sorting {
+            Sorting::Random => rand::random::<usize>() % files.len(),
+            Sorting::Ascending => {
+                let idx = match files.binary_search(&self.current_img) {
+                    // Perform increment here, do validation/bounds checking below
+                    Ok(n) => n + 1,
+                    Err(err) => {
+                        info!(
+                            "Current image not found, defaulting to first image ({:?})",
+                            err
+                        );
+                        // set idx to > slice length so the guard sets it correctly for us
+                        files.len()
+                    }
+                };
+
+                if idx >= files.len() {
+                    0
+                } else {
+                    idx
+                }
+            }
+            Sorting::Descending => {
+                let idx = match files.binary_search(&self.current_img) {
+                    Ok(n) => n,
+                    Err(err) => {
+                        info!(
+                            "Current image not found, defaulting to last image ({:?})",
+                            err
+                        );
+                        files.len()
+                    }
+                };
+
+                // Here, bounds checking is strictly ==, as we cannot go lower than 0 for usize
+                if idx == 0 {
+                    files.len() - 1
+                } else {
+                    idx - 1
+                }
+            }
+        }
+    }
+
     fn get_image_files_from_dir(&self, dir_path: &PathBuf) -> Vec<PathBuf> {
         WalkDir::new(dir_path)
+            .sort_by_file_name()
             .into_iter()
             .filter_map(|e| e.ok())
             .filter(|e| {
@@ -209,88 +256,23 @@ impl Surface {
             }
 
             loop {
-                let is_below_len =
-                    !self.image_paths.is_empty() && self.current_index < self.image_paths.len();
-                let files: Vec<PathBuf> = WalkDir::new(path)
-                    .sort_by_file_name()
-                    .into_iter()
-                    .filter_map(|e| e.ok())
-                    .filter(|e| {
-                        if let Some(guess) = new_mime_guess::from_path(e.path()).first() {
-                            guess.type_() == "image"
-                        } else {
-                            false
-                let is_zero = self.current_index == 0;
+                let files = self.get_image_files_from_dir(path);
+
+                // There are no images, forcefully break out of the loop
+                if files.is_empty() {
+                    bail!("Directory {path:?} does not contain any valid image files.");
+                }
+
                 let is_below_len =
                     !self.image_paths.is_empty() && self.current_index < self.image_paths.len();
 
-                let img_path = if is_below_len {
+                let img_path = if is_below_len && self.image_paths[self.current_index].is_file() {
                     self.image_paths[self.current_index].clone()
                 } else {
-                    let files = self.get_image_files_from_dir(path);
-                    // There are no images, forcefully break out of the loop
-                    if files.is_empty() {
-                        bail!("Directory {path:?} does not contain any valid image files.");
-                    }
-
-                    files[rand::random::<usize>() % files.len()].clone()
-                let img_path = match (is_zero, is_below_len) {
-                    // Use
-                    (false, true) => self.image_paths[self.current_index].clone(),
-                    (true, true) => self.image_paths[0].clone(),
-                    _ => {
-                        let files = self.get_image_files_from_dir(path);
-                        // There are no images, forcefully break out of the loop
-                        if files.is_empty() {
-                            bail!("Directory {path:?} is empty");
-                        }
-
-                    files[rand::random::<usize>() % files.len()].clone()
+                    // Select new image based on sorting method
+                    let index = self.get_new_image_index(&files);
+                    files[index].clone()
                 };
-
-                // Set index for the various sorting methods
-                let index = match self.wallpaper_info.sorting {
-                    Sorting::Random => {
-                        rand::random::<usize>() % files.len()
-                    },
-                    Sorting::Ascending => {
-                        let idx = match files.binary_search(&self.current_img) {
-			    // Perform increment here, do validation/bounds checking below
-                            Ok(n) => n+1,
-                            Err(err) => {
-                                info!("Current image not found, defaulting to first image ({:?})", err);
-                                // set idx to > slice length so the guard sets it correctly for us
-                                files.len()
-                            }
-                        };
-
-                        if idx >= files.len() {
-                            0
-                        } else {
-                            idx
-                        }
-                    },
-                    Sorting::Descending => {
-                        let idx = match files.binary_search(&self.current_img) {
-                            Ok(n) => n,
-                            Err(err) => {
-                                info!("Current image not found, defaulting to last image ({:?})", err);
-                                files.len()
-                            }
-                        };
-
-			// Here, bounds checking is strictly ==, as we cannot go lower than 0 for usize
-                        if idx == 0 {
-                            files.len()-1
-                        } else {
-                            idx - 1
-                        }
-                    },
-                };
-
-
-                // Actually grab the image with our new index
-		let img_path = files[index].clone();
 
                 match open(&img_path).with_context(|| format!("opening the image {img_path:?}")) {
                     Ok(image) => {
@@ -301,8 +283,8 @@ impl Surface {
                             self.current_index = self.image_paths.len() - 1;
                         };
 
-                        self.time_changed = *now;
                         self.current_img = img_path;
+                        self.time_changed = *now;
 
                         break Ok(image);
                     }
@@ -323,8 +305,7 @@ impl Surface {
     }
 
     /// Update wallpaper by going down 1 index through the cached image paths
-    /// Wallpaper will not update if the current wallpaper is already using the first cached image
-    /// paths. The expiry timer will however be reset.
+    /// Expiry timer reset even if already at the first cached image
     pub fn previous_image(&mut self) {
         self.timer_expired = true;
 
@@ -336,8 +317,6 @@ impl Surface {
     }
 
     /// Update wallpaper by going up 1 index through the cached image paths
-    /// If the current wallpaper is already the last cached image path, cache a new image path and
-    /// use that insteady
     pub fn next_image(&mut self) {
         self.timer_expired = true;
 
