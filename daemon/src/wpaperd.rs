@@ -1,5 +1,6 @@
 use std::sync::{Arc, Mutex};
 
+use color_eyre::eyre::Context;
 use color_eyre::Result;
 use smithay_client_toolkit::compositor::{CompositorHandler, CompositorState};
 use smithay_client_toolkit::output::{OutputHandler, OutputState};
@@ -49,6 +50,30 @@ impl Wpaperd {
             wallpaper_config,
             use_scaled_window,
         })
+    }
+
+    pub fn reload_config(&mut self) -> Result<()> {
+        let mut wallpaper_config = self.wallpaper_config.lock().unwrap();
+        let new_config =
+            WallpaperConfig::new_from_path(&wallpaper_config.path).with_context(|| {
+                format!(
+                    "reading configuration from file {:?}",
+                    wallpaper_config.path
+                )
+            });
+        match new_config {
+            Ok(config) => {
+                if !(*wallpaper_config == config) {
+                    *wallpaper_config = config;
+                    log::info!("Configuration updated");
+                }
+                Ok(())
+            }
+            Err(err) => {
+                log::error!("{:?}", err);
+                Err(err)
+            }
+        }
     }
 }
 
