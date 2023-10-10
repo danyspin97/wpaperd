@@ -120,6 +120,11 @@ fn handle_message(buffer: &mut String, ustream: UnixStream, wpaperd: &mut Wpaper
 
             IpcResponse::Ok
         }),
+
+        IpcMessage::ReloadConfig => {
+            wpaperd.reload_config()?;
+            Ok(IpcResponse::Ok)
+        }
     };
 
     let mut stream = BufWriter::new(ustream);

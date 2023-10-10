@@ -10,7 +10,7 @@ use serde::Deserialize;
 
 use crate::wallpaper_info::WallpaperInfo;
 
-#[derive(Deserialize, PartialEq)]
+#[derive(Deserialize)]
 pub struct WallpaperConfig {
     #[serde(flatten)]
     data: HashMap<String, Arc<WallpaperInfo>>,
@@ -51,5 +51,11 @@ Either remove `duration` or set `path` to a directory"
 
     pub fn get_output_by_name(&self, name: &str) -> Arc<WallpaperInfo> {
         self.data.get(name).unwrap_or(&self.default_config).clone()
+    }
+}
+
+impl PartialEq for WallpaperConfig {
+    fn eq(&self, other: &Self) -> bool {
+        self.data == other.data
     }
 }
