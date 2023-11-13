@@ -29,7 +29,8 @@ use log::error;
 use nix::unistd::fork;
 use smithay_client_toolkit::reexports::{
     calloop::{self, channel::Sender},
-    client::{globals::registry_queue_init, Connection, WaylandSource},
+    calloop_wayland_source::WaylandSource,
+    client::{globals::registry_queue_init, Connection},
 };
 use wpaperd_ipc::socket_path;
 use xdg::BaseDirectories;
@@ -63,7 +64,7 @@ fn run(config: Config, xdg_dirs: BaseDirectories) -> Result<()> {
 
     let mut event_loop = calloop::EventLoop::<Wpaperd>::try_new()?;
 
-    WaylandSource::new(event_queue)?
+    WaylandSource::new(conn.clone(), event_queue)
         .insert(event_loop.handle())
         .unwrap();
 

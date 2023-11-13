@@ -109,6 +109,24 @@ impl CompositorHandler for Wpaperd {
         _time: u32,
     ) {
     }
+
+    fn transform_changed(
+        &mut self,
+        _conn: &Connection,
+        _qh: &QueueHandle<Self>,
+        surface: &wl_surface::WlSurface,
+        new_transform: wl_output::Transform,
+    ) {
+        let surface = self
+            .surfaces
+            .iter_mut()
+            .enumerate()
+            .find(|(_, s)| surface == &s.surface)
+            .unwrap()
+            .1;
+
+        surface.surface.set_buffer_transform(new_transform);
+    }
 }
 
 impl OutputHandler for Wpaperd {
