@@ -31,7 +31,7 @@ use flexi_logger::{Duplicate, FileSpec, Logger};
 use hotwatch::{Event, Hotwatch};
 use log::error;
 use nix::unistd::fork;
-use smithay_client_toolkit::reexports::client::{Proxy, QueueHandle};
+use smithay_client_toolkit::reexports::client::Proxy;
 use smithay_client_toolkit::reexports::{
     calloop::{self, channel::Sender},
     calloop_wayland_source::WaylandSource,
@@ -67,9 +67,10 @@ fn run(config: Config, xdg_dirs: BaseDirectories) -> Result<()> {
 
     let conn = Connection::connect_to_env().unwrap();
 
-    let egl_display = egl
-        .get_display(conn.display().id().as_ptr() as *mut std::ffi::c_void)
-        .unwrap();
+    let egl_display = unsafe {
+        egl.get_display(conn.display().id().as_ptr() as *mut std::ffi::c_void)
+            .unwrap()
+    };
     egl.initialize(egl_display).unwrap();
 
     let (globals, event_queue) = registry_queue_init(&conn).unwrap();

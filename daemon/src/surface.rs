@@ -1,9 +1,5 @@
 use std::ffi::c_void;
-use std::fs::OpenOptions;
-use std::io::{BufWriter, Write};
-use std::path::Path;
 use std::path::PathBuf;
-use std::ptr::{null, slice_from_raw_parts_mut};
 use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Instant;
@@ -11,29 +7,22 @@ use std::time::Instant;
 use color_eyre::eyre::{bail, ensure, Context};
 use color_eyre::Result;
 use egl::API as egl;
-use glutin::api::egl::device::Device;
-use glutin::api::egl::display::Display;
-use glutin::config::{ConfigSurfaceTypes, ConfigTemplate, ConfigTemplateBuilder};
-use glutin::context::{ContextApi, ContextAttributesBuilder};
-use glutin::prelude::*;
 use image::imageops::FilterType;
 use image::{open, DynamicImage, ImageBuffer, Pixel, Rgba};
 use log::{info, warn};
-use nix::libc::MEMBARRIER_CMD_REGISTER_GLOBAL_EXPEDITED;
 use smithay_client_toolkit::compositor::Region;
 use smithay_client_toolkit::output::OutputInfo;
 use smithay_client_toolkit::reexports::calloop::timer::{TimeoutAction, Timer};
 use smithay_client_toolkit::reexports::calloop::LoopHandle;
 use smithay_client_toolkit::reexports::client::protocol::wl_output::WlOutput;
-use smithay_client_toolkit::reexports::client::protocol::{wl_shm, wl_surface};
+use smithay_client_toolkit::reexports::client::protocol::wl_surface;
 use smithay_client_toolkit::reexports::client::{Proxy, QueueHandle};
 use smithay_client_toolkit::shell::wlr_layer::{Anchor, Layer, LayerSurface};
-use smithay_client_toolkit::shm::slot::SlotPool;
 use walkdir::WalkDir;
 use wayland_egl::WlEglSurface;
 
-use crate::wallpaper_info::Sorting;
 use crate::render::{gl, Renderer};
+use crate::wallpaper_info::Sorting;
 use crate::wallpaper_info::WallpaperInfo;
 use crate::wpaperd::Wpaperd;
 
@@ -435,6 +424,7 @@ impl Surface {
             println!("{}", renderer.GetError());
             renderer.Uniform1i(loc, 0);
             println!("{}", renderer.GetError());
+            renderer.TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, gl::LINEAR as i32);
             // Wait for the previous commands to finish before reading from the framebuffer.
             renderer.Finish();
             renderer.draw();

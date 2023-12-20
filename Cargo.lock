@@ -2290,6 +2290,7 @@ dependencies = [
  "smithay-client-toolkit",
  "toml",
  "walkdir",
+ "wayland-backend",
  "wayland-egl",
  "wpaperd-ipc",
  "xdg",

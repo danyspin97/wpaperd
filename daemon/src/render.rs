@@ -1,10 +1,6 @@
-use std::{
-    ffi::{CStr, CString},
-    ops::Deref,
-};
+use std::ops::Deref;
 
 use egl::API as egl;
-use glutin::prelude::*;
 
 pub mod gl {
     #![allow(clippy::all)]
@@ -90,7 +86,7 @@ impl Renderer {
                 std::ptr::null(),
             );
             println!("{}", gl.GetError());
-            // gl.EnableVertexAttribArray(POS_ATTRIB as gl::types::GLuint);
+            gl.EnableVertexAttribArray(POS_ATTRIB as gl::types::GLuint);
             println!("{}", gl.GetError());
 
             gl.VertexAttribPointer(
@@ -102,7 +98,7 @@ impl Renderer {
                 (2 * std::mem::size_of::<f32>()) as *const () as *const _,
             );
             println!("vertexattrib tex {}", gl.GetError());
-            // gl.EnableVertexAttribArray(TEX_ATTRIB as gl::types::GLuint);
+            gl.EnableVertexAttribArray(TEX_ATTRIB as gl::types::GLuint);
             println!("tex_attrib {}", gl.GetError());
 
             Self {
@@ -119,7 +115,6 @@ impl Renderer {
             self.gl.UseProgram(self.program);
 
             self.gl.BindVertexArray(self.vao);
-            println!("vao: {}", self.vao);
             println!("bindvertex {}", self.GetError());
             self.gl.BindBuffer(gl::ARRAY_BUFFER, self.vbo);
             println!("{}", self.GetError());
@@ -193,20 +188,13 @@ unsafe fn create_shader(
     }
 }
 
-fn get_gl_string(gl: &gl::Gl, variant: gl::types::GLenum) -> Option<&'static CStr> {
-    unsafe {
-        let s = gl.GetString(variant);
-        (!s.is_null()).then(|| CStr::from_ptr(s.cast()))
-    }
-}
-
 #[rustfmt::skip]
 static VERTEX_DATA: [f32; 24] = [
-    -1.0, -1.0,  0.0,  0.0,
-    -1.0,  1.0,  1.0,  0.0,
-     1.0,  1.0,  0.0,  1.0,
-     1.0,  1.0,  0.0,  0.0,
-     1.0, -1.0,  1.0,  0.0,
+    -1.0, -1.0,  0.0,  1.0,
+    -1.0,  1.0,  0.0,  0.0,
+     1.0,  1.0,  1.0,  0.0,
+     1.0,  1.0,  1.0,  0.0,
+     1.0, -1.0,  1.0,  1.0,
     -1.0, -1.0,  0.0,  1.0,
 ];
 
@@ -220,7 +208,7 @@ attribute vec2 texcoord;
 varying vec2 v_texcoord;
 
 void main() {
-    gl_Position = vec4(position, 0.0, 1.0);
+    gl_Position = vec4(position, 1.0, 1.0);
     v_texcoord = texcoord;
 }
 \0";
@@ -255,7 +243,6 @@ uniform sampler2D u_texture;
 varying vec2 v_texcoord;
 
 void main() {
-    // gl_FragColor = vec4(v_color, 1.0);
-    gl_FragColor = texture2D(u_texture, v_texcoord);;
+    gl_FragColor = texture2D(u_texture, v_texcoord);
 }
 \0";
