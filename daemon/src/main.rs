@@ -31,11 +31,10 @@ use flexi_logger::{Duplicate, FileSpec, Logger};
 use hotwatch::{Event, Hotwatch};
 use log::error;
 use nix::unistd::fork;
-use smithay_client_toolkit::reexports::client::Proxy;
 use smithay_client_toolkit::reexports::{
     calloop::{self, channel::Sender},
     calloop_wayland_source::WaylandSource,
-    client::{globals::registry_queue_init, Connection},
+    client::{globals::registry_queue_init, Connection, Proxy},
 };
 use wpaperd_ipc::socket_path;
 use xdg::BaseDirectories;
@@ -62,6 +61,8 @@ fn run(config: Config, xdg_dirs: BaseDirectories) -> Result<()> {
     wallpaper_config.reloaded = false;
     let wallpaper_config = Arc::new(Mutex::new(wallpaper_config));
 
+    // we use the OpenGL ES API because it's more widely supported
+    // and it's used by wlroots
     egl.bind_api(egl::OPENGL_ES_API)
         .expect("unable to select OpenGL API");
 

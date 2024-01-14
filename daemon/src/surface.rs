@@ -1,32 +1,29 @@
-use std::ffi::c_void;
 use std::path::PathBuf;
-use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Instant;
 
 use color_eyre::eyre::{bail, ensure, Context};
 use color_eyre::Result;
-use egl::API as egl;
 use image::imageops::FilterType;
 use image::{open, DynamicImage, ImageBuffer, Pixel, Rgba};
 use log::{info, warn};
-use smithay_client_toolkit::compositor::Region;
-use smithay_client_toolkit::output::OutputInfo;
 use smithay_client_toolkit::reexports::calloop::timer::{TimeoutAction, Timer};
 use smithay_client_toolkit::reexports::calloop::LoopHandle;
 use smithay_client_toolkit::reexports::client::protocol::wl_output::WlOutput;
 use smithay_client_toolkit::reexports::client::protocol::wl_surface;
-use smithay_client_toolkit::reexports::client::{Proxy, QueueHandle};
-use smithay_client_toolkit::shell::wlr_layer::{Anchor, Layer, LayerSurface};
+use smithay_client_toolkit::reexports::client::Proxy;
+use smithay_client_toolkit::shell::wlr_layer::{LayerSurface, LayerSurfaceConfigure};
 use walkdir::WalkDir;
 use wayland_egl::WlEglSurface;
 
-use crate::render::{gl, Renderer};
+use crate::render::{EglContext, Renderer};
 use crate::wallpaper_info::Sorting;
 use crate::wallpaper_info::WallpaperInfo;
 use crate::wpaperd::Wpaperd;
+use khronos_egl::API as egl;
 
 pub struct Surface {
+    pub name: String,
     pub surface: wl_surface::WlSurface,
     pub output: WlOutput,
     pub layer: LayerSurface,
@@ -37,59 +34,32 @@ pub struct Surface {
     pub timer_expired: bool,
     pub time_changed: Instant,
     pub current_img: PathBuf,
-    pub info: OutputInfo,
     pub configured: bool,
     pub image_paths: Vec<PathBuf>,
     pub current_index: usize,
-    pub egl_display: Rc<egl::Display>,
-    pub egl_context: egl::Context,
-    pub egl_config: egl::Config,
+    egl_context: EglContext,
 }
 
 impl Surface {
     pub fn new(
-        qh: &QueueHandle<Wpaperd>,
-        wpaperd: &Wpaperd,
+        name: String,
+        layer: LayerSurface,
         output: WlOutput,
         surface: wl_surface::WlSurface,
-        info: OutputInfo,
+        scale_factor: i32,
         wallpaper_info: Arc<WallpaperInfo>,
+        egl_display: egl::Display,
     ) -> Self {
-        // TODO: error handling
-        let layer = wpaperd.layer_state.create_layer_surface(
-            qh,
-            surface.clone(),
-            Layer::Background,
-            Some(format!("wpaperd-{}", info.name.as_ref().unwrap())),
-            Some(&output),
-        );
-        layer.set_anchor(Anchor::TOP | Anchor::LEFT | Anchor::RIGHT | Anchor::BOTTOM);
-        layer.set_exclusive_zone(-1);
-        layer.set_size(0, 0);
-
-        // Wayland clients are expected to render the cursor on their input region. By setting the
-        // input region to an empty region, the compositor renders the default cursor. Without
-        // this, and empty desktop won't render a cursor.
-        let empty_region = Region::new(&wpaperd.compositor_state).unwrap();
-        surface.set_input_region(Some(empty_region.wl_region()));
-
-        // From `wl_surface::set_opaque_region`:
-        // > Setting the pending opaque region has copy semantics, and the
-        // > wl_region object can be destroyed immediately.
-        empty_region.wl_region().destroy();
-
         // Commit the surface
         surface.commit();
 
-        let (egl_context, egl_config) = create_context(*wpaperd.egl_display);
-
         Self {
+            name,
             output,
             layer,
             dimensions: (0, 0),
-            scale: info.scale_factor,
+            scale: scale_factor,
             surface,
-            info,
             wallpaper_info,
             need_redraw: false,
             timer_expired: true,
@@ -98,9 +68,7 @@ impl Surface {
             configured: false,
             image_paths: Vec::new(),
             current_index: 0,
-            egl_display: wpaperd.egl_display.clone(),
-            egl_context,
-            egl_config,
+            egl_context: EglContext::new(egl_display),
         }
     }
 
@@ -123,16 +91,33 @@ impl Surface {
                 .into_rgba8();
 
             self.apply_shadow(&mut image, width.try_into()?);
+            let wl_egl_surface = WlEglSurface::new(self.surface.id(), width, height).unwrap();
+            let egl_surface = unsafe {
+                egl.create_window_surface(
+                    self.egl_context.display,
+                    self.egl_context.config,
+                    wl_egl_surface.ptr() as egl::NativeWindowType,
+                    None,
+                )
+                .expect("unable to create an EGL surface")
+            };
 
-            self.draw_egl(image::DynamicImage::ImageRgba8(image), width, height);
+            egl.make_current(
+                self.egl_context.display,
+                Some(egl_surface),
+                Some(egl_surface),
+                Some(self.egl_context.context),
+            )
+            .expect("unable to bind the context");
 
-            // let canvas = slot.canvas(&mut self.pool).unwrap();
+            let renderer = unsafe { Renderer::new() }.expect("unable to create a renderer");
+            renderer.resize(width, height);
+            unsafe { renderer.draw(image.into())? };
 
-            // let mut writer = BufWriter::new(canvas);
-            // writer
-            //     .write_all(image.as_raw())
-            //     .context("writing the image to the surface")?;
-            // writer.flush().context("flushing the surface writer")?;
+            egl.swap_buffers(self.egl_context.display, egl_surface)
+                .expect("unable to post the surface content");
+
+            renderer.clear_after_draw()?;
         }
 
         // Mark the entire surface as damaged
@@ -370,106 +355,15 @@ impl Surface {
     }
 
     pub fn name(&self) -> &str {
-        self.info.name.as_ref().unwrap()
+        &self.name
     }
 
-    fn draw_egl(&self, image: DynamicImage, width: i32, height: i32) {
-        // let size: usize = (width * height * 4).try_into().unwrap();
-
-        let wl_egl_surface = WlEglSurface::new(self.surface.id(), width, height).unwrap();
-        let egl_surface = unsafe {
-            egl.create_window_surface(
-                *self.egl_display,
-                self.egl_config,
-                wl_egl_surface.ptr() as egl::NativeWindowType,
-                None,
-            )
-            .expect("unable to create an EGL surface")
-        };
-
-        egl.make_current(
-            *self.egl_display,
-            Some(egl_surface),
-            Some(egl_surface),
-            Some(self.egl_context),
-        )
-        .expect("unable to bind the context");
-
-        let renderer = Renderer::new();
-        renderer.resize(width, height);
-
-        let mut texture = 0;
-        unsafe {
-            renderer.GenTextures(1, &mut texture);
-            println!("{}", renderer.GetError());
-            renderer.BindTexture(gl::TEXTURE_2D, texture);
-            println!("{}", renderer.GetError());
-            renderer.TexImage2D(
-                gl::TEXTURE_2D,
-                0,
-                gl::RGBA8.try_into().unwrap(),
-                width,
-                height,
-                0,
-                gl::RGBA,
-                gl::UNSIGNED_BYTE,
-                image.as_bytes().as_ptr() as *const c_void,
-                // buffer.as_ptr() as *const std::ffi::c_void,
-            );
-            println!("teximage {}", renderer.GetError());
-            renderer.ActiveTexture(gl::TEXTURE0);
-            let loc =
-                renderer.GetUniformLocation(renderer.program, b"u_texture\0".as_ptr() as *const _);
-            println!("{loc}");
-            println!("{}", renderer.GetError());
-            renderer.Uniform1i(loc, 0);
-            println!("{}", renderer.GetError());
-            renderer.TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, gl::LINEAR as i32);
-            // Wait for the previous commands to finish before reading from the framebuffer.
-            renderer.Finish();
-            renderer.draw();
-        }
-
-        egl.swap_buffers(*self.egl_display, egl_surface)
-            .expect("unable to post the surface content");
-
-        unsafe {
-            // Unbind the framebuffer and renderbuffer before deleting.
-            renderer.BindBuffer(gl::PIXEL_UNPACK_BUFFER, 0);
-            renderer.BindFramebuffer(gl::DRAW_FRAMEBUFFER, 0);
-            renderer.BindRenderbuffer(gl::RENDERBUFFER, 0);
-            renderer.BindTexture(gl::TEXTURE_2D, 0);
-        }
+    pub fn resize(&mut self, configure: LayerSurfaceConfigure) {
+        self.dimensions = configure.new_size;
+        self.need_redraw = true;
+        // self.renderer.resize(
+        //     self.dimensions.0.try_into().unwrap(),
+        //     self.dimensions.1.try_into().unwrap(),
+        // );
     }
-}
-
-fn create_context(display: egl::Display) -> (egl::Context, egl::Config) {
-    let attributes = [
-        egl::RED_SIZE,
-        8,
-        egl::GREEN_SIZE,
-        8,
-        egl::BLUE_SIZE,
-        8,
-        egl::NONE,
-    ];
-
-    let config = egl
-        .choose_first_config(display, &attributes)
-        .expect("unable to choose an EGL configuration")
-        .expect("no EGL configuration found");
-
-    let context_attributes = [
-        egl::CONTEXT_MAJOR_VERSION,
-        3,
-        egl::CONTEXT_MINOR_VERSION,
-        2,
-        egl::NONE,
-    ];
-
-    let context = egl
-        .create_context(display, config, None, &context_attributes)
-        .expect("unable to create an EGL context");
-
-    (context, config)
 }

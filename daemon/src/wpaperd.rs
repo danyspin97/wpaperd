@@ -1,16 +1,15 @@
-use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 
 use color_eyre::eyre::Context;
 use color_eyre::Result;
-use smithay_client_toolkit::compositor::{CompositorHandler, CompositorState};
+use smithay_client_toolkit::compositor::{CompositorHandler, CompositorState, Region};
 use smithay_client_toolkit::output::{OutputHandler, OutputState};
 use smithay_client_toolkit::reexports::client::globals::GlobalList;
 use smithay_client_toolkit::reexports::client::protocol::{wl_output, wl_surface};
 use smithay_client_toolkit::reexports::client::{Connection, QueueHandle};
 use smithay_client_toolkit::registry::{ProvidesRegistryState, RegistryState};
 use smithay_client_toolkit::shell::wlr_layer::{
-    LayerShell, LayerShellHandler, LayerSurface, LayerSurfaceConfigure,
+    Anchor, Layer, LayerShell, LayerShellHandler, LayerSurface, LayerSurfaceConfigure,
 };
 use smithay_client_toolkit::shm::{Shm, ShmHandler};
 use smithay_client_toolkit::{
@@ -28,9 +27,9 @@ pub struct Wpaperd {
     pub layer_state: LayerShell,
     pub registry_state: RegistryState,
     pub surfaces: Vec<Surface>,
-    pub egl_display: Rc<egl::Display>,
     wallpaper_config: Arc<Mutex<WallpaperConfig>>,
     use_scaled_window: bool,
+    egl_display: egl::Display,
 }
 
 impl Wpaperd {
@@ -43,6 +42,7 @@ impl Wpaperd {
         egl_display: egl::Display,
     ) -> Result<Self> {
         let shm_state = Shm::bind(globals, qh)?;
+
         Ok(Self {
             compositor_state: CompositorState::bind(globals, qh)?,
             output_state: OutputState::new(globals, qh),
@@ -52,7 +52,7 @@ impl Wpaperd {
             surfaces: Vec::new(),
             wallpaper_config,
             use_scaled_window,
-            egl_display: Rc::new(egl_display),
+            egl_display,
         })
     }
 
@@ -157,16 +157,42 @@ impl OutputHandler for Wpaperd {
 
         let name = info.name.as_ref().unwrap().to_string();
 
-        self.surfaces.push(Surface::new(
+        let layer = self.layer_state.create_layer_surface(
             qh,
-            self,
+            surface.clone(),
+            Layer::Background,
+            Some(format!("wpaperd-{}", name)),
+            Some(&output),
+        );
+        layer.set_anchor(Anchor::TOP | Anchor::LEFT | Anchor::RIGHT | Anchor::BOTTOM);
+        layer.set_exclusive_zone(-1);
+        layer.set_size(0, 0);
+
+        let empty_region = Region::new(&self.compositor_state).unwrap();
+        // Wayland clients are expected to render the cursor on their input region. By setting the
+        // input region to an empty region, the compositor renders the default cursor. Without
+        // this, and empty desktop won't render a cursor.
+        surface.set_input_region(Some(empty_region.wl_region()));
+
+        // From `wl_surface::set_opaque_region`:
+        // > Setting the pending opaque region has copy semantics, and the
+        // > wl_region object can be destroyed immediately.
+        empty_region.wl_region().destroy();
+
+        let wallpaper_info = self
+            .wallpaper_config
+            .lock()
+            .unwrap()
+            .get_output_by_name(&name);
+
+        self.surfaces.push(Surface::new(
+            name,
+            layer,
             output,
             surface,
-            info,
-            self.wallpaper_config
-                .lock()
-                .unwrap()
-                .get_output_by_name(&name),
+            info.scale_factor,
+            wallpaper_info,
+            self.egl_display,
         ));
     }
 
@@ -217,8 +243,7 @@ impl LayerShellHandler for Wpaperd {
 
         if surface.dimensions != configure.new_size {
             // Update dimensions
-            surface.dimensions = configure.new_size;
-            surface.need_redraw = true;
+            surface.resize(configure);
         }
 
         surface.configured = true;
