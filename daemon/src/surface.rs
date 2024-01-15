@@ -11,16 +11,13 @@ use smithay_client_toolkit::reexports::calloop::timer::{TimeoutAction, Timer};
 use smithay_client_toolkit::reexports::calloop::LoopHandle;
 use smithay_client_toolkit::reexports::client::protocol::wl_output::WlOutput;
 use smithay_client_toolkit::reexports::client::protocol::wl_surface;
-use smithay_client_toolkit::reexports::client::Proxy;
 use smithay_client_toolkit::shell::wlr_layer::{LayerSurface, LayerSurfaceConfigure};
 use walkdir::WalkDir;
-use wayland_egl::WlEglSurface;
 
 use crate::render::{EglContext, Renderer};
 use crate::wallpaper_info::Sorting;
 use crate::wallpaper_info::WallpaperInfo;
 use crate::wpaperd::Wpaperd;
-use khronos_egl::API as egl;
 
 pub struct Surface {
     pub name: String,
@@ -38,6 +35,7 @@ pub struct Surface {
     pub image_paths: Vec<PathBuf>,
     pub current_index: usize,
     egl_context: EglContext,
+    renderer: Renderer,
 }
 
 impl Surface {
@@ -50,6 +48,10 @@ impl Surface {
         wallpaper_info: Arc<WallpaperInfo>,
         egl_display: egl::Display,
     ) -> Self {
+        let egl_context = EglContext::new(egl_display, &surface);
+        // Make the egl context as current to make the renderer creation work
+        egl_context.make_current().unwrap();
+
         // Commit the surface
         surface.commit();
 
@@ -68,7 +70,8 @@ impl Surface {
             configured: false,
             image_paths: Vec::new(),
             current_index: 0,
-            egl_context: EglContext::new(egl_display),
+            egl_context,
+            renderer: unsafe { Renderer::new().unwrap() },
         }
     }
 
@@ -91,33 +94,14 @@ impl Surface {
                 .into_rgba8();
 
             self.apply_shadow(&mut image, width.try_into()?);
-            let wl_egl_surface = WlEglSurface::new(self.surface.id(), width, height).unwrap();
-            let egl_surface = unsafe {
-                egl.create_window_surface(
-                    self.egl_context.display,
-                    self.egl_context.config,
-                    wl_egl_surface.ptr() as egl::NativeWindowType,
-                    None,
-                )
-                .expect("unable to create an EGL surface")
-            };
 
-            egl.make_current(
-                self.egl_context.display,
-                Some(egl_surface),
-                Some(egl_surface),
-                Some(self.egl_context.context),
-            )
-            .expect("unable to bind the context");
+            self.egl_context.make_current()?;
 
-            let renderer = unsafe { Renderer::new() }.expect("unable to create a renderer");
-            renderer.resize(width, height);
-            unsafe { renderer.draw(image.into())? };
+            unsafe { self.renderer.draw(image.into())? };
 
-            egl.swap_buffers(self.egl_context.display, egl_surface)
-                .expect("unable to post the surface content");
+            self.egl_context.swap_buffers()?;
 
-            renderer.clear_after_draw()?;
+            self.renderer.clear_after_draw()?;
         }
 
         // Mark the entire surface as damaged
@@ -360,10 +344,10 @@ impl Surface {
 
     pub fn resize(&mut self, configure: LayerSurfaceConfigure) {
         self.dimensions = configure.new_size;
+        let width = self.dimensions.0.try_into().unwrap();
+        let height = self.dimensions.1.try_into().unwrap();
         self.need_redraw = true;
-        // self.renderer.resize(
-        //     self.dimensions.0.try_into().unwrap(),
-        //     self.dimensions.1.try_into().unwrap(),
-        // );
+        self.egl_context.resize(&self.surface, width, height);
+        self.renderer.resize(width, height);
     }
 }

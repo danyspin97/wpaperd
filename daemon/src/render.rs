@@ -4,11 +4,13 @@ use std::{
 };
 
 use color_eyre::{
-    eyre::{bail, ensure},
+    eyre::{bail, ensure, Context},
     Result,
 };
 use egl::API as egl;
 use image::DynamicImage;
+use smithay_client_toolkit::reexports::client::{protocol::wl_surface::WlSurface, Proxy};
+use wayland_egl::WlEglSurface;
 
 pub mod gl {
     #![allow(clippy::all)]
@@ -46,12 +48,14 @@ pub struct EglContext {
     pub display: egl::Display,
     pub context: egl::Context,
     pub config: egl::Config,
+    wl_egl_surface: WlEglSurface,
+    surface: khronos_egl::Surface,
     // pub surface: egl::Surface,
     // pub wl_egl_surface: WlEglSurface,
 }
 
 impl EglContext {
-    pub fn new(egl_display: egl::Display) -> Self {
+    pub fn new(egl_display: egl::Display, wl_surface: &WlSurface) -> Self {
         const ATTRIBUTES: [i32; 7] = [
             egl::RED_SIZE,
             8,
@@ -80,25 +84,63 @@ impl EglContext {
             .expect("unable to create an EGL context");
 
         // First, create a small surface, we don't know the size of the output yet
-        // let wl_egl_surface = WlEglSurface::new(wl_surface.id(), 1920, 1080).unwrap();
+        let wl_egl_surface = WlEglSurface::new(wl_surface.id(), 10, 10).unwrap();
 
-        // let surface = unsafe {
-        //     egl.create_window_surface(
-        //         egl_display,
-        //         config,
-        //         wl_egl_surface.ptr() as egl::NativeWindowType,
-        //         None,
-        //     )
-        //     .expect("unable to create an EGL surface")
-        // };
-        //
+        let surface = unsafe {
+            egl.create_window_surface(
+                egl_display,
+                config,
+                wl_egl_surface.ptr() as egl::NativeWindowType,
+                None,
+            )
+            .expect("unable to create an EGL surface")
+        };
+
         Self {
             display: egl_display,
             context,
             config,
-            // surface,
-            // wl_egl_surface,
+            surface,
+            wl_egl_surface,
         }
+    }
+
+    pub fn make_current(&self) -> Result<()> {
+        Ok(egl
+            .make_current(
+                self.display,
+                Some(self.surface),
+                Some(self.surface),
+                Some(self.context),
+            )
+            .with_context(|| "unable to make the context current")?)
+    }
+
+    // Swap the buffers of the surface
+    pub fn swap_buffers(&self) -> Result<()> {
+        Ok(egl
+            .swap_buffers(self.display, self.surface)
+            .with_context(|| "unable to post the surface content")?)
+    }
+
+    /// Resize the surface
+    /// Resizing the surface means to destroy the previous one and then recreate it
+    pub fn resize(&mut self, wl_surface: &WlSurface, width: i32, height: i32) {
+        egl.destroy_surface(self.display, self.surface).unwrap();
+        let wl_egl_surface = WlEglSurface::new(wl_surface.id(), width, height).unwrap();
+
+        let surface = unsafe {
+            egl.create_window_surface(
+                self.display,
+                self.config,
+                wl_egl_surface.ptr() as egl::NativeWindowType,
+                None,
+            )
+            .expect("unable to create an EGL surface")
+        };
+
+        self.surface = surface;
+        self.wl_egl_surface = wl_egl_surface;
     }
 }
 
@@ -248,9 +290,6 @@ impl Renderer {
         Ok(())
     }
 
-    // egl.swap_buffers(self.egl_context.display, self.egl_context.surface)
-    //     .expect("unable to post the surface content");
-
     pub fn clear_after_draw(&self) -> Result<()> {
         unsafe {
             // Unbind the framebuffer and renderbuffer before deleting.
@@ -268,7 +307,6 @@ impl Renderer {
     }
 
     pub fn resize(&self, width: i32, height: i32) {
-        // self.egl_context.resize_surface(width, height);
         unsafe {
             self.gl.Viewport(0, 0, width, height);
         }
