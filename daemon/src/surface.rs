@@ -342,10 +342,10 @@ impl Surface {
         &self.name
     }
 
-    pub fn resize(&mut self, configure: LayerSurfaceConfigure) {
-        self.dimensions = configure.new_size;
-        let width = self.dimensions.0.try_into().unwrap();
-        let height = self.dimensions.1.try_into().unwrap();
+    pub fn resize(&mut self, configure: Option<LayerSurfaceConfigure>) {
+        self.dimensions = configure.map(|c| c.new_size).unwrap_or(self.dimensions);
+        let width = TryInto::<i32>::try_into(self.dimensions.0).unwrap() * self.scale;
+        let height = TryInto::<i32>::try_into(self.dimensions.1).unwrap() * self.scale;
         self.need_redraw = true;
         self.egl_context.resize(&self.surface, width, height);
         self.renderer.resize(width, height);

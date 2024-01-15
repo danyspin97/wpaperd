@@ -101,7 +101,7 @@ impl CompositorHandler for Wpaperd {
         if surface.scale != new_factor {
             surface.scale = new_factor;
             surface.surface.set_buffer_scale(new_factor);
-            surface.need_redraw = true;
+            surface.resize(None);
         }
     }
 
@@ -243,7 +243,7 @@ impl LayerShellHandler for Wpaperd {
 
         if surface.dimensions != configure.new_size {
             // Update dimensions
-            surface.resize(configure);
+            surface.resize(Some(configure));
         }
 
         surface.configured = true;
