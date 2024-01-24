@@ -106,21 +106,19 @@ impl EglContext {
     }
 
     pub fn make_current(&self) -> Result<()> {
-        Ok(egl
-            .make_current(
-                self.display,
-                Some(self.surface),
-                Some(self.surface),
-                Some(self.context),
-            )
-            .with_context(|| "unable to make the context current")?)
+        egl.make_current(
+            self.display,
+            Some(self.surface),
+            Some(self.surface),
+            Some(self.context),
+        )
+        .with_context(|| "unable to make the context current")
     }
 
     // Swap the buffers of the surface
     pub fn swap_buffers(&self) -> Result<()> {
-        Ok(egl
-            .swap_buffers(self.display, self.surface)
-            .with_context(|| "unable to post the surface content")?)
+        egl.swap_buffers(self.display, self.surface)
+            .with_context(|| "unable to post the surface content")
     }
 
     /// Resize the surface
@@ -356,8 +354,7 @@ unsafe fn create_shader(
         let mut length: i32 = 0;
         gl.GetShaderiv(shader, gl::INFO_LOG_LENGTH, &mut max_length as *mut _);
         gl_check!(gl, "calling GetShaderiv");
-        let mut log: Vec<u8> = Vec::with_capacity(max_length as _);
-        log.resize(max_length as _, 0);
+        let mut log: Vec<u8> = vec![0; max_length as _];
         gl.GetShaderInfoLog(
             shader,
             max_length,

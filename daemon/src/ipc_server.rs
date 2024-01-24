@@ -56,7 +56,7 @@ fn check_monitors(wpaperd: &Wpaperd, monitors: &Vec<String>) -> Result<(), IpcEr
 }
 
 fn collect_surfaces(wpaperd: &mut Wpaperd, monitors: Vec<String>) -> Vec<&mut Surface> {
-    let monitors: HashSet<String> = HashSet::from_iter(monitors.into_iter());
+    let monitors: HashSet<String> = HashSet::from_iter(monitors);
     if monitors.is_empty() {
         return wpaperd.surfaces.iter_mut().collect();
     };

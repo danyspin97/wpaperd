@@ -26,7 +26,7 @@ enum SubCmd {
 fn main() {
     let args = Args::parse();
 
-    let mut conn = UnixStream::connect(&socket_path().unwrap()).unwrap();
+    let mut conn = UnixStream::connect(socket_path().unwrap()).unwrap();
     let msg = match args.subcmd {
         SubCmd::GetWallpaper { monitor } => IpcMessage::CurrentWallpaper { monitor },
         SubCmd::AllWallpapers => IpcMessage::AllWallpapers,

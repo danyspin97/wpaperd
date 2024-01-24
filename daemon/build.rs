@@ -9,7 +9,7 @@ fn main() {
     println!("cargo:rerun-if-changed=build.rs");
 
     let dest = env::var("OUT_DIR").unwrap();
-    let mut file = File::create(&Path::new(&dest).join("gl_bindings.rs")).unwrap();
+    let mut file = File::create(Path::new(&dest).join("gl_bindings.rs")).unwrap();
 
     Registry::new(
         Api::Gles2,
