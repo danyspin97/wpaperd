@@ -90,12 +90,16 @@ fn run(config: Config, xdg_dirs: BaseDirectories) -> Result<()> {
 
     let _hotwatch = setup_hotwatch(&wallpaper_config_file, wallpaper_config.clone(), ev_tx);
 
+    if config.use_scaled_window {
+        log::warn!("The --use-scaled-window flag is now enabled by default and will be removed in the future.");
+    }
+
     let mut wpaperd = Wpaperd::new(
         &qh,
         &globals,
         &conn,
         wallpaper_config.clone(),
-        config.use_scaled_window,
+        config.use_native_resolution,
         egl_display,
     )?;
 

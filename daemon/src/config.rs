@@ -36,10 +36,18 @@ pub struct Config {
     #[clap(
         action,
         long = "use-scaled-window",
-        help = "Draw the wallpaper as a scaled window. The compositor will upscale the wallpaper instead"
+        help = "DEPRECATED: Draw the wallpaper as a scaled window. The compositor will upscale the wallpaper instead"
     )]
     #[serde(rename = "use-scaled-window")]
     pub use_scaled_window: bool,
+    #[clap(
+        action,
+        long,
+        help = concat!("Draw the wallpaper as a window with native resolution.",
+                       " By default the window at the resolution u` ")
+    )]
+    #[serde(rename = "use-native-resolution")]
+    pub use_native_resolution: bool,
     #[clap(short, long, help = "Increase the verbosity of wpaperd")]
     pub verbose: bool,
     #[clap(

@@ -28,7 +28,7 @@ pub struct Wpaperd {
     pub registry_state: RegistryState,
     pub surfaces: Vec<Surface>,
     wallpaper_config: Arc<Mutex<WallpapersConfig>>,
-    use_scaled_window: bool,
+    use_native_resolution: bool,
     egl_display: egl::Display,
 }
 
@@ -38,7 +38,7 @@ impl Wpaperd {
         globals: &GlobalList,
         _conn: &Connection,
         wallpaper_config: Arc<Mutex<WallpapersConfig>>,
-        use_scaled_window: bool,
+        use_native_resolution: bool,
         egl_display: egl::Display,
     ) -> Result<Self> {
         let shm_state = Shm::bind(globals, qh)?;
@@ -51,7 +51,7 @@ impl Wpaperd {
             registry_state: RegistryState::new(globals),
             surfaces: Vec::new(),
             wallpaper_config,
-            use_scaled_window,
+            use_native_resolution,
             egl_display,
         })
     }
@@ -101,13 +101,17 @@ impl CompositorHandler for Wpaperd {
         surface: &wl_surface::WlSurface,
         new_factor: i32,
     ) {
-        let surface = self.surface_from_wl_surface(surface).unwrap();
+        // If we are using the native resolution, we need to update the buffer scale of the surface
+        // Otherwise it's the compositor that will upscale the wallpaper
+        if self.use_native_resolution {
+            let surface = self.surface_from_wl_surface(surface).unwrap();
 
-        // Ignore unnecessary updates
-        if surface.scale != new_factor {
-            surface.scale = new_factor;
-            surface.surface.set_buffer_scale(new_factor);
-            surface.resize(None);
+            // Ignore unnecessary updates
+            if surface.scale != new_factor {
+                surface.scale = new_factor;
+                surface.surface.set_buffer_scale(new_factor);
+                surface.resize(None);
+            }
         }
     }
 
@@ -149,10 +153,10 @@ impl OutputHandler for Wpaperd {
         let surface = self.compositor_state.create_surface(qh);
 
         let info = self.output_state.info(&output).unwrap();
-        let scale = if self.use_scaled_window {
-            1
-        } else {
+        let scale = if self.use_native_resolution {
             info.scale_factor
+        } else {
+            1
         };
         surface.set_buffer_scale(scale);
 
