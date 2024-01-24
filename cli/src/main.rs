@@ -54,6 +54,11 @@ fn main() {
             IpcError::MonitorNotFound { monitor } => {
                 eprintln!("monitor {monitor} could not be found")
             }
+            IpcError::DrawErrors(errors) => {
+                for (monitor, err) in errors {
+                    eprintln!("Wallpaper could not be drawn for monitor {monitor}: {err}")
+                }
+            }
         },
     }
 }

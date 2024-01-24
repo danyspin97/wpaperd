@@ -109,22 +109,48 @@ fn handle_message(buffer: &mut String, ustream: UnixStream, wpaperd: &mut Wpaper
         }),
 
         IpcMessage::PreviousWallpaper { monitors } => {
-            check_monitors(wpaperd, &monitors).map(|_| {
+            check_monitors(wpaperd, &monitors).and_then(|_| {
+                let mut errors = Vec::new();
                 for surface in collect_surfaces(wpaperd, monitors) {
                     surface.image_picker.previous_image();
+                    match surface.draw() {
+                        Ok(_) => {}
+                        Err(err) => {
+                            log::error!("Error drawing surface: {}", err);
+                            errors.push((surface.name().to_string(), err.to_string()))
+                        }
+                    }
                 }
 
-                IpcResponse::Ok
+                if errors.is_empty() {
+                    Ok(IpcResponse::Ok)
+                } else {
+                    Err(IpcError::DrawErrors(errors))
+                }
             })
         }
 
-        IpcMessage::NextWallpaper { monitors } => check_monitors(wpaperd, &monitors).map(|_| {
-            for surface in collect_surfaces(wpaperd, monitors) {
-                surface.image_picker.next_image();
-            }
+        IpcMessage::NextWallpaper { monitors } => {
+            check_monitors(wpaperd, &monitors).and_then(|_| {
+                let mut errors = Vec::new();
+                for surface in collect_surfaces(wpaperd, monitors) {
+                    surface.image_picker.next_image();
+                    match surface.draw() {
+                        Ok(_) => {}
+                        Err(err) => {
+                            log::error!("Error drawing surface: {}", err);
+                            errors.push((surface.name().to_string(), err.to_string()))
+                        }
+                    }
+                }
 
-            IpcResponse::Ok
-        }),
+                if errors.is_empty() {
+                    Ok(IpcResponse::Ok)
+                } else {
+                    Err(IpcError::DrawErrors(errors))
+                }
+            })
+        }
 
         IpcMessage::ReloadConfig => {
             wpaperd.reload_config()?;

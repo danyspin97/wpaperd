@@ -22,6 +22,7 @@ pub enum IpcResponse {
 #[derive(Serialize, Deserialize, Debug)]
 pub enum IpcError {
     MonitorNotFound { monitor: String },
+    DrawErrors(Vec<(String, String)>),
 }
 
 pub fn socket_path() -> Result<PathBuf, BaseDirectoriesError> {

@@ -1,5 +1,5 @@
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use color_eyre::Result;
 use image::imageops::FilterType;
@@ -171,13 +171,14 @@ impl Surface {
                         if let Some(registration_token) = self.event_source.take() {
                             handle.remove(registration_token);
                         }
-                        let now = Instant::now();
-                        // The timer has already expired
-                        let diff = now.duration_since(self.image_picker.image_changed_instant);
-                        if new_duration.saturating_sub(diff).is_zero() {
-                            self.add_timer(handle, Some(Timer::immediate()));
+
+                        if let Some(remaining_time) = remaining_duration(
+                            new_duration,
+                            self.image_picker.image_changed_instant,
+                        ) {
+                            self.add_timer(handle, Some(Timer::from_duration(remaining_time)));
                         } else {
-                            self.add_timer(handle, Some(Timer::from_duration(new_duration - diff)));
+                            self.add_timer(handle, Some(Timer::immediate()));
                         }
                     }
                 }
@@ -202,11 +203,17 @@ impl Surface {
                         // TODO: error handling
                         let surface = wpaperd.surface_from_name(&name).unwrap();
                         if let Some(duration) = surface.wallpaper_info.duration {
-                            // Change the drawn image
-                            surface.image_picker.next_image();
-                            surface.draw().unwrap();
-
-                            TimeoutAction::ToDuration(duration)
+                            if let Some(remaining_time) = remaining_duration(
+                                duration,
+                                surface.image_picker.image_changed_instant,
+                            ) {
+                                TimeoutAction::ToDuration(remaining_time)
+                            } else {
+                                // Change the drawn image
+                                surface.image_picker.next_image();
+                                surface.draw().unwrap();
+                                TimeoutAction::ToDuration(duration)
+                            }
                         } else {
                             TimeoutAction::Drop
                         }
@@ -216,5 +223,15 @@ impl Surface {
 
             self.event_source = Some(registration_token);
         }
+    }
+}
+
+fn remaining_duration(duration: Duration, image_changed: Instant) -> Option<Duration> {
+    // The timer has already expired
+    let diff = image_changed.elapsed();
+    if duration.saturating_sub(diff).is_zero() {
+        None
+    } else {
+        Some(duration - diff)
     }
 }
