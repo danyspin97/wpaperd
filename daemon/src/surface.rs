@@ -165,8 +165,6 @@ impl Surface {
                         }
                     }
                     // There wasn't a duration before but now it has been added or it has changed
-                    // This way, the timer started when the image was drawn, not when the duration
-                    // has been set
                     (Some(new_duration), None) | (Some(new_duration), Some(_)) => {
                         if let Some(registration_token) = self.event_source.take() {
                             handle.remove(registration_token);
@@ -203,6 +201,12 @@ impl Surface {
                         // TODO: error handling
                         let surface = wpaperd.surface_from_name(&name).unwrap();
                         if let Some(duration) = surface.wallpaper_info.duration {
+                            // Check that the timer has expired
+                            // if the daemon received a next or previous image command
+                            // the timer will be reset and we need to account that here
+                            // i.e. there is a timer of 1 minute. The user changes the image
+                            // with a previous wallpaper command at 50 seconds.
+                            // The timer will be reset to 1 minute and the image will be changed
                             if let Some(remaining_time) = remaining_duration(
                                 duration,
                                 surface.image_picker.image_changed_instant,
