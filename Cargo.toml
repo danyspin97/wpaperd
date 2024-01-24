@@ -5,3 +5,5 @@ members = [
     "daemon",
     "ipc",
 ]
+
+resolver = "2"
