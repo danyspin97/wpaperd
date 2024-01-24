@@ -1,7 +1,26 @@
 use std::path::PathBuf;
 
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 use serde::{Deserialize, Serialize};
+
+// Use nearest as default in debug builds
+// use triangle as default in triangle
+#[derive(Default, ValueEnum, Serialize, Deserialize, Clone)]
+pub enum FilterType {
+    #[cfg(debug)]
+    #[default]
+    Nearest,
+    #[cfg(debug)]
+    Triangle,
+    #[cfg(not(debug))]
+    Nearest,
+    #[cfg(not(debug))]
+    #[default]
+    Triangle,
+    CatmullRom,
+    Gaussian,
+    Lanczos3,
+}
 
 #[derive(Default, Parser, Serialize, Deserialize)]
 #[clap(
@@ -55,4 +74,10 @@ pub struct Config {
         help = "Fd to write once wpaperd is running (used for readiness)"
     )]
     pub notify: Option<u8>,
+    #[clap(
+        long,
+        default_value = "triangle",
+        help = "Decide the sampling filter to use"
+    )]
+    pub sampling_filter: FilterType,
 }

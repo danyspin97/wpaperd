@@ -16,7 +16,7 @@ use std::{
     os::fd::FromRawFd,
     path::Path,
     process::exit,
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, OnceLock},
 };
 
 use clap::Parser;
@@ -28,6 +28,7 @@ use figment::{
 };
 use flexi_logger::{Duplicate, FileSpec, Logger};
 use hotwatch::{Event, Hotwatch};
+use image::imageops::FilterType;
 use log::error;
 use nix::unistd::fork;
 use smithay_client_toolkit::reexports::{
@@ -41,6 +42,9 @@ use xdg::BaseDirectories;
 use crate::config::Config;
 use crate::wallpaper_config::WallpapersConfig;
 use crate::wpaperd::Wpaperd;
+
+// define a static variabe containing sampling filters
+static FILTER: OnceLock<FilterType> = OnceLock::new();
 
 fn run(config: Config, xdg_dirs: BaseDirectories) -> Result<()> {
     // Path passed from the CLI or the wpaperd.toml file has precedence
@@ -89,6 +93,14 @@ fn run(config: Config, xdg_dirs: BaseDirectories) -> Result<()> {
         .unwrap();
 
     let _hotwatch = setup_hotwatch(&wallpaper_config_file, wallpaper_config.clone(), ev_tx);
+
+    FILTER.get_or_init(|| match config.sampling_filter {
+        config::FilterType::Nearest => FilterType::Nearest,
+        config::FilterType::Triangle => FilterType::Triangle,
+        config::FilterType::CatmullRom => FilterType::CatmullRom,
+        config::FilterType::Gaussian => FilterType::Gaussian,
+        config::FilterType::Lanczos3 => FilterType::Lanczos3,
+    });
 
     if config.use_scaled_window {
         log::warn!("The --use-scaled-window flag is now enabled by default and will be removed in the future.");
