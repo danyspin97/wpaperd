@@ -64,8 +64,7 @@ impl Surface {
 
     /// Returns true if something has been drawn to the surface
     pub fn draw(&mut self) -> Result<()> {
-        // No need to draw yet
-        debug_assert!(self.dimensions.0 == 0 || self.dimensions.1 == 0);
+        debug_assert!(self.dimensions.0 != 0 || self.dimensions.1 != 0);
 
         let width = self.dimensions.0 as i32 * self.scale;
         let height = self.dimensions.1 as i32 * self.scale;
