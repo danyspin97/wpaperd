@@ -10,7 +10,7 @@ jobs:
       - uses: actions/checkout@v2
       - name: Install dependencies
         run:
-          sudo apt-get install --yes libwayland-dev
+          sudo apt-get install --yes libwayland-dev libegl1-mesa-dev
       - uses: actions-rs/toolchain@v1
         with:
           profile: minimal
@@ -27,7 +27,7 @@ jobs:
       - uses: actions/checkout@v2
       - name: Install dependencies
         run:
-          sudo apt-get install --yes libwayland-dev
+          sudo apt-get install --yes libwayland-dev libegl1-mesa-dev
       - uses: actions-rs/toolchain@v1
         with:
           profile: minimal
@@ -64,7 +64,7 @@ jobs:
         uses: actions/checkout@v2
 
       - name: Install Rust toolchain
-        uses: actions-rs/toolchain@16499b5e05bf2e26879000db0c1d13f7e13fa3af #@v1
+        uses: actions-rs/toolchain@v1
         with:
           profile: minimal
           toolchain: stable
