@@ -92,21 +92,26 @@ fn handle_message(buffer: &mut String, ustream: UnixStream, wpaperd: &mut Wpaper
             .surfaces
             .iter()
             .find(|surface| surface.name() == monitor)
-            .map(|surface| surface.current_img.clone())
+            .map(|surface| surface.image_picker.current_image())
             .map(|path| IpcResponse::CurrentWallpaper { path })
             .ok_or(IpcError::MonitorNotFound { monitor }),
         IpcMessage::AllWallpapers => Ok(IpcResponse::AllWallpapers {
             entries: wpaperd
                 .surfaces
                 .iter()
-                .map(|surface| (surface.name().to_string(), surface.current_img.clone()))
+                .map(|surface| {
+                    (
+                        surface.name().to_string(),
+                        surface.image_picker.current_image(),
+                    )
+                })
                 .collect::<Vec<(String, PathBuf)>>(),
         }),
 
         IpcMessage::PreviousWallpaper { monitors } => {
             check_monitors(wpaperd, &monitors).map(|_| {
                 for surface in collect_surfaces(wpaperd, monitors) {
-                    surface.previous_image();
+                    surface.image_picker.previous_image();
                 }
 
                 IpcResponse::Ok
@@ -115,7 +120,7 @@ fn handle_message(buffer: &mut String, ustream: UnixStream, wpaperd: &mut Wpaper
 
         IpcMessage::NextWallpaper { monitors } => check_monitors(wpaperd, &monitors).map(|_| {
             for surface in collect_surfaces(wpaperd, monitors) {
-                surface.next_image();
+                surface.image_picker.next_image();
             }
 
             IpcResponse::Ok

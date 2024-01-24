@@ -11,7 +11,7 @@ use serde::Deserialize;
 use crate::wallpaper_info::WallpaperInfo;
 
 #[derive(Deserialize)]
-pub struct WallpaperConfig {
+pub struct WallpapersConfig {
     #[serde(flatten)]
     data: HashMap<String, Arc<WallpaperInfo>>,
     #[serde(skip)]
@@ -22,7 +22,7 @@ pub struct WallpaperConfig {
     pub reloaded: bool,
 }
 
-impl WallpaperConfig {
+impl WallpapersConfig {
     pub fn new_from_path(path: &Path) -> Result<Self> {
         ensure!(path.exists(), "Configuration file {path:?} does not exists",);
         let mut config_manager: Self = toml::from_str(&fs::read_to_string(path)?)?;
@@ -54,7 +54,7 @@ Either remove `duration` or set `path` to a directory"
     }
 }
 
-impl PartialEq for WallpaperConfig {
+impl PartialEq for WallpapersConfig {
     fn eq(&self, other: &Self) -> bool {
         self.data == other.data
     }

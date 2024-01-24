@@ -18,7 +18,7 @@ use smithay_client_toolkit::{
 };
 
 use crate::surface::Surface;
-use crate::wallpaper_config::WallpaperConfig;
+use crate::wallpaper_config::WallpapersConfig;
 
 pub struct Wpaperd {
     pub compositor_state: CompositorState,
@@ -27,7 +27,7 @@ pub struct Wpaperd {
     pub layer_state: LayerShell,
     pub registry_state: RegistryState,
     pub surfaces: Vec<Surface>,
-    wallpaper_config: Arc<Mutex<WallpaperConfig>>,
+    wallpaper_config: Arc<Mutex<WallpapersConfig>>,
     use_scaled_window: bool,
     egl_display: egl::Display,
 }
@@ -37,7 +37,7 @@ impl Wpaperd {
         qh: &QueueHandle<Self>,
         globals: &GlobalList,
         _conn: &Connection,
-        wallpaper_config: Arc<Mutex<WallpaperConfig>>,
+        wallpaper_config: Arc<Mutex<WallpapersConfig>>,
         use_scaled_window: bool,
         egl_display: egl::Display,
     ) -> Result<Self> {
@@ -59,7 +59,7 @@ impl Wpaperd {
     pub fn reload_config(&mut self) -> Result<()> {
         let mut wallpaper_config = self.wallpaper_config.lock().unwrap();
         let new_config =
-            WallpaperConfig::new_from_path(&wallpaper_config.path).with_context(|| {
+            WallpapersConfig::new_from_path(&wallpaper_config.path).with_context(|| {
                 format!(
                     "reading configuration from file {:?}",
                     wallpaper_config.path
@@ -79,6 +79,18 @@ impl Wpaperd {
             }
         }
     }
+
+    pub fn surface_from_name(&mut self, name: &str) -> Option<&mut Surface> {
+        self.surfaces
+            .iter_mut()
+            .find(|surface| surface.name == name)
+    }
+    pub fn surface_from_wl_surface(
+        &mut self,
+        surface: &wl_surface::WlSurface,
+    ) -> Option<&mut Surface> {
+        self.surfaces.iter_mut().find(|s| surface == &s.surface)
+    }
 }
 
 impl CompositorHandler for Wpaperd {
@@ -89,13 +101,7 @@ impl CompositorHandler for Wpaperd {
         surface: &wl_surface::WlSurface,
         new_factor: i32,
     ) {
-        let surface = self
-            .surfaces
-            .iter_mut()
-            .enumerate()
-            .find(|(_, s)| surface == &s.surface)
-            .unwrap()
-            .1;
+        let surface = self.surface_from_wl_surface(surface).unwrap();
 
         // Ignore unnecessary updates
         if surface.scale != new_factor {
@@ -121,15 +127,10 @@ impl CompositorHandler for Wpaperd {
         surface: &wl_surface::WlSurface,
         new_transform: wl_output::Transform,
     ) {
-        let surface = self
-            .surfaces
-            .iter_mut()
-            .enumerate()
-            .find(|(_, s)| surface == &s.surface)
+        self.surface_from_wl_surface(surface)
             .unwrap()
-            .1;
-
-        surface.surface.set_buffer_transform(new_transform);
+            .surface
+            .set_buffer_transform(new_transform);
     }
 }
 
@@ -245,8 +246,6 @@ impl LayerShellHandler for Wpaperd {
             // Update dimensions
             surface.resize(Some(configure));
         }
-
-        surface.configured = true;
     }
 }
 

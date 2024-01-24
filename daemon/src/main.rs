@@ -1,4 +1,5 @@
 mod config;
+mod image_picker;
 mod ipc_server;
 mod render;
 mod socket;
@@ -10,14 +11,12 @@ mod wpaperd;
 extern crate khronos_egl as egl;
 
 use std::{
-    collections::HashSet,
     fs::File,
     io::Write,
     os::fd::FromRawFd,
     path::Path,
     process::exit,
     sync::{Arc, Mutex},
-    time::Instant,
 };
 
 use clap::Parser;
@@ -40,7 +39,7 @@ use wpaperd_ipc::socket_path;
 use xdg::BaseDirectories;
 
 use crate::config::Config;
-use crate::wallpaper_config::WallpaperConfig;
+use crate::wallpaper_config::WallpapersConfig;
 use crate::wpaperd::Wpaperd;
 
 fn run(config: Config, xdg_dirs: BaseDirectories) -> Result<()> {
@@ -57,7 +56,7 @@ fn run(config: Config, xdg_dirs: BaseDirectories) -> Result<()> {
         }
     };
 
-    let mut wallpaper_config = WallpaperConfig::new_from_path(&wallpaper_config_file)?;
+    let mut wallpaper_config = WallpapersConfig::new_from_path(&wallpaper_config_file)?;
     wallpaper_config.reloaded = false;
     let wallpaper_config = Arc::new(Mutex::new(wallpaper_config));
 
@@ -100,39 +99,20 @@ fn run(config: Config, xdg_dirs: BaseDirectories) -> Result<()> {
         egl_display,
     )?;
 
-    // Loop until the wayland server has sent us the configure event and
-    // scale for all the displays
+    // Loop until the wayland server has sent us the configure event for all the displays
     loop {
-        let now = Instant::now();
-        let mut configured = HashSet::new();
-        let all_configured = if !wpaperd.surfaces.is_empty() {
-            wpaperd
-                .surfaces
-                .iter_mut()
-                .map(|surface| {
-                    let res = surface
-                        .draw(&now)
-                        .with_context(|| format!("drawing surface for {}", surface.name()));
-                    match res {
-                        Ok(t) => t,
-                        // Do not panic here, there could be other display working
-                        Err(e) => error!("{e:?}"),
-                    }
-
-                    // We need to add the first timer here, so that in the next
-                    // loop we will always receive timeout events and create
-                    // them when that happens
-                    if surface.configured && !configured.contains(surface.name()) {
-                        configured.insert(surface.name());
-                        surface.set_next_duration(event_loop.handle());
-                    }
-
-                    surface.configured
-                })
-                .all(|b| b)
-        } else {
-            false
-        };
+        let all_configured = !wpaperd.surfaces.is_empty()
+            && wpaperd.surfaces.iter_mut().all(|surface| {
+                // We need to add the first timer here, so that in the next
+                // loop we will always receive timeout events and create
+                // them when that happens
+                if surface.is_configured() {
+                    surface.add_timer(event_loop.handle(), None);
+                    true
+                } else {
+                    false
+                }
+            });
 
         // Break to the actual event_loop
         if all_configured {
@@ -157,30 +137,11 @@ fn run(config: Config, xdg_dirs: BaseDirectories) -> Result<()> {
         if wallpaper_config.reloaded {
             wpaperd.surfaces.iter_mut().for_each(|surface| {
                 let wallpaper_info = wallpaper_config.get_output_by_name(surface.name());
-                if surface.update_wallpaper_info(wallpaper_info) {
-                    // The new config could have a new duration that is less
-                    // then the previous one. Add it to the event_loop
-                    surface.set_next_duration(event_loop.handle());
-                }
+                surface.update_wallpaper_info(event_loop.handle(), wallpaper_info);
             });
             wallpaper_config.reloaded = false;
         }
         drop(wallpaper_config);
-
-        let now = Instant::now();
-        // Iterate over all surfaces and check if we should change the
-        // wallpaper or draw it again
-        wpaperd.surfaces.iter_mut().for_each(|surface| {
-            surface.update_duration(event_loop.handle(), &now);
-            let res = surface
-                .draw(&now)
-                .with_context(|| format!("drawing surface for {}", surface.name()));
-            match res {
-                Ok(t) => t,
-                // Do not panic here, there could be other display working
-                Err(e) => error!("{e:?}"),
-            }
-        });
 
         event_loop
             .dispatch(None, &mut wpaperd)
@@ -236,7 +197,7 @@ fn main() -> Result<()> {
 
 fn setup_hotwatch(
     wallpaper_config_file: &Path,
-    wallpaper_config: Arc<Mutex<WallpaperConfig>>,
+    wallpaper_config: Arc<Mutex<WallpapersConfig>>,
     ev_tx: Sender<()>,
 ) -> Result<Hotwatch> {
     let mut hotwatch = Hotwatch::new().context("hotwatch failed to initialize")?;
@@ -245,7 +206,7 @@ fn setup_hotwatch(
             if let hotwatch::EventKind::Modify(_) = event.kind {
                 // When the config file has been written into
                 let mut wallpaper_config = wallpaper_config.lock().unwrap();
-                let new_config = WallpaperConfig::new_from_path(&wallpaper_config.path)
+                let new_config = WallpapersConfig::new_from_path(&wallpaper_config.path)
                     .with_context(|| {
                         format!(
                             "reading configuration from file {:?}",
