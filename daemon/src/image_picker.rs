@@ -2,71 +2,204 @@ use std::{path::PathBuf, sync::Arc, time::Instant};
 
 use color_eyre::eyre::{bail, ensure, Context};
 use image::{open, DynamicImage};
-use log::{info, warn};
+use log::warn;
 use walkdir::WalkDir;
 
 use crate::wallpaper_info::{Sorting, WallpaperInfo};
 
+#[derive(Debug)]
+enum ImagePickerAction {
+    Next,
+    Previous,
+}
+
+#[derive(Debug)]
+enum ImagePickerSorting {
+    Random {
+        drawn_images: Vec<PathBuf>,
+        tail: usize,
+        current: usize,
+    },
+    Ascending(usize),
+    Descending(usize),
+}
+
+impl ImagePickerSorting {
+    const RANDOM_DEFAULT_SIZE: usize = 10;
+    fn new_random() -> Self {
+        ImagePickerSorting::Random {
+            drawn_images: Vec::with_capacity(Self::RANDOM_DEFAULT_SIZE),
+            tail: 0,
+            current: Self::RANDOM_DEFAULT_SIZE - 1,
+        }
+    }
+}
+
 pub struct ImagePicker {
     current_img: PathBuf,
-    current_index: usize,
-    drawn_images: Vec<PathBuf>,
-    pub wallpaper_info: Arc<WallpaperInfo>,
     pub image_changed_instant: Instant,
+    action: Option<ImagePickerAction>,
+    sorting: ImagePickerSorting,
+    path: PathBuf,
 }
 
 impl ImagePicker {
     pub fn new(wallpaper_info: Arc<WallpaperInfo>) -> Self {
         Self {
             current_img: PathBuf::new(),
-            current_index: 0,
-            drawn_images: Vec::new(),
-            wallpaper_info,
             image_changed_instant: Instant::now(),
+            action: Some(ImagePickerAction::Next),
+            sorting: match wallpaper_info.sorting {
+                Sorting::Random => ImagePickerSorting::new_random(),
+                Sorting::Ascending => ImagePickerSorting::Ascending(usize::MAX),
+                Sorting::Descending => ImagePickerSorting::Descending(usize::MAX),
+            },
+            path: wallpaper_info.path.as_ref().unwrap().clone(),
         }
     }
 
-    /// Get index for the next image based on the sorting method
-    fn get_new_image_index(&self, files: &Vec<PathBuf>) -> usize {
-        match self.wallpaper_info.sorting {
-            Sorting::Random => rand::random::<usize>() % files.len(),
-            Sorting::Ascending => {
-                let idx = match files.binary_search(&self.current_img) {
-                    // Perform increment here, do validation/bounds checking below
-                    Ok(n) => n + 1,
-                    Err(err) => {
-                        info!(
-                            "Current image not found, defaulting to first image ({:?})",
-                            err
-                        );
-                        // set idx to > slice length so the guard sets it correctly for us
-                        files.len()
+    /// Get the next image based on the sorting method
+    fn get_image_path(&mut self, files: &Vec<PathBuf>) -> (usize, PathBuf) {
+        match (&self.action, &mut self.sorting) {
+            (None, _) if self.current_img.exists() => (usize::MAX, self.current_image()),
+            (
+                None | Some(ImagePickerAction::Next),
+                ImagePickerSorting::Random {
+                    drawn_images,
+                    tail,
+                    current,
+                },
+            ) if (*current + 1) % drawn_images.capacity() == *tail => {
+                let mut tries = 5;
+                loop {
+                    let index = rand::random::<usize>() % files.len();
+                    // search for an image that has not been drawn yet
+                    // fail after 5 tries
+                    if tries == 0 || !drawn_images.contains(&files[index]) {
+                        break (index, files[index].to_path_buf());
                     }
-                };
 
-                if idx >= files.len() {
-                    0
-                } else {
-                    idx
+                    tries = tries - 1;
                 }
             }
-            Sorting::Descending => {
-                let idx = match files.binary_search(&self.current_img) {
-                    Ok(n) => n,
-                    Err(err) => {
-                        info!(
-                            "Current image not found, defaulting to last image ({:?})",
-                            err
-                        );
-                        files.len()
+            (
+                None | Some(ImagePickerAction::Next),
+                ImagePickerSorting::Random {
+                    drawn_images,
+                    tail: _,
+                    current,
+                },
+            ) => {
+                *current = (*current + 1) % drawn_images.capacity();
+                (*current, drawn_images[*current].clone())
+            }
+            (
+                Some(ImagePickerAction::Previous),
+                ImagePickerSorting::Random {
+                    drawn_images,
+                    tail,
+                    current,
+                },
+            ) if current == tail
+                || (drawn_images.len() != drawn_images.capacity() && *current == 0) =>
+            {
+                (usize::MAX, self.current_image())
+            }
+            (
+                Some(ImagePickerAction::Previous),
+                ImagePickerSorting::Random {
+                    drawn_images,
+                    tail,
+                    current,
+                },
+            ) if drawn_images.len() == drawn_images.capacity() => {
+                let mut i = *current;
+                loop {
+                    i = (i + drawn_images.capacity() - 1) % drawn_images.capacity();
+                    let path = &drawn_images[i];
+                    if path.exists() {
+                        // we update here in case the image could not be read and we want to start
+                        // from this index next time
+                        *current = i;
+                        break (i, path.clone());
                     }
-                };
 
-                // Here, bounds checking is strictly ==, as we cannot go lower than 0 for usize
-                if idx == 0 {
-                    files.len() - 1
-                } else {
-                    idx - 1
+                    // this is the last image
+                    if i == *tail {
+                        break (*current, self.current_image());
+                    }
+                }
+            }
+            (
+                Some(ImagePickerAction::Previous),
+                ImagePickerSorting::Random {
+                    drawn_images,
+                    tail,
+                    current,
+                },
+            ) => drawn_images
+                .iter()
+                .enumerate()
+                .rev()
+                .skip(*tail - *current)
+                .find(|(_, img)| img.exists())
+                .map(|(i, img)| {
+                    *current = i;
+                    (i, img.clone())
+                })
+                .unwrap_or_else(|| (*current, self.current_img.clone())),
+            // The current image is still in the same place
+            (Some(ImagePickerAction::Next), ImagePickerSorting::Descending(current_index))
+            | (Some(ImagePickerAction::Previous), ImagePickerSorting::Ascending(current_index))
+                if files.get(*current_index) == Some(&self.current_img) =>
+            {
+                // Start from the end
+                files
+                    .get(*current_index - 1)
+                    .map(|p| (*current_index - 1, p.to_path_buf()))
+                    .unwrap_or_else(|| (files.len(), files.last().unwrap().to_path_buf()))
+            }
+            // The image index is different
+            (
+                None | Some(ImagePickerAction::Next),
+                ImagePickerSorting::Descending(current_index),
+            )
+            | (
+                None | Some(ImagePickerAction::Previous),
+                ImagePickerSorting::Ascending(current_index),
+            ) => match files.binary_search(&self.current_img) {
+                Ok(new_index) => files
+                    .get(new_index - 1)
+                    .map(|p| (new_index - 1, p.to_path_buf()))
+                    .unwrap_or_else(|| (files.len(), files.last().unwrap().to_path_buf())),
+                Err(_err) => files
+                    .get(*current_index - 1)
+                    .map(|p| (*current_index - 1, p.to_path_buf()))
+                    .unwrap_or_else(|| (files.len(), files.last().unwrap().to_path_buf())),
+            },
+            // The current image is still in the same place
+            (Some(ImagePickerAction::Previous), ImagePickerSorting::Descending(current_index))
+            | (Some(ImagePickerAction::Next), ImagePickerSorting::Ascending(current_index))
+                if files.get(*current_index) == Some(&self.current_img) =>
+            {
+                // Start from the end
+                files
+                    .get(*current_index + 1)
+                    .map(|p| (*current_index + 1, p.to_path_buf()))
+                    .unwrap_or_else(|| (0, files.first().unwrap().to_path_buf()))
+            }
+            // The image index is different
+            (Some(ImagePickerAction::Previous), ImagePickerSorting::Descending(current_index))
+            | (Some(ImagePickerAction::Next), ImagePickerSorting::Ascending(current_index)) => {
+                match files.binary_search(&self.current_img) {
+                    Ok(new_index) => files
+                        .get(new_index + 1)
+                        .map(|p| (new_index + 1, p.to_path_buf()))
+                        .unwrap_or_else(|| (0, files.first().unwrap().to_path_buf())),
+                    Err(_err) => files
+                        .get(*current_index + 1)
+                        .map(|p| (*current_index + 1, p.to_path_buf()))
+                        .unwrap_or_else(|| (0, files.first().unwrap().to_path_buf())),
                 }
             }
         }
@@ -89,40 +222,59 @@ impl ImagePicker {
     }
 
     pub fn get_image(&mut self) -> Result<DynamicImage, color_eyre::Report> {
-        let path = self.wallpaper_info.path.as_ref().unwrap();
-        let mut tries = 0;
+        let path = self.path.to_path_buf();
         if path.is_dir() {
+            let mut tries = 0;
             loop {
-                let files = self.get_image_files_from_dir(path);
+                let files = self.get_image_files_from_dir(&path);
 
                 // There are no images, forcefully break out of the loop
                 if files.is_empty() {
                     bail!("Directory {path:?} does not contain any valid image files.");
                 }
 
-                let is_below_len =
-                    !self.drawn_images.is_empty() && self.current_index < self.drawn_images.len();
-
-                let img_path = if is_below_len && self.drawn_images[self.current_index].is_file() {
-                    self.drawn_images[self.current_index].clone()
-                } else {
-                    // Select new image based on sorting method
-                    let index = self.get_new_image_index(&files);
-                    files[index].clone()
-                };
-
-                log::trace!("{img_path:?}");
-
+                log::debug!("before: {:?}\n{:?}", self.action, self.sorting);
+                let (index, img_path) = self.get_image_path(&files);
                 match open(&img_path).with_context(|| format!("opening the image {img_path:?}")) {
                     Ok(image) => {
                         // TODO
                         // info!("New image for monitor {:?}: {img_path:?}", self.name());
 
-                        if !self.drawn_images.contains(&img_path) {
-                            self.drawn_images.push(img_path.clone());
-                            self.current_index = self.drawn_images.len() - 1;
-                        };
-
+                        match (self.action.take(), &mut self.sorting) {
+                            (
+                                Some(ImagePickerAction::Next),
+                                ImagePickerSorting::Random {
+                                    drawn_images,
+                                    tail,
+                                    current,
+                                },
+                                // if the current image is the last one in the list
+                            ) if (*current + 1) % drawn_images.capacity() == *tail => {
+                                // Use drawn_images as a circular buffer
+                                if drawn_images.len() == drawn_images.capacity() {
+                                    debug_assert!(tail != current);
+                                    *current = (*current + 1) % drawn_images.len();
+                                    drawn_images[*current] = img_path.clone();
+                                    if current == tail {
+                                        *tail = (*tail + 1) % drawn_images.capacity();
+                                    }
+                                } else {
+                                    drawn_images.push(img_path.clone());
+                                    *current = *tail;
+                                    *tail = (*tail + 1) % drawn_images.capacity();
+                                }
+                            }
+                            (Some(ImagePickerAction::Next), ImagePickerSorting::Random { .. }) => {}
+                            (
+                                None | Some(ImagePickerAction::Previous),
+                                ImagePickerSorting::Random { .. },
+                            ) => {}
+                            (
+                                _,
+                                ImagePickerSorting::Ascending(current_index)
+                                | ImagePickerSorting::Descending(current_index),
+                            ) => *current_index = index,
+                        }
                         self.current_img = img_path;
 
                         break Ok(image);
@@ -139,37 +291,79 @@ impl ImagePicker {
                 );
             }
         } else {
-            open(path).with_context(|| format!("opening the image {:?}", &path))
+            open(&path).with_context(|| format!("opening the image {:?}", &path))
         }
     }
 
     /// Update wallpaper by going down 1 index through the cached image paths
     /// Expiry timer reset even if already at the first cached image
     pub fn previous_image(&mut self) {
-        if self.current_index == 0 {
-            return;
-        };
-
-        self.image_changed_instant = Instant::now();
-
-        self.current_index -= 1;
+        self.action = Some(ImagePickerAction::Previous);
     }
 
     /// Update wallpaper by going up 1 index through the cached image paths
     pub fn next_image(&mut self) {
-        self.image_changed_instant = Instant::now();
-        if self.current_index > self.drawn_images.len() {
-            return;
-        };
-
-        self.current_index += 1;
+        self.action = Some(ImagePickerAction::Next);
     }
 
     pub fn current_image(&self) -> PathBuf {
         self.current_img.clone()
     }
 
-    pub fn apply_shadow(&self) -> bool {
-        self.wallpaper_info.apply_shadow.unwrap_or(false)
+    /// Return true if the path changed
+    pub fn update(&mut self, wallpaper_info: &WallpaperInfo) -> bool {
+        let path_changed = if let Some(path) = wallpaper_info.path.as_ref() {
+            if self.path != *path {
+                self.path = path.clone();
+                // Change the image because the path has changed
+                self.action = Some(ImagePickerAction::Next);
+                true
+            } else {
+                false
+            }
+        } else {
+            false
+        };
+        match (&mut self.sorting, wallpaper_info.sorting) {
+            (
+                ImagePickerSorting::Random { .. } | ImagePickerSorting::Descending(_),
+                Sorting::Ascending,
+            ) => self.sorting = ImagePickerSorting::Ascending(usize::MAX),
+            (
+                ImagePickerSorting::Random { .. } | ImagePickerSorting::Ascending(_),
+                Sorting::Descending,
+            ) => self.sorting = ImagePickerSorting::Descending(usize::MAX),
+            (
+                ImagePickerSorting::Descending(_) | ImagePickerSorting::Ascending(_),
+                Sorting::Random,
+            ) if path_changed => {
+                // If the path was changed, use a new random sorting
+                self.sorting = ImagePickerSorting::new_random();
+            }
+            (
+                ImagePickerSorting::Descending(_) | ImagePickerSorting::Ascending(_),
+                Sorting::Random,
+            ) => {
+                // if the path was not changed, use the current image as the first image of
+                // the drawn_images
+                self.sorting = ImagePickerSorting::Random {
+                    drawn_images: {
+                        let mut v = Vec::with_capacity(ImagePickerSorting::RANDOM_DEFAULT_SIZE);
+                        v.push(self.current_img.clone());
+                        v
+                    },
+                    tail: 1,
+                    current: 0,
+                };
+            }
+            // The path has changed, use a new random sorting, otherwise we reuse the current
+            // drawn_images
+            (ImagePickerSorting::Random { .. }, Sorting::Random) if path_changed => {
+                self.sorting = ImagePickerSorting::new_random();
+            }
+            // No need to update the sorting if it's the same
+            (_, _) => {}
+        }
+        path_changed
     }
 }

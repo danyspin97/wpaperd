@@ -99,7 +99,7 @@ impl Surface {
     }
 
     fn apply_shadow(&self, image: &mut ImageBuffer<Rgba<u8>, Vec<u8>>, width: u32) {
-        if self.image_picker.apply_shadow() {
+        if self.wallpaper_info.apply_shadow.unwrap_or_default() {
             const GRADIENT_HEIGHT: u32 = 11;
             type RgbaImage = image::ImageBuffer<image::Rgba<u8>, Vec<u8>>;
             let gradient = DynamicImage::ImageRgba8(
@@ -159,13 +159,19 @@ impl Surface {
         if self.wallpaper_info != wallpaper_info {
             // Put the new value in place
             std::mem::swap(&mut self.wallpaper_info, &mut wallpaper_info);
+            let path_changed = self.image_picker.update(&*self.wallpaper_info);
             if self.wallpaper_info.duration != wallpaper_info.duration {
                 match (self.wallpaper_info.duration, wallpaper_info.duration) {
-                    (None, None) => {}
+                    (None, None) => {
+                        unreachable!()
+                    }
                     // There was a duration before but now it has been removed
                     (None, Some(_)) => {
                         if let Some(registration_token) = self.event_source.take() {
                             handle.remove(registration_token);
+                        }
+                        if path_changed {
+                            self.draw().unwrap();
                         }
                     }
                     // There wasn't a duration before but now it has been added or it has changed
@@ -174,15 +180,26 @@ impl Surface {
                             handle.remove(registration_token);
                         }
 
-                        if let Some(remaining_time) = remaining_duration(
-                            new_duration,
-                            self.image_picker.image_changed_instant,
+                        // if the path has not changed or the duration has changed
+                        // and the remaining time is great than 0
+                        if let (false, Some(remaining_time)) = (
+                            path_changed,
+                            remaining_duration(
+                                new_duration,
+                                self.image_picker.image_changed_instant,
+                            ),
                         ) {
                             self.add_timer(handle, Some(Timer::from_duration(remaining_time)));
                         } else {
+                            // otherwise draw the image immediately, the next timer
+                            // will be set to the new duration
                             self.add_timer(handle, Some(Timer::immediate()));
                         }
                     }
+                }
+            } else {
+                if path_changed {
+                    self.draw().unwrap();
                 }
             }
         }
