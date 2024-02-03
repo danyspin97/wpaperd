@@ -14,7 +14,6 @@ use crate::image_picker::ImagePicker;
 use crate::render::{EglContext, Renderer};
 use crate::wallpaper_info::WallpaperInfo;
 use crate::wpaperd::Wpaperd;
-use crate::FILTER;
 
 pub struct Surface {
     pub name: String,
@@ -71,13 +70,7 @@ impl Surface {
 
         let image = self.image_picker.get_image()?;
 
-        let mut image = image
-            .resize_to_fill(
-                width.try_into()?,
-                height.try_into()?,
-                *FILTER.get().unwrap(),
-            )
-            .into_rgba8();
+        let mut image = image.into_rgba8();
 
         self.apply_shadow(&mut image, width.try_into()?);
 
