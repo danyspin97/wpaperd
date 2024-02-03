@@ -253,8 +253,12 @@ impl Renderer {
                 // buffer.as_ptr() as *const std::ffi::c_void,
             );
             self.check_error("defining the texture")?;
+            self.gl.GenerateMipmap(gl::TEXTURE_2D);
+            self.check_error("generating the mipmap")?;
             self.gl.ActiveTexture(gl::TEXTURE0);
-            self.check_error("enabling the texture")?;
+            self.check_error("activating the texture")?;
+            self.gl.BindTexture(gl::TEXTURE_2D, texture);
+            self.check_error("binding textures")?;
             let loc = self
                 .gl
                 .GetUniformLocation(self.program, b"u_texture\0".as_ptr() as *const _);
@@ -380,28 +384,30 @@ static VERTEX_DATA: [f32; 24] = [
 ];
 
 const VERTEX_SHADER_SOURCE: &[u8] = b"
-#version 100
+#version 320 es
 precision mediump float;
 
-attribute vec2 position;
-attribute vec2 texcoord;
+layout (location = 0) in vec2 aPosition;
+layout (location = 1) in vec2 aTexCoord;
 
-varying vec2 v_texcoord;
+out vec2 v_texcoord;
 
 void main() {
-    gl_Position = vec4(position, 1.0, 1.0);
-    v_texcoord = texcoord;
+    gl_Position = vec4(aPosition, 1.0, 1.0);
+    v_texcoord = aTexCoord;
 }
 \0";
 
 const FRAGMENT_SHADER_SOURCE: &[u8] = b"
-#version 100
+#version 320 es
 precision mediump float;
+out vec4 FragColor;
+
+in vec2 v_texcoord;
 
 uniform sampler2D u_texture;
-varying vec2 v_texcoord;
 
 void main() {
-    gl_FragColor = texture2D(u_texture, v_texcoord);
+    FragColor = texture(u_texture, v_texcoord);
 }
 \0";
