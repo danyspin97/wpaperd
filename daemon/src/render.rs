@@ -255,10 +255,6 @@ impl Renderer {
             self.check_error("defining the texture")?;
             self.gl.GenerateMipmap(gl::TEXTURE_2D);
             self.check_error("generating the mipmap")?;
-            self.gl.ActiveTexture(gl::TEXTURE0);
-            self.check_error("activating the texture")?;
-            self.gl.BindTexture(gl::TEXTURE_2D, texture);
-            self.check_error("binding textures")?;
             let loc = self
                 .gl
                 .GetUniformLocation(self.program, b"u_texture\0".as_ptr() as *const _);
@@ -271,8 +267,6 @@ impl Renderer {
             self.gl
                 .TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, gl::LINEAR as i32);
             self.check_error("defining the texture mag filter")?;
-            // Wait for the previous commands to finish before reading from the framebuffer.
-            self.gl.Finish();
         }
 
         self.gl.UseProgram(self.program);
@@ -282,10 +276,6 @@ impl Renderer {
         self.gl.BindBuffer(gl::ARRAY_BUFFER, self.vbo);
         self.check_error("binding the buffer")?;
 
-        self.gl.ClearColor(0.1, 0.1, 0.1, 0.9);
-        self.check_error("calling ClearColor")?;
-        self.gl.Clear(gl::COLOR_BUFFER_BIT);
-        self.check_error("clearing the color buffer bit")?;
         self.gl.DrawArrays(gl::TRIANGLES, 0, 6);
         self.check_error("drawing the triangles")?;
 
