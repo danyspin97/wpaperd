@@ -214,6 +214,13 @@ impl Renderer {
         gl.EnableVertexAttribArray(TEX_ATTRIB as gl::types::GLuint);
         gl_check!(gl, "enabling the texture attribute for the vertex");
 
+        gl.UseProgram(program);
+        gl_check!(gl, "calling UseProgram");
+        gl.BindVertexArray(vao);
+        gl_check!(gl, "binding the vertex array");
+        gl.BindBuffer(gl::ARRAY_BUFFER, vbo);
+        gl_check!(gl, "binding the buffer");
+
         Ok(Self {
             program,
             vao,
@@ -229,15 +236,20 @@ impl Renderer {
         Ok(())
     }
 
-    pub unsafe fn draw(&self, image: DynamicImage) -> Result<()> {
-        // self.egl_context.make_current().context("while trying to draw the image")?;
+    pub unsafe fn draw(&self) -> Result<()> {
+        self.gl.DrawArrays(gl::TRIANGLES, 0, 6);
+        self.check_error("drawing the triangles")?;
 
-        // self.resize(image.width().try_into().unwrap(), image.height().try_into().unwrap());
+        Ok(())
+    }
 
+    pub fn load_texture(&self, image: DynamicImage) -> Result<()> {
         let mut texture = 0;
-        unsafe {
+        Ok(unsafe {
             self.gl.GenTextures(1, &mut texture);
             self.check_error("generating textures")?;
+            self.gl.ActiveTexture(gl::TEXTURE0);
+            self.check_error("activating textures")?;
             self.gl.BindTexture(gl::TEXTURE_2D, texture);
             self.check_error("binding textures")?;
             self.gl.TexImage2D(
@@ -250,7 +262,6 @@ impl Renderer {
                 gl::RGBA,
                 gl::UNSIGNED_BYTE,
                 image.as_bytes().as_ptr() as *const c_void,
-                // buffer.as_ptr() as *const std::ffi::c_void,
             );
             self.check_error("defining the texture")?;
             self.gl.GenerateMipmap(gl::TEXTURE_2D);
@@ -267,19 +278,7 @@ impl Renderer {
             self.gl
                 .TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, gl::LINEAR as i32);
             self.check_error("defining the texture mag filter")?;
-        }
-
-        self.gl.UseProgram(self.program);
-        self.check_error("calling UseProgram")?;
-        self.gl.BindVertexArray(self.vao);
-        self.check_error("binding the vertex array")?;
-        self.gl.BindBuffer(gl::ARRAY_BUFFER, self.vbo);
-        self.check_error("binding the buffer")?;
-
-        self.gl.DrawArrays(gl::TRIANGLES, 0, 6);
-        self.check_error("drawing the triangles")?;
-
-        Ok(())
+        })
     }
 
     pub fn clear_after_draw(&self) -> Result<()> {
@@ -291,8 +290,6 @@ impl Renderer {
             self.check_error("unbinding the framebuffer")?;
             self.gl.BindRenderbuffer(gl::RENDERBUFFER, 0);
             self.check_error("unbinding the render buffer")?;
-            self.gl.BindTexture(gl::TEXTURE_2D, 0);
-            self.check_error("undinding the texture")?;
         }
 
         Ok(())

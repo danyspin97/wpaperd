@@ -221,9 +221,9 @@ impl ImagePicker {
             .collect()
     }
 
-    pub fn get_image(&mut self) -> Result<DynamicImage, color_eyre::Report> {
+    pub fn get_image(&mut self) -> Result<Option<DynamicImage>, color_eyre::Report> {
         let path = self.path.to_path_buf();
-        if path.is_dir() {
+        Ok(if path.is_dir() {
             let mut tries = 0;
             loop {
                 let files = self.get_image_files_from_dir(&path);
@@ -235,6 +235,9 @@ impl ImagePicker {
 
                 log::debug!("before: {:?}\n{:?}", self.action, self.sorting);
                 let (index, img_path) = self.get_image_path(&files);
+                if img_path == self.current_img {
+                    break None;
+                }
                 match open(&img_path).with_context(|| format!("opening the image {img_path:?}")) {
                     Ok(image) => {
                         // TODO
@@ -275,9 +278,10 @@ impl ImagePicker {
                                 | ImagePickerSorting::Descending(current_index),
                             ) => *current_index = index,
                         }
+
                         self.current_img = img_path;
 
-                        break Ok(image);
+                        break Some(image);
                     }
                     Err(err) => {
                         warn!("{err:?}");
@@ -291,8 +295,16 @@ impl ImagePicker {
                 );
             }
         } else {
-            open(&path).with_context(|| format!("opening the image {:?}", &path))
-        }
+            if path == self.current_img {
+                None
+            } else {
+                self.current_img = path;
+                Some(
+                    open(&self.current_img)
+                        .with_context(|| format!("opening the image {:?}", &self.current_img))?,
+                )
+            }
+        })
     }
 
     /// Update wallpaper by going down 1 index through the cached image paths

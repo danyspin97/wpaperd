@@ -68,15 +68,15 @@ impl Surface {
         let width = self.dimensions.0 as i32 * self.scale;
         let height = self.dimensions.1 as i32 * self.scale;
 
-        let image = self.image_picker.get_image()?;
+        if let Some(image) = self.image_picker.get_image()? {
+            let image = image.into_rgba8();
+            self.renderer.load_texture(image.into())?;
 
-        let mut image = image.into_rgba8();
-
-        self.apply_shadow(&mut image, width.try_into()?);
-
+            // self.apply_shadow(&mut image, width.try_into()?);
+        }
         self.egl_context.make_current()?;
 
-        unsafe { self.renderer.draw(image.into())? };
+        unsafe { self.renderer.draw()? };
 
         self.egl_context.swap_buffers()?;
 
