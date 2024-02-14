@@ -295,9 +295,10 @@ impl Renderer {
         Ok(())
     }
 
-    pub fn resize(&self, width: i32, height: i32) {
+    pub fn resize(&self, width: i32, height: i32) -> Result<()> {
         unsafe {
             self.gl.Viewport(0, 0, width, height);
+            self.check_error("resizing the viewport")
         }
     }
 }

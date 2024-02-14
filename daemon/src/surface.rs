@@ -68,19 +68,25 @@ impl Surface {
         let width = self.dimensions.0 as i32 * self.scale;
         let height = self.dimensions.1 as i32 * self.scale;
 
+        // Use the correct context before loading the texture and drawing
+        self.egl_context.make_current()?;
+
         if let Some(image) = self.image_picker.get_image()? {
             let image = image.into_rgba8();
             self.renderer.load_texture(image.into())?;
 
             // self.apply_shadow(&mut image, width.try_into()?);
         }
-        self.egl_context.make_current()?;
 
         unsafe { self.renderer.draw()? };
 
+        self.renderer.clear_after_draw()?;
         self.egl_context.swap_buffers()?;
 
-        self.renderer.clear_after_draw()?;
+        // Reset the context
+        egl::API
+            .make_current(self.egl_context.display, None, None, None)
+            .unwrap();
 
         // Mark the entire surface as damaged
         self.surface.damage_buffer(0, 0, width, height);
@@ -131,7 +137,9 @@ impl Surface {
         let width = TryInto::<i32>::try_into(self.dimensions.0).unwrap() * self.scale;
         let height = TryInto::<i32>::try_into(self.dimensions.1).unwrap() * self.scale;
         self.egl_context.resize(&self.surface, width, height);
-        self.renderer.resize(width, height);
+        // Resize the gl viewport
+        self.egl_context.make_current().unwrap();
+        self.renderer.resize(width, height).unwrap();
 
         // Draw the surface again
         self.draw().unwrap();
