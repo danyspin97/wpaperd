@@ -236,7 +236,7 @@ impl LayerShellHandler for Wpaperd {
             // We always know the surface that it is being configured
             .unwrap();
 
-        if surface.dimensions != configure.new_size {
+        if (surface.width, surface.height) != configure.new_size {
             // Update dimensions
             surface.resize(Some(configure));
         }

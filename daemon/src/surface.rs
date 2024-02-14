@@ -20,7 +20,8 @@ pub struct Surface {
     pub surface: wl_surface::WlSurface,
     pub output: WlOutput,
     pub layer: LayerSurface,
-    pub dimensions: (u32, u32),
+    pub width: u32,
+    pub height: u32,
     pub scale: i32,
     egl_context: EglContext,
     renderer: Renderer,
@@ -50,7 +51,8 @@ impl Surface {
             name,
             output,
             layer,
-            dimensions: (0, 0),
+            width: 0,
+            height: 0,
             scale: scale_factor,
             surface,
             egl_context,
@@ -63,10 +65,10 @@ impl Surface {
 
     /// Returns true if something has been drawn to the surface
     pub fn draw(&mut self) -> Result<()> {
-        debug_assert!(self.dimensions.0 != 0 || self.dimensions.1 != 0);
+        debug_assert!(self.width != 0 || self.height != 0);
 
-        let width = self.dimensions.0 as i32 * self.scale;
-        let height = self.dimensions.1 as i32 * self.scale;
+        let width = self.width as i32 * self.scale;
+        let height = self.height as i32 * self.scale;
 
         // Use the correct context before loading the texture and drawing
         self.egl_context.make_current()?;
@@ -133,9 +135,11 @@ impl Surface {
     /// Resize the surface
     /// configure: None means that the scale factor has changed
     pub fn resize(&mut self, configure: Option<LayerSurfaceConfigure>) {
-        self.dimensions = configure.map(|c| c.new_size).unwrap_or(self.dimensions);
-        let width = TryInto::<i32>::try_into(self.dimensions.0).unwrap() * self.scale;
-        let height = TryInto::<i32>::try_into(self.dimensions.1).unwrap() * self.scale;
+        if let Some(configure) = configure {
+            (self.width, self.height) = configure.new_size;
+        }
+        let width = self.width as i32 * self.scale;
+        let height = self.height as i32 * self.scale;
         self.egl_context.resize(&self.surface, width, height);
         // Resize the gl viewport
         self.egl_context.make_current().unwrap();
@@ -147,7 +151,7 @@ impl Surface {
 
     /// Check that the dimensions are valid
     pub(crate) fn is_configured(&self) -> bool {
-        self.dimensions.0 != 0 && self.dimensions.1 != 0
+        self.width != 0 && self.height != 0
     }
 
     /// Update the wallpaper_info of this Surface
