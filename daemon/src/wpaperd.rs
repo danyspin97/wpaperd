@@ -126,10 +126,10 @@ impl CompositorHandler for Wpaperd {
         surface: &wl_surface::WlSurface,
         new_transform: wl_output::Transform,
     ) {
-        self.surface_from_wl_surface(surface)
-            .unwrap()
-            .surface
-            .set_buffer_transform(new_transform);
+        // self.surface_from_wl_surface(surface)
+        //     .unwrap()
+        //     .surface
+        //     .set_buffer_transform(new_transform);
     }
 }
 
