@@ -34,6 +34,8 @@ pub struct Renderer {
     // milliseconds time for the animation
     animation_time: u32,
     pub time_started: u32,
+    texture1: gl::types::GLuint,
+    texture2: gl::types::GLuint,
 }
 
 // Macro that check the error code of the last OpenGL call and returns a Result.
@@ -242,6 +244,8 @@ impl Renderer {
             reverse: true,
             time_started: 0,
             animation_time: 3000,
+            texture1: 0,
+            texture2: 0,
         };
 
         renderer.load_texture(image)?;
@@ -315,6 +319,11 @@ impl Renderer {
                 self.gl.Uniform1i(1, 1);
             }
             self.reverse = !self.reverse;
+
+            // Delete the old texture and update order
+            std::mem::swap(&mut self.texture1, &mut self.texture2);
+            self.gl.DeleteTextures(1, &mut self.texture2);
+            self.texture2 = texture;
         })
     }
 
