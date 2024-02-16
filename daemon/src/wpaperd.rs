@@ -94,7 +94,7 @@ impl CompositorHandler for Wpaperd {
     fn scale_factor_changed(
         &mut self,
         _conn: &Connection,
-        _qh: &QueueHandle<Self>,
+        qh: &QueueHandle<Self>,
         surface: &wl_surface::WlSurface,
         new_factor: i32,
     ) {
@@ -107,16 +107,25 @@ impl CompositorHandler for Wpaperd {
             surface.scale = new_factor;
             surface.surface.set_buffer_scale(new_factor);
             surface.resize(None);
+            surface.queue_draw(qh);
         }
     }
 
     fn frame(
         &mut self,
         _conn: &Connection,
-        _qh: &QueueHandle<Self>,
-        _surface: &wl_surface::WlSurface,
-        _time: u32,
+        qh: &QueueHandle<Self>,
+        surface: &wl_surface::WlSurface,
+        time: u32,
     ) {
+        let surface = self.surface_from_wl_surface(surface).unwrap();
+
+        match surface.draw(qh, time) {
+            Ok(_) => {}
+            Err(err) => {
+                log::error!("Error drawing surface: {}", err);
+            }
+        }
     }
 
     fn transform_changed(
@@ -224,7 +233,7 @@ impl LayerShellHandler for Wpaperd {
     fn configure(
         &mut self,
         _conn: &Connection,
-        _qh: &QueueHandle<Self>,
+        qh: &QueueHandle<Self>,
         layer: &LayerSurface,
         configure: LayerSurfaceConfigure,
         _serial: u32,
@@ -239,6 +248,7 @@ impl LayerShellHandler for Wpaperd {
         if (surface.width, surface.height) != configure.new_size {
             // Update dimensions
             surface.resize(Some(configure));
+            surface.queue_draw(qh);
         }
     }
 }

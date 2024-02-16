@@ -8,6 +8,7 @@ use smithay_client_toolkit::reexports::calloop::timer::{TimeoutAction, Timer};
 use smithay_client_toolkit::reexports::calloop::{LoopHandle, RegistrationToken};
 use smithay_client_toolkit::reexports::client::protocol::wl_output::WlOutput;
 use smithay_client_toolkit::reexports::client::protocol::wl_surface;
+use smithay_client_toolkit::reexports::client::QueueHandle;
 use smithay_client_toolkit::shell::wlr_layer::{LayerSurface, LayerSurfaceConfigure};
 
 use crate::image_picker::ImagePicker;
@@ -47,6 +48,11 @@ impl Surface {
         // Commit the surface
         surface.commit();
 
+        let mut image_picker = ImagePicker::new(wallpaper_info.clone());
+
+        let image = image_picker.get_image().unwrap().unwrap().into_rgba8();
+        let renderer = unsafe { Renderer::new(image.into()).unwrap() };
+
         Self {
             name,
             output,
@@ -56,15 +62,15 @@ impl Surface {
             scale: scale_factor,
             surface,
             egl_context,
-            renderer: unsafe { Renderer::new().unwrap() },
-            image_picker: ImagePicker::new(wallpaper_info.clone()),
+            renderer,
+            image_picker,
             event_source: None,
             wallpaper_info,
         }
     }
 
     /// Returns true if something has been drawn to the surface
-    pub fn draw(&mut self) -> Result<()> {
+    pub fn draw(&mut self, qh: &QueueHandle<Wpaperd>, time: u32) -> Result<()> {
         debug_assert!(self.width != 0 || self.height != 0);
 
         let width = self.width as i32 * self.scale;
@@ -76,11 +82,19 @@ impl Surface {
         if let Some(image) = self.image_picker.get_image()? {
             let image = image.into_rgba8();
             self.renderer.load_texture(image.into())?;
+            self.renderer.start_animation(time);
 
             // self.apply_shadow(&mut image, width.try_into()?);
         }
+        if self.renderer.time_started == 0 {
+            self.renderer.start_animation(time);
+        }
 
-        unsafe { self.renderer.draw()? };
+        unsafe { self.renderer.draw(time)? };
+
+        if self.is_drawing_animation(time) {
+            self.queue_draw(qh);
+        }
 
         self.renderer.clear_after_draw()?;
         self.egl_context.swap_buffers()?;
@@ -144,9 +158,6 @@ impl Surface {
         // Resize the gl viewport
         self.egl_context.make_current().unwrap();
         self.renderer.resize(width, height).unwrap();
-
-        // Draw the surface again
-        self.draw().unwrap();
     }
 
     /// Check that the dimensions are valid
@@ -159,6 +170,7 @@ impl Surface {
     pub fn update_wallpaper_info(
         &mut self,
         handle: LoopHandle<Wpaperd>,
+        qh: &QueueHandle<Wpaperd>,
         mut wallpaper_info: Arc<WallpaperInfo>,
     ) {
         if self.wallpaper_info != wallpaper_info {
@@ -176,7 +188,7 @@ impl Surface {
                             handle.remove(registration_token);
                         }
                         if path_changed {
-                            self.draw().unwrap();
+                            self.queue_draw(qh);
                         }
                     }
                     // There wasn't a duration before but now it has been added or it has changed
@@ -187,24 +199,26 @@ impl Surface {
 
                         // if the path has not changed or the duration has changed
                         // and the remaining time is great than 0
-                        if let (false, Some(remaining_time)) = (
+                        let timer = if let (false, Some(remaining_time)) = (
                             path_changed,
                             remaining_duration(
                                 new_duration,
                                 self.image_picker.image_changed_instant,
                             ),
                         ) {
-                            self.add_timer(handle, Some(Timer::from_duration(remaining_time)));
+                            Some(Timer::from_duration(remaining_time))
                         } else {
                             // otherwise draw the image immediately, the next timer
                             // will be set to the new duration
-                            self.add_timer(handle, Some(Timer::immediate()));
-                        }
+                            Some(Timer::immediate())
+                        };
+
+                        self.add_timer(timer, handle, qh.clone());
                     }
                 }
             } else {
                 if path_changed {
-                    self.draw().unwrap();
+                    self.queue_draw(qh);
                 }
             }
         }
@@ -212,7 +226,12 @@ impl Surface {
 
     /// Add a new timer in the event_loop for the current duration
     /// Stop if there is already a timer added
-    pub fn add_timer(&mut self, handle: LoopHandle<Wpaperd>, timer: Option<Timer>) {
+    pub fn add_timer(
+        &mut self,
+        timer: Option<Timer>,
+        handle: LoopHandle<Wpaperd>,
+        qh: QueueHandle<Wpaperd>,
+    ) {
         if let Some(duration) = self.wallpaper_info.duration {
             let timer = timer.unwrap_or(Timer::from_duration(duration));
             if self.event_source.is_some() {
@@ -241,7 +260,7 @@ impl Surface {
                             } else {
                                 // Change the drawn image
                                 surface.image_picker.next_image();
-                                surface.draw().unwrap();
+                                surface.queue_draw(&qh);
                                 TimeoutAction::ToDuration(duration)
                             }
                         } else {
@@ -253,6 +272,15 @@ impl Surface {
 
             self.event_source = Some(registration_token);
         }
+    }
+
+    pub fn is_drawing_animation(&self, time: u32) -> bool {
+        self.renderer.is_drawing_animation(time)
+    }
+
+    pub(crate) fn queue_draw(&self, qh: &QueueHandle<Wpaperd>) {
+        self.surface.frame(qh, self.surface.clone());
+        self.surface.commit();
     }
 }
 

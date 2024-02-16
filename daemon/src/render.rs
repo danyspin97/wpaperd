@@ -24,6 +24,16 @@ pub struct Renderer {
     vao: gl::types::GLuint,
     vbo: gl::types::GLuint,
     gl: gl::Gl,
+    // reverse: false
+    // old gl texture0
+    // new gl texture1
+    // reverse: true
+    // new gl texture0
+    // old texture1
+    reverse: bool,
+    // milliseconds time for the animation
+    animation_time: u32,
+    pub time_started: u32,
 }
 
 // Macro that check the error code of the last OpenGL call and returns a Result.
@@ -32,14 +42,17 @@ macro_rules! gl_check {
         let error = $gl.GetError();
         if error != gl::NO_ERROR {
             let error_string = $gl.GetString(error);
-            if error_string.is_null() {
-                bail!("OpenGL error when {}: {}", $desc, error);
-            } else {
-                let error_string = CStr::from_ptr(error_string as _)
-                    .to_string_lossy()
-                    .into_owned();
-                bail!("OpenGL error when {}: {} ({})", $desc, error, error_string);
-            }
+            ensure!(
+                !error_string.is_null(),
+                "OpenGL error when {}: {}",
+                $desc,
+                error
+            );
+
+            let error_string = CStr::from_ptr(error_string as _)
+                .to_string_lossy()
+                .into_owned();
+            bail!("OpenGL error when {}: {} ({})", $desc, error, error_string);
         }
     }};
 }
@@ -143,7 +156,7 @@ impl EglContext {
 }
 
 impl Renderer {
-    pub unsafe fn new() -> Result<Self> {
+    pub unsafe fn new(image: DynamicImage) -> Result<Self> {
         let gl = gl::Gl::load_with(|name| {
             egl.get_proc_address(name).unwrap() as *const std::ffi::c_void
         });
@@ -221,12 +234,19 @@ impl Renderer {
         gl.BindBuffer(gl::ARRAY_BUFFER, vbo);
         gl_check!(gl, "binding the buffer");
 
-        Ok(Self {
+        let mut renderer = Self {
             program,
             vao,
             vbo,
             gl,
-        })
+            reverse: true,
+            time_started: 0,
+            animation_time: 3000,
+        };
+
+        renderer.load_texture(image)?;
+
+        Ok(renderer)
     }
 
     pub fn check_error(&self, msg: &str) -> Result<()> {
@@ -236,19 +256,35 @@ impl Renderer {
         Ok(())
     }
 
-    pub unsafe fn draw(&self) -> Result<()> {
+    pub unsafe fn draw(&self, time: u32) -> Result<()> {
+        let elapsed = time - self.time_started;
+        let mut progress = (elapsed as f32 / self.animation_time as f32).min(1.0);
+        if self.reverse {
+            progress = 1.0 - progress;
+        }
+
+        let loc = self
+            .gl
+            .GetUniformLocation(self.program, b"u_progress\0".as_ptr() as *const _);
+        self.check_error("getting the uniform location")?;
+        self.gl.Uniform1f(loc, progress);
+        self.check_error("calling Uniform1i")?;
         self.gl.DrawArrays(gl::TRIANGLES, 0, 6);
         self.check_error("drawing the triangles")?;
 
         Ok(())
     }
 
-    pub fn load_texture(&self, image: DynamicImage) -> Result<()> {
+    pub fn load_texture(&mut self, image: DynamicImage) -> Result<()> {
         let mut texture = 0;
         Ok(unsafe {
             self.gl.GenTextures(1, &mut texture);
             self.check_error("generating textures")?;
-            self.gl.ActiveTexture(gl::TEXTURE0);
+            self.gl.ActiveTexture(if self.reverse {
+                gl::TEXTURE0
+            } else {
+                gl::TEXTURE1
+            });
             self.check_error("activating textures")?;
             self.gl.BindTexture(gl::TEXTURE_2D, texture);
             self.check_error("binding textures")?;
@@ -266,19 +302,28 @@ impl Renderer {
             self.check_error("defining the texture")?;
             self.gl.GenerateMipmap(gl::TEXTURE_2D);
             self.check_error("generating the mipmap")?;
-            let loc = self
-                .gl
-                .GetUniformLocation(self.program, b"u_texture\0".as_ptr() as *const _);
-            self.check_error("getting the uniform location")?;
-            self.gl.Uniform1i(loc, 0);
-            self.check_error("calling Uniform1i")?;
             self.gl
                 .TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, gl::LINEAR as i32);
             self.check_error("defining the texture min filter")?;
             self.gl
                 .TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, gl::LINEAR as i32);
             self.check_error("defining the texture mag filter")?;
+            // We assume that the we still have an active texture
+            if self.reverse {
+                self.gl.Uniform1i(0, 0);
+            } else {
+                self.gl.Uniform1i(1, 1);
+            }
+            self.reverse = !self.reverse;
         })
+    }
+
+    pub fn start_animation(&mut self, time: u32) {
+        self.time_started = time;
+    }
+
+    pub fn assign_textures(&mut self) -> Result<()> {
+        Ok(())
     }
 
     pub fn clear_after_draw(&self) -> Result<()> {
@@ -300,6 +345,10 @@ impl Renderer {
             self.gl.Viewport(0, 0, width, height);
             self.check_error("resizing the viewport")
         }
+    }
+
+    pub(crate) fn is_drawing_animation(&self, time: u32) -> bool {
+        time < (self.time_started + self.animation_time)
     }
 }
 
@@ -393,9 +442,13 @@ out vec4 FragColor;
 
 in vec2 v_texcoord;
 
-uniform sampler2D u_texture;
+layout(location = 0) uniform sampler2D u_texture0;
+layout(location = 1) uniform sampler2D u_texture1;
+
+layout(location = 2) uniform float u_progress;
 
 void main() {
-    FragColor = texture(u_texture, v_texcoord);
+    FragColor = mix(texture(u_texture1, v_texcoord), texture(u_texture0, v_texcoord), u_progress);
+
 }
 \0";

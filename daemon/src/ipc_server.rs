@@ -11,6 +11,7 @@ use color_eyre::eyre::Context;
 use color_eyre::Result;
 use log::error;
 use smithay_client_toolkit::reexports::calloop::LoopHandle;
+use smithay_client_toolkit::reexports::client::QueueHandle;
 use wpaperd_ipc::{IpcError, IpcMessage, IpcResponse};
 
 use crate::socket::SocketSource;
@@ -18,7 +19,11 @@ use crate::surface::Surface;
 use crate::Wpaperd;
 
 /// Create an IPC socket.
-pub fn spawn_ipc_socket(event_loop: &LoopHandle<Wpaperd>, socket_path: &Path) -> Result<()> {
+pub fn spawn_ipc_socket(
+    socket_path: &Path,
+    event_loop: &LoopHandle<Wpaperd>,
+    qh: QueueHandle<Wpaperd>,
+) -> Result<()> {
     // Try to delete the socket if it exists already.
     if socket_path.exists() {
         fs::remove_file(socket_path)?;
@@ -31,7 +36,7 @@ pub fn spawn_ipc_socket(event_loop: &LoopHandle<Wpaperd>, socket_path: &Path) ->
     // Add source to calloop loop.
     let mut message_buffer = String::new();
     event_loop.insert_source(socket, move |stream, _, wpaperd| {
-        if let Err(err) = handle_message(&mut message_buffer, stream, wpaperd) {
+        if let Err(err) = handle_message(&mut message_buffer, stream, qh.clone(), wpaperd) {
             error!("{}", err);
         }
     })?;
@@ -69,7 +74,12 @@ fn collect_surfaces(wpaperd: &mut Wpaperd, monitors: Vec<String>) -> Vec<&mut Su
 }
 
 /// Handle IPC socket messages.
-fn handle_message(buffer: &mut String, ustream: UnixStream, wpaperd: &mut Wpaperd) -> Result<()> {
+fn handle_message(
+    buffer: &mut String,
+    ustream: UnixStream,
+    qh: QueueHandle<Wpaperd>,
+    wpaperd: &mut Wpaperd,
+) -> Result<()> {
     buffer.clear();
 
     // Read new content to buffer.
@@ -110,45 +120,23 @@ fn handle_message(buffer: &mut String, ustream: UnixStream, wpaperd: &mut Wpaper
 
         IpcMessage::PreviousWallpaper { monitors } => {
             check_monitors(wpaperd, &monitors).and_then(|_| {
-                let mut errors = Vec::new();
                 for surface in collect_surfaces(wpaperd, monitors) {
                     surface.image_picker.previous_image();
-                    match surface.draw() {
-                        Ok(_) => {}
-                        Err(err) => {
-                            log::error!("Error drawing surface: {}", err);
-                            errors.push((surface.name().to_string(), err.to_string()))
-                        }
-                    }
+                    surface.queue_draw(&qh);
                 }
 
-                if errors.is_empty() {
-                    Ok(IpcResponse::Ok)
-                } else {
-                    Err(IpcError::DrawErrors(errors))
-                }
+                Ok(IpcResponse::Ok)
             })
         }
 
         IpcMessage::NextWallpaper { monitors } => {
             check_monitors(wpaperd, &monitors).and_then(|_| {
-                let mut errors = Vec::new();
                 for surface in collect_surfaces(wpaperd, monitors) {
                     surface.image_picker.next_image();
-                    match surface.draw() {
-                        Ok(_) => {}
-                        Err(err) => {
-                            log::error!("Error drawing surface: {}", err);
-                            errors.push((surface.name().to_string(), err.to_string()))
-                        }
-                    }
+                    surface.queue_draw(&qh);
                 }
 
-                if errors.is_empty() {
-                    Ok(IpcResponse::Ok)
-                } else {
-                    Err(IpcError::DrawErrors(errors))
-                }
+                Ok(IpcResponse::Ok)
             })
         }
 

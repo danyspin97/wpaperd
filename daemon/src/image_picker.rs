@@ -46,7 +46,7 @@ pub struct ImagePicker {
 impl ImagePicker {
     pub fn new(wallpaper_info: Arc<WallpaperInfo>) -> Self {
         Self {
-            current_img: PathBuf::new(),
+            current_img: PathBuf::from("/tmp/new.png"),
             image_changed_instant: Instant::now(),
             action: Some(ImagePickerAction::Next),
             sorting: match wallpaper_info.sorting {

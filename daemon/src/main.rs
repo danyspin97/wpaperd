@@ -100,7 +100,8 @@ fn run(config: Config, xdg_dirs: BaseDirectories) -> Result<()> {
                 // loop we will always receive timeout events and create
                 // them when that happens
                 if surface.is_configured() {
-                    surface.add_timer(event_loop.handle(), None);
+                    surface.add_timer(None, event_loop.handle(), qh.clone());
+                    surface.draw(&qh, 0);
                     true
                 } else {
                     false
@@ -117,7 +118,7 @@ fn run(config: Config, xdg_dirs: BaseDirectories) -> Result<()> {
             .context("dispatching the event loop")?;
     }
 
-    ipc_server::spawn_ipc_socket(&event_loop.handle(), &socket_path()?).unwrap();
+    ipc_server::spawn_ipc_socket(&socket_path()?, &event_loop.handle(), qh.clone()).unwrap();
     if let Some(notify) = config.notify {
         let mut f = unsafe { File::from_raw_fd(notify as i32) };
         if let Err(err) = writeln!(f) {
@@ -128,10 +129,10 @@ fn run(config: Config, xdg_dirs: BaseDirectories) -> Result<()> {
     loop {
         let mut wallpaper_config = wallpaper_config.lock().unwrap();
         if wallpaper_config.reloaded {
-            wpaperd.surfaces.iter_mut().for_each(|surface| {
+            for surface in &mut wpaperd.surfaces {
                 let wallpaper_info = wallpaper_config.get_output_by_name(surface.name());
-                surface.update_wallpaper_info(event_loop.handle(), wallpaper_info);
-            });
+                surface.update_wallpaper_info(event_loop.handle(), &qh, wallpaper_info);
+            }
             wallpaper_config.reloaded = false;
         }
         drop(wallpaper_config);
