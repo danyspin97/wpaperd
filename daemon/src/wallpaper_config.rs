@@ -74,11 +74,11 @@ Either remove `duration` or set `path` to a directory"
         Ok(())
     }
 
-    pub fn paths(&self) -> Vec<&PathBuf> {
+    pub fn paths(&self) -> Vec<PathBuf> {
         let mut paths: Vec<_> = self
             .data
             .values()
-            .filter_map(|info| info.path.as_ref())
+            .filter_map(|info| info.path.as_ref().map(|p| p.to_path_buf()))
             .collect();
         paths.sort_unstable();
         paths.dedup();
@@ -107,6 +107,7 @@ Either remove `duration` or set `path` to a directory"
             }
         }
     }
+
 }
 
 impl PartialEq for WallpapersConfig {

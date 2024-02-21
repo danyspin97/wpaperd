@@ -20,7 +20,6 @@ enum SubCmd {
     AllWallpapers,
     NextWallpaper { monitors: Vec<String> },
     PreviousWallpaper { monitors: Vec<String> },
-    ReloadConfig,
 }
 
 fn main() {
@@ -32,7 +31,6 @@ fn main() {
         SubCmd::AllWallpapers => IpcMessage::AllWallpapers,
         SubCmd::NextWallpaper { monitors } => IpcMessage::NextWallpaper { monitors },
         SubCmd::PreviousWallpaper { monitors } => IpcMessage::PreviousWallpaper { monitors },
-        SubCmd::ReloadConfig => IpcMessage::ReloadConfig,
     };
     conn.write_all(&serde_json::to_vec(&msg).unwrap()).unwrap();
     // Add a new line after the message

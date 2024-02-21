@@ -98,14 +98,9 @@ fn run(config: Config, xdg_dirs: BaseDirectories) -> Result<()> {
     wallpaper_config.listen_to_changes(&mut hotwatch, ev_tx)?;
 
     let mut filelist_cache = Rc::new(RefCell::new(FilelistCache::new()));
-    filelist_cache.borrow_mut().update_paths(
-        wallpaper_config
-            .paths()
-            .iter()
-            .map(|p| p.to_path_buf())
-            .collect(),
-        &mut hotwatch,
-    );
+    filelist_cache
+        .borrow_mut()
+        .update_paths(wallpaper_config.paths(), &mut hotwatch);
 
     let mut wpaperd = Wpaperd::new(
         &qh,
@@ -124,7 +119,7 @@ fn run(config: Config, xdg_dirs: BaseDirectories) -> Result<()> {
                 // loop we will always receive timeout events and create
                 // them when that happens
                 if surface.is_configured() {
-                    surface.add_timer(None, event_loop.handle(), qh.clone());
+                    surface.add_timer(None, &event_loop.handle(), qh.clone());
                     surface.draw(&qh, 0);
                     true
                 } else {
@@ -151,6 +146,7 @@ fn run(config: Config, xdg_dirs: BaseDirectories) -> Result<()> {
     }
 
     loop {
+        // If wallpaper_config.toml has been modified, this value will return true
         if wpaperd
             .wallpaper_config
             .reloaded
@@ -158,21 +154,13 @@ fn run(config: Config, xdg_dirs: BaseDirectories) -> Result<()> {
             .unwrap()
             .load(Ordering::Acquire)
         {
-            wpaperd.wallpaper_config.try_update();
-            let mut paths = Vec::new();
-            for surface in &mut wpaperd.surfaces {
-                let wallpaper_info = wpaperd.wallpaper_config.get_output_by_name(surface.name());
-                if let Some(path) = &wallpaper_info.path {
-                    paths.push(path.clone());
-                }
-                surface.update_wallpaper_info(event_loop.handle(), &qh, wallpaper_info);
-            }
+            // Read the config, update the paths in the surfaces
+            wpaperd.update_wallpaper_config(event_loop.handle(), &qh);
 
-            paths.sort_unstable();
-            paths.dedup();
+            // Update the filelist cache as well, keep it up to date
             filelist_cache
                 .borrow_mut()
-                .update_paths(paths, &mut hotwatch);
+                .update_paths(wpaperd.wallpaper_config.paths(), &mut hotwatch);
         }
 
         event_loop

@@ -1,5 +1,4 @@
 use std::cell::RefCell;
-use std::fs::File;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -176,7 +175,7 @@ impl Surface {
     /// return true if the duration has changed
     pub fn update_wallpaper_info(
         &mut self,
-        handle: LoopHandle<Wpaperd>,
+        handle: &LoopHandle<Wpaperd>,
         qh: &QueueHandle<Wpaperd>,
         mut wallpaper_info: Arc<WallpaperInfo>,
     ) {
@@ -236,7 +235,7 @@ impl Surface {
     pub fn add_timer(
         &mut self,
         timer: Option<Timer>,
-        handle: LoopHandle<Wpaperd>,
+        handle: &LoopHandle<Wpaperd>,
         qh: QueueHandle<Wpaperd>,
     ) {
         if let Some(duration) = self.wallpaper_info.duration {

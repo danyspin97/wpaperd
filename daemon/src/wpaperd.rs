@@ -5,6 +5,7 @@ use color_eyre::eyre::Context;
 use color_eyre::Result;
 use smithay_client_toolkit::compositor::{CompositorHandler, CompositorState, Region};
 use smithay_client_toolkit::output::{OutputHandler, OutputState};
+use smithay_client_toolkit::reexports::calloop::LoopHandle;
 use smithay_client_toolkit::reexports::client::globals::GlobalList;
 use smithay_client_toolkit::reexports::client::protocol::{wl_output, wl_surface};
 use smithay_client_toolkit::reexports::client::{Connection, QueueHandle};
@@ -58,25 +59,15 @@ impl Wpaperd {
         })
     }
 
-    pub fn reload_config(&mut self) -> Result<()> {
-        let new_config =
-            WallpapersConfig::new_from_path(&self.wallpaper_config.path).with_context(|| {
-                format!(
-                    "reading configuration from file {:?}",
-                    &self.wallpaper_config.path
-                )
-            });
-        match new_config {
-            Ok(config) => {
-                if !(self.wallpaper_config == config) {
-                    self.wallpaper_config = config;
-                    log::info!("Configuration updated");
-                }
-                Ok(())
-            }
-            Err(err) => {
-                log::error!("{:?}", err);
-                Err(err)
+    pub fn update_wallpaper_config(
+        &mut self,
+        ev_handle: LoopHandle<Wpaperd>,
+        qh: &QueueHandle<Wpaperd>,
+    ) {
+        if self.wallpaper_config.try_update() {
+            for surface in &mut self.surfaces {
+                let wallpaper_info = self.wallpaper_config.get_output_by_name(surface.name());
+                surface.update_wallpaper_info(&ev_handle, &qh, wallpaper_info);
             }
         }
     }

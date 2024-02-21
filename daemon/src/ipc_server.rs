@@ -139,11 +139,6 @@ fn handle_message(
                 Ok(IpcResponse::Ok)
             })
         }
-
-        IpcMessage::ReloadConfig => {
-            wpaperd.reload_config()?;
-            Ok(IpcResponse::Ok)
-        }
     };
 
     let mut stream = BufWriter::new(ustream);
