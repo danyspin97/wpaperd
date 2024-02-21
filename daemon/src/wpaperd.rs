@@ -1,6 +1,5 @@
 use std::cell::RefCell;
 use std::rc::Rc;
-use std::sync::{Arc, Mutex};
 
 use color_eyre::eyre::Context;
 use color_eyre::Result;
@@ -30,7 +29,7 @@ pub struct Wpaperd {
     pub layer_state: LayerShell,
     pub registry_state: RegistryState,
     pub surfaces: Vec<Surface>,
-    wallpaper_config: Arc<Mutex<WallpapersConfig>>,
+    pub wallpaper_config: WallpapersConfig,
     egl_display: egl::Display,
     filelist_cache: Rc<RefCell<FilelistCache>>,
 }
@@ -40,7 +39,7 @@ impl Wpaperd {
         qh: &QueueHandle<Self>,
         globals: &GlobalList,
         _conn: &Connection,
-        wallpaper_config: Arc<Mutex<WallpapersConfig>>,
+        wallpaper_config: WallpapersConfig,
         egl_display: egl::Display,
         filelist_cache: Rc<RefCell<FilelistCache>>,
     ) -> Result<Self> {
@@ -60,18 +59,17 @@ impl Wpaperd {
     }
 
     pub fn reload_config(&mut self) -> Result<()> {
-        let mut wallpaper_config = self.wallpaper_config.lock().unwrap();
         let new_config =
-            WallpapersConfig::new_from_path(&wallpaper_config.path).with_context(|| {
+            WallpapersConfig::new_from_path(&self.wallpaper_config.path).with_context(|| {
                 format!(
                     "reading configuration from file {:?}",
-                    wallpaper_config.path
+                    &self.wallpaper_config.path
                 )
             });
         match new_config {
             Ok(config) => {
-                if !(*wallpaper_config == config) {
-                    *wallpaper_config = config;
+                if !(self.wallpaper_config == config) {
+                    self.wallpaper_config = config;
                     log::info!("Configuration updated");
                 }
                 Ok(())
@@ -189,11 +187,7 @@ impl OutputHandler for Wpaperd {
         // > wl_region object can be destroyed immediately.
         empty_region.wl_region().destroy();
 
-        let wallpaper_info = self
-            .wallpaper_config
-            .lock()
-            .unwrap()
-            .get_output_by_name(&name);
+        let wallpaper_info = self.wallpaper_config.get_output_by_name(&name);
 
         self.surfaces.push(Surface::new(
             name,

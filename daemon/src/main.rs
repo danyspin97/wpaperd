@@ -16,26 +16,28 @@ use std::{
     fs::File,
     io::Write,
     os::fd::FromRawFd,
-    path::Path,
     process::exit,
     rc::Rc,
-    sync::{Arc, Mutex, OnceLock},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
 };
 
 use clap::Parser;
 use color_eyre::{eyre::WrapErr, Result};
-use egl::{Downcast, API as egl};
+use egl::API as egl;
 use figment::{
     providers::{Format, Serialized, Toml},
     Figment,
 };
 use filelist_cache::FilelistCache;
 use flexi_logger::{Duplicate, FileSpec, Logger};
-use hotwatch::{Event, Hotwatch};
+use hotwatch::Hotwatch;
 use log::error;
 use nix::unistd::fork;
 use smithay_client_toolkit::reexports::{
-    calloop::{self, channel::Sender},
+    calloop,
     calloop_wayland_source::WaylandSource,
     client::{globals::registry_queue_init, Connection, Proxy},
 };
@@ -60,9 +62,9 @@ fn run(config: Config, xdg_dirs: BaseDirectories) -> Result<()> {
         }
     };
 
+    let reloaded = Arc::new(AtomicBool::new(false));
     let mut wallpaper_config = WallpapersConfig::new_from_path(&wallpaper_config_file)?;
-    wallpaper_config.reloaded = false;
-    let wallpaper_config = Arc::new(Mutex::new(wallpaper_config));
+    wallpaper_config.reloaded = Some(reloaded);
 
     // we use the OpenGL ES API because it's more widely supported
     // and it's used by wlroots
@@ -93,30 +95,23 @@ fn run(config: Config, xdg_dirs: BaseDirectories) -> Result<()> {
         .unwrap();
 
     let mut hotwatch = Hotwatch::new().context("hotwatch failed to initialize")?;
-    listen_to_wallpaper_config_changes(
-        &mut hotwatch,
-        &wallpaper_config_file,
-        wallpaper_config.clone(),
-        ev_tx,
-    )?;
+    wallpaper_config.listen_to_changes(&mut hotwatch, ev_tx)?;
+
     let mut filelist_cache = Rc::new(RefCell::new(FilelistCache::new()));
-    {
-        let wallpaper_config = wallpaper_config.lock().unwrap();
-        filelist_cache.borrow_mut().update_paths(
-            wallpaper_config
-                .paths()
-                .iter()
-                .map(|p| p.to_path_buf())
-                .collect(),
-            &mut hotwatch,
-        );
-    }
+    filelist_cache.borrow_mut().update_paths(
+        wallpaper_config
+            .paths()
+            .iter()
+            .map(|p| p.to_path_buf())
+            .collect(),
+        &mut hotwatch,
+    );
 
     let mut wpaperd = Wpaperd::new(
         &qh,
         &globals,
         &conn,
-        wallpaper_config.clone(),
+        wallpaper_config,
         egl_display,
         filelist_cache.clone(),
     )?;
@@ -156,24 +151,29 @@ fn run(config: Config, xdg_dirs: BaseDirectories) -> Result<()> {
     }
 
     loop {
-        let mut wallpaper_config = wallpaper_config.lock().unwrap();
-        if wallpaper_config.reloaded {
+        if wpaperd
+            .wallpaper_config
+            .reloaded
+            .as_ref()
+            .unwrap()
+            .load(Ordering::Acquire)
+        {
+            wpaperd.wallpaper_config.try_update();
             let mut paths = Vec::new();
             for surface in &mut wpaperd.surfaces {
-                let wallpaper_info = wallpaper_config.get_output_by_name(surface.name());
+                let wallpaper_info = wpaperd.wallpaper_config.get_output_by_name(surface.name());
                 if let Some(path) = &wallpaper_info.path {
                     paths.push(path.clone());
                 }
                 surface.update_wallpaper_info(event_loop.handle(), &qh, wallpaper_info);
             }
-            wallpaper_config.reloaded = false;
+
             paths.sort_unstable();
             paths.dedup();
             filelist_cache
                 .borrow_mut()
                 .update_paths(paths, &mut hotwatch);
         }
-        drop(wallpaper_config);
 
         event_loop
             .dispatch(None, &mut wpaperd)
@@ -225,40 +225,4 @@ fn main() -> Result<()> {
     } else {
         Ok(())
     }
-}
-
-fn listen_to_wallpaper_config_changes(
-    hotwatch: &mut Hotwatch,
-    wallpaper_config_file: &Path,
-    wallpaper_config: Arc<Mutex<WallpapersConfig>>,
-    ev_tx: Sender<()>,
-) -> Result<()> {
-    hotwatch
-        .watch(wallpaper_config_file, move |event: Event| {
-            if let hotwatch::EventKind::Modify(_) = event.kind {
-                // When the config file has been written into
-                let mut wallpaper_config = wallpaper_config.lock().unwrap();
-                let new_config = WallpapersConfig::new_from_path(&wallpaper_config.path)
-                    .with_context(|| {
-                        format!(
-                            "reading configuration from file {:?}",
-                            wallpaper_config.path
-                        )
-                    });
-                match new_config {
-                    Ok(new_config) if new_config != *wallpaper_config => {
-                        *wallpaper_config = new_config;
-                        ev_tx.send(()).unwrap();
-                    }
-                    Ok(_) => {
-                        // Do nothing, the new config is the same as the loaded one
-                    }
-                    Err(err) => {
-                        error!("{:?}", err);
-                    }
-                }
-            }
-        })
-        .with_context(|| format!("watching file {wallpaper_config_file:?}"))?;
-    Ok(())
 }

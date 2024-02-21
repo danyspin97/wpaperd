@@ -2,11 +2,20 @@ use std::{
     collections::HashMap,
     fs,
     path::{Path, PathBuf},
-    sync::Arc,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
 };
 
-use color_eyre::{eyre::ensure, Result};
+use color_eyre::{
+    eyre::{ensure, Context},
+    Result,
+};
+use hotwatch::{Event, Hotwatch};
+use log::error;
 use serde::Deserialize;
+use smithay_client_toolkit::reexports::calloop::channel::Sender;
 
 use crate::wallpaper_info::WallpaperInfo;
 
@@ -19,7 +28,7 @@ pub struct WallpapersConfig {
     #[serde(skip)]
     pub path: PathBuf,
     #[serde(skip)]
-    pub reloaded: bool,
+    pub reloaded: Option<Arc<AtomicBool>>,
 }
 
 impl WallpapersConfig {
@@ -45,12 +54,24 @@ Either remove `duration` or set `path` to a directory"
         }
 
         config_manager.path = path.to_path_buf();
-        config_manager.reloaded = true;
         Ok(config_manager)
     }
 
     pub fn get_output_by_name(&self, name: &str) -> Arc<WallpaperInfo> {
         self.data.get(name).unwrap_or(&self.default_config).clone()
+    }
+
+    pub fn listen_to_changes(&self, hotwatch: &mut Hotwatch, ev_tx: Sender<()>) -> Result<()> {
+        let reloaded = self.reloaded.as_ref().unwrap().clone();
+        hotwatch
+            .watch(&self.path, move |event: Event| {
+                if let hotwatch::EventKind::Modify(_) = event.kind {
+                    reloaded.store(true, Ordering::Relaxed);
+                    ev_tx.send(()).unwrap();
+                }
+            })
+            .with_context(|| format!("watching file {:?}", &self.path))?;
+        Ok(())
     }
 
     pub fn paths(&self) -> Vec<&PathBuf> {
@@ -62,6 +83,29 @@ Either remove `duration` or set `path` to a directory"
         paths.sort_unstable();
         paths.dedup();
         paths
+    }
+
+    /// Return true if the struct changed
+    pub(crate) fn try_update(&mut self) -> bool {
+        // When the config file has been written into
+        let mut new_config = WallpapersConfig::new_from_path(&self.path)
+            .with_context(|| format!("reading configuration from file {:?}", self.path));
+        match new_config {
+            Ok(new_config) if new_config != *self => {
+                let reloaded = self.reloaded.as_ref().unwrap().clone();
+                *self = new_config;
+                self.reloaded = Some(reloaded);
+                true
+            }
+            Ok(_) => {
+                // Do nothing, the new config is the same as the loaded one
+                false
+            }
+            Err(err) => {
+                error!("{:?}", err);
+                false
+            }
+        }
     }
 }
 
