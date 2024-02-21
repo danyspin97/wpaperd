@@ -1,3 +1,5 @@
+use std::cell::RefCell;
+use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 
 use color_eyre::eyre::Context;
@@ -17,6 +19,7 @@ use smithay_client_toolkit::{
     registry_handlers,
 };
 
+use crate::filelist_cache::{self, FilelistCache};
 use crate::surface::Surface;
 use crate::wallpaper_config::WallpapersConfig;
 
@@ -29,6 +32,7 @@ pub struct Wpaperd {
     pub surfaces: Vec<Surface>,
     wallpaper_config: Arc<Mutex<WallpapersConfig>>,
     egl_display: egl::Display,
+    filelist_cache: Rc<RefCell<FilelistCache>>,
 }
 
 impl Wpaperd {
@@ -38,6 +42,7 @@ impl Wpaperd {
         _conn: &Connection,
         wallpaper_config: Arc<Mutex<WallpapersConfig>>,
         egl_display: egl::Display,
+        filelist_cache: Rc<RefCell<FilelistCache>>,
     ) -> Result<Self> {
         let shm_state = Shm::bind(globals, qh)?;
 
@@ -50,6 +55,7 @@ impl Wpaperd {
             surfaces: Vec::new(),
             wallpaper_config,
             egl_display,
+            filelist_cache,
         })
     }
 
@@ -197,6 +203,7 @@ impl OutputHandler for Wpaperd {
             info.scale_factor,
             wallpaper_info,
             self.egl_display,
+            self.filelist_cache.clone(),
         ));
     }
 

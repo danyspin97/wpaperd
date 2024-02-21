@@ -1,11 +1,13 @@
-use std::{path::PathBuf, sync::Arc, time::Instant};
+use std::{cell::RefCell, path::PathBuf, rc::Rc, sync::Arc, time::Instant};
 
 use color_eyre::eyre::{bail, ensure, Context};
 use image::{open, DynamicImage};
 use log::warn;
-use walkdir::WalkDir;
 
-use crate::wallpaper_info::{Sorting, WallpaperInfo};
+use crate::{
+    filelist_cache::FilelistCache,
+    wallpaper_info::{Sorting, WallpaperInfo},
+};
 
 #[derive(Debug)]
 enum ImagePickerAction {
@@ -41,10 +43,14 @@ pub struct ImagePicker {
     action: Option<ImagePickerAction>,
     sorting: ImagePickerSorting,
     path: PathBuf,
+    filelist_cache: Rc<RefCell<FilelistCache>>,
 }
 
 impl ImagePicker {
-    pub fn new(wallpaper_info: Arc<WallpaperInfo>) -> Self {
+    pub fn new(
+        wallpaper_info: Arc<WallpaperInfo>,
+        filelist_cache: Rc<RefCell<FilelistCache>>,
+    ) -> Self {
         Self {
             current_img: PathBuf::from("/tmp/new.png"),
             image_changed_instant: Instant::now(),
@@ -55,13 +61,14 @@ impl ImagePicker {
                 Sorting::Descending => ImagePickerSorting::Descending(usize::MAX),
             },
             path: wallpaper_info.path.as_ref().unwrap().clone(),
+            filelist_cache,
         }
     }
 
     /// Get the next image based on the sorting method
     fn get_image_path(&mut self, files: &Vec<PathBuf>) -> (usize, PathBuf) {
         match (&self.action, &mut self.sorting) {
-            (None, _) if self.current_img.exists() => (usize::MAX, self.current_image()),
+            (None, _) if self.current_img.exists() => unreachable!(),
             (
                 None | Some(ImagePickerAction::Next),
                 ImagePickerSorting::Random {
@@ -205,28 +212,16 @@ impl ImagePicker {
         }
     }
 
-    fn get_image_files_from_dir(&self, dir_path: &PathBuf) -> Vec<PathBuf> {
-        WalkDir::new(dir_path)
-            .sort_by_file_name()
-            .into_iter()
-            .filter_map(|e| e.ok())
-            .filter(|e| {
-                if let Some(guess) = new_mime_guess::from_path(e.path()).first() {
-                    guess.type_() == "image"
-                } else {
-                    false
-                }
-            })
-            .map(|e| e.path().to_path_buf())
-            .collect()
-    }
-
     pub fn get_image(&mut self) -> Result<Option<DynamicImage>, color_eyre::Report> {
         let path = self.path.to_path_buf();
         Ok(if path.is_dir() {
+            if self.action.is_none() {
+                return Ok(None);
+            }
+
             let mut tries = 0;
             loop {
-                let files = self.get_image_files_from_dir(&path);
+                let files = self.filelist_cache.borrow().get(&self.path);
 
                 // There are no images, forcefully break out of the loop
                 if files.is_empty() {

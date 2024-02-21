@@ -1,3 +1,6 @@
+use std::cell::RefCell;
+use std::fs::File;
+use std::rc::Rc;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -11,6 +14,7 @@ use smithay_client_toolkit::reexports::client::protocol::wl_surface;
 use smithay_client_toolkit::reexports::client::QueueHandle;
 use smithay_client_toolkit::shell::wlr_layer::{LayerSurface, LayerSurfaceConfigure};
 
+use crate::filelist_cache::{self, FilelistCache};
 use crate::image_picker::ImagePicker;
 use crate::render::{EglContext, Renderer};
 use crate::wallpaper_info::WallpaperInfo;
@@ -40,6 +44,7 @@ impl Surface {
         scale_factor: i32,
         wallpaper_info: Arc<WallpaperInfo>,
         egl_display: egl::Display,
+        filelist_cache: Rc<RefCell<FilelistCache>>,
     ) -> Self {
         let egl_context = EglContext::new(egl_display, &surface);
         // Make the egl context as current to make the renderer creation work
@@ -48,9 +53,11 @@ impl Surface {
         // Commit the surface
         surface.commit();
 
-        let mut image_picker = ImagePicker::new(wallpaper_info.clone());
+        let image_picker = ImagePicker::new(wallpaper_info.clone(), filelist_cache);
 
-        let image = image_picker.get_image().unwrap().unwrap().into_rgba8();
+        let image = image::open(image_picker.current_image())
+            .unwrap()
+            .into_rgba8();
         let renderer = unsafe { Renderer::new(image.into()).unwrap() };
 
         Self {

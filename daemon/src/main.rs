@@ -1,4 +1,5 @@
 mod config;
+mod filelist_cache;
 mod image_picker;
 mod ipc_server;
 mod render;
@@ -11,21 +12,24 @@ mod wpaperd;
 extern crate khronos_egl as egl;
 
 use std::{
+    cell::RefCell,
     fs::File,
     io::Write,
     os::fd::FromRawFd,
     path::Path,
     process::exit,
-    sync::{Arc, Mutex},
+    rc::Rc,
+    sync::{Arc, Mutex, OnceLock},
 };
 
 use clap::Parser;
 use color_eyre::{eyre::WrapErr, Result};
-use egl::API as egl;
+use egl::{Downcast, API as egl};
 use figment::{
     providers::{Format, Serialized, Toml},
     Figment,
 };
+use filelist_cache::FilelistCache;
 use flexi_logger::{Duplicate, FileSpec, Logger};
 use hotwatch::{Event, Hotwatch};
 use log::error;
@@ -88,9 +92,34 @@ fn run(config: Config, xdg_dirs: BaseDirectories) -> Result<()> {
         .insert_source(ev_rx, |_, _, _| {})
         .unwrap();
 
-    let _hotwatch = setup_hotwatch(&wallpaper_config_file, wallpaper_config.clone(), ev_tx);
+    let mut hotwatch = Hotwatch::new().context("hotwatch failed to initialize")?;
+    listen_to_wallpaper_config_changes(
+        &mut hotwatch,
+        &wallpaper_config_file,
+        wallpaper_config.clone(),
+        ev_tx,
+    )?;
+    let mut filelist_cache = Rc::new(RefCell::new(FilelistCache::new()));
+    {
+        let wallpaper_config = wallpaper_config.lock().unwrap();
+        filelist_cache.borrow_mut().update_paths(
+            wallpaper_config
+                .paths()
+                .iter()
+                .map(|p| p.to_path_buf())
+                .collect(),
+            &mut hotwatch,
+        );
+    }
 
-    let mut wpaperd = Wpaperd::new(&qh, &globals, &conn, wallpaper_config.clone(), egl_display)?;
+    let mut wpaperd = Wpaperd::new(
+        &qh,
+        &globals,
+        &conn,
+        wallpaper_config.clone(),
+        egl_display,
+        filelist_cache.clone(),
+    )?;
 
     // Loop until the wayland server has sent us the configure event for all the displays
     loop {
@@ -129,11 +158,20 @@ fn run(config: Config, xdg_dirs: BaseDirectories) -> Result<()> {
     loop {
         let mut wallpaper_config = wallpaper_config.lock().unwrap();
         if wallpaper_config.reloaded {
+            let mut paths = Vec::new();
             for surface in &mut wpaperd.surfaces {
                 let wallpaper_info = wallpaper_config.get_output_by_name(surface.name());
+                if let Some(path) = &wallpaper_info.path {
+                    paths.push(path.clone());
+                }
                 surface.update_wallpaper_info(event_loop.handle(), &qh, wallpaper_info);
             }
             wallpaper_config.reloaded = false;
+            paths.sort_unstable();
+            paths.dedup();
+            filelist_cache
+                .borrow_mut()
+                .update_paths(paths, &mut hotwatch);
         }
         drop(wallpaper_config);
 
@@ -189,12 +227,12 @@ fn main() -> Result<()> {
     }
 }
 
-fn setup_hotwatch(
+fn listen_to_wallpaper_config_changes(
+    hotwatch: &mut Hotwatch,
     wallpaper_config_file: &Path,
     wallpaper_config: Arc<Mutex<WallpapersConfig>>,
     ev_tx: Sender<()>,
-) -> Result<Hotwatch> {
-    let mut hotwatch = Hotwatch::new().context("hotwatch failed to initialize")?;
+) -> Result<()> {
     hotwatch
         .watch(wallpaper_config_file, move |event: Event| {
             if let hotwatch::EventKind::Modify(_) = event.kind {
@@ -222,5 +260,5 @@ fn setup_hotwatch(
             }
         })
         .with_context(|| format!("watching file {wallpaper_config_file:?}"))?;
-    Ok(hotwatch)
+    Ok(())
 }

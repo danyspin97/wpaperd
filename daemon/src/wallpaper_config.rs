@@ -52,6 +52,17 @@ Either remove `duration` or set `path` to a directory"
     pub fn get_output_by_name(&self, name: &str) -> Arc<WallpaperInfo> {
         self.data.get(name).unwrap_or(&self.default_config).clone()
     }
+
+    pub fn paths(&self) -> Vec<&PathBuf> {
+        let mut paths: Vec<_> = self
+            .data
+            .values()
+            .filter_map(|info| info.path.as_ref())
+            .collect();
+        paths.sort_unstable();
+        paths.dedup();
+        paths
+    }
 }
 
 impl PartialEq for WallpapersConfig {
