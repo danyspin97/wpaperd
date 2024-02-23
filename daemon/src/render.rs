@@ -286,6 +286,9 @@ impl Renderer {
     }
 
     pub unsafe fn draw(&self, time: u32) -> Result<()> {
+        self.gl.Clear(gl::COLOR_BUFFER_BIT);
+        self.check_error("clearing the screen");
+
         let elapsed = time - self.time_started;
         let mut progress = (elapsed as f32 / self.animation_time as f32).min(1.0);
         if self.reverse {
