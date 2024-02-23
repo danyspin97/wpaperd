@@ -8,9 +8,12 @@ use color_eyre::{
     Result,
 };
 use egl::API as egl;
+use glutin::api::egl::display;
 use image::DynamicImage;
 use smithay_client_toolkit::reexports::client::{protocol::wl_surface::WlSurface, Proxy};
 use wayland_egl::WlEglSurface;
+
+use crate::wallpaper_info::BackgroundMode;
 
 pub mod gl {
     #![allow(clippy::all)]
@@ -23,6 +26,7 @@ pub struct Renderer {
     pub program: gl::types::GLuint,
     vao: gl::types::GLuint,
     vbo: gl::types::GLuint,
+    eab: gl::types::GLuint,
     gl: gl::Gl,
     // reverse: false
     // old gl texture0
@@ -36,6 +40,8 @@ pub struct Renderer {
     pub time_started: u32,
     texture1: gl::types::GLuint,
     texture2: gl::types::GLuint,
+    width: i32,
+    height: i32,
 }
 
 // Macro that check the error code of the last OpenGL call and returns a Result.
@@ -193,17 +199,33 @@ impl Renderer {
         gl.BindVertexArray(vao);
         gl_check!(gl, "binding the vertex array");
         let mut vbo = 0;
-        gl.GenBuffers(2, &mut vbo);
+        gl.GenBuffers(1, &mut vbo);
         gl_check!(gl, "generating the vbo buffer");
         gl.BindBuffer(gl::ARRAY_BUFFER, vbo);
         gl_check!(gl, "binding the vbo buffer");
+        let mut vertex_data: Vec<f32> = vec![0.0; 16 as _];
         gl.BufferData(
             gl::ARRAY_BUFFER,
-            (VERTEX_DATA.len() * std::mem::size_of::<f32>()) as gl::types::GLsizeiptr,
-            VERTEX_DATA.as_ptr() as *const _,
+            (vertex_data.len() * std::mem::size_of::<f32>()) as gl::types::GLsizeiptr,
+            vertex_data.as_ptr() as *const _,
             gl::STATIC_DRAW,
         );
         gl_check!(gl, "buffering the data");
+
+        let mut eab = 0;
+        gl.GenBuffers(1, &mut eab);
+        gl_check!(gl, "generating the eab buffer");
+        gl.BindBuffer(gl::ELEMENT_ARRAY_BUFFER, eab);
+        gl_check!(gl, "binding the eab buffer");
+        const INDICES: [gl::types::GLuint; 6] = [0, 1, 2, 2, 3, 0];
+        gl.BufferData(
+            gl::ELEMENT_ARRAY_BUFFER,
+            (INDICES.len() * std::mem::size_of::<gl::types::GLuint>()) as gl::types::GLsizeiptr,
+            INDICES.as_ptr() as *const _,
+            gl::STATIC_DRAW,
+        );
+        gl_check!(gl, "buffering the data");
+
         const POS_ATTRIB: i32 = 0;
         const TEX_ATTRIB: i32 = 1;
         gl.VertexAttribPointer(
@@ -240,15 +262,18 @@ impl Renderer {
             program,
             vao,
             vbo,
+            eab,
             gl,
             reverse: true,
             time_started: 0,
             animation_time: 3000,
             texture1: 0,
             texture2: 0,
+            width: 0,
+            height: 0,
         };
 
-        renderer.load_texture(image)?;
+        renderer.load_texture(image, BackgroundMode::Stretch)?;
 
         Ok(renderer)
     }
@@ -273,13 +298,14 @@ impl Renderer {
         self.check_error("getting the uniform location")?;
         self.gl.Uniform1f(loc, progress);
         self.check_error("calling Uniform1i")?;
-        self.gl.DrawArrays(gl::TRIANGLES, 0, 6);
+        self.gl
+            .DrawElements(gl::TRIANGLES, 6, gl::UNSIGNED_INT, std::ptr::null());
         self.check_error("drawing the triangles")?;
 
         Ok(())
     }
 
-    pub fn load_texture(&mut self, image: DynamicImage) -> Result<()> {
+    pub fn load_texture(&mut self, image: DynamicImage, mode: BackgroundMode) -> Result<()> {
         let mut texture = 0;
         Ok(unsafe {
             self.gl.GenTextures(1, &mut texture);
@@ -324,6 +350,16 @@ impl Renderer {
             std::mem::swap(&mut self.texture1, &mut self.texture2);
             self.gl.DeleteTextures(1, &mut self.texture2);
             self.texture2 = texture;
+
+            let vertex = self.generate_vertex_data(mode, image.width(), image.height());
+            // Update the vertex buffer
+            self.gl.BufferSubData(
+                gl::ARRAY_BUFFER,
+                0,
+                (vertex.len() * std::mem::size_of::<f32>()) as gl::types::GLsizeiptr,
+                vertex.as_ptr() as *const _,
+            );
+            self.check_error("buffering the data");
         })
     }
 
@@ -349,7 +385,10 @@ impl Renderer {
         Ok(())
     }
 
-    pub fn resize(&self, width: i32, height: i32) -> Result<()> {
+    pub fn resize(&mut self, width: i32, height: i32) -> Result<()> {
+        self.width = width;
+        self.height = height;
+
         unsafe {
             self.gl.Viewport(0, 0, width, height);
             self.check_error("resizing the viewport")
@@ -358,6 +397,160 @@ impl Renderer {
 
     pub(crate) fn is_drawing_animation(&self, time: u32) -> bool {
         time < (self.time_started + self.animation_time)
+    }
+
+    fn generate_vertex_data(
+        &self,
+        mode: BackgroundMode,
+        image_width: u32,
+        image_height: u32,
+    ) -> [f32; 16] {
+        const VEC_X_LEFT: f32 = -1.0;
+        const VEC_X_RIGHT: f32 = 1.0;
+        const VEC_Y_BOTTOM: f32 = 1.0;
+        const VEC_Y_TOP: f32 = -1.0;
+
+        const TEX_X_LEFT: f32 = 0.0;
+        const TEX_X_RIGHT: f32 = 1.0;
+        const TEX_Y_BOTTOM: f32 = 0.0;
+        const TEX_Y_TOP: f32 = 1.0;
+
+        let (
+            vec_x_left,
+            vec_x_right,
+            vec_y_bottom,
+            vec_y_top,
+            tex_x_left,
+            tex_x_right,
+            tex_y_bottom,
+            tex_y_top,
+        ) = match mode {
+            BackgroundMode::Stretch => (
+                VEC_X_LEFT,
+                VEC_X_RIGHT,
+                VEC_Y_BOTTOM,
+                VEC_Y_TOP,
+                TEX_X_LEFT,
+                TEX_X_RIGHT,
+                TEX_Y_BOTTOM,
+                TEX_Y_TOP,
+            ),
+            BackgroundMode::Fill => {
+                let display_ratio = self.width as f32 / self.height as f32;
+                let image_ratio = image_width as f32 / image_height as f32;
+                if display_ratio == image_ratio {
+                    (
+                        VEC_X_LEFT,
+                        VEC_X_RIGHT,
+                        VEC_Y_BOTTOM,
+                        VEC_Y_TOP,
+                        TEX_X_LEFT,
+                        TEX_X_RIGHT,
+                        TEX_Y_BOTTOM,
+                        TEX_Y_TOP,
+                    )
+                } else if display_ratio > image_ratio {
+                    // Same as width calculation below , but with inverted parameters
+                    // This is the expanded expression
+                    // adjusted_height = image_width as f32 / display_ratio;
+                    // y = (1.0 - image_height as f32 / adjusted_height) / 2.0;
+                    // We can simplify by just doing display_ration / image_ratio
+                    let y = (1.0 - display_ratio / image_ratio) / 2.0;
+                    (
+                        VEC_X_LEFT,
+                        VEC_X_RIGHT,
+                        VEC_Y_BOTTOM,
+                        VEC_Y_TOP,
+                        TEX_X_LEFT,
+                        TEX_X_RIGHT,
+                        TEX_Y_BOTTOM - y,
+                        TEX_Y_TOP + y,
+                    )
+                } else {
+                    // Calculte the adjusted width, i.e. the width that the image should have to
+                    // have the same ratio as the display
+                    // adjusted_width = image_height as f32 * display_ratio;
+                    // Calculate the ratio between the adjusted_width and the image_width
+                    // x = (1.0 - adjusted_width / image_width as f32) / 2.0;
+                    // Simplify the expression and do the same as above
+                    let x = (1.0 - display_ratio / image_ratio) / 2.0;
+                    (
+                        VEC_X_LEFT,
+                        VEC_X_RIGHT,
+                        VEC_Y_BOTTOM,
+                        VEC_Y_TOP,
+                        TEX_X_LEFT + x,
+                        TEX_X_RIGHT - x,
+                        TEX_Y_BOTTOM,
+                        TEX_Y_TOP,
+                    )
+                }
+            }
+            BackgroundMode::Fit => {
+                let display_ratio = self.width as f32 / self.height as f32;
+                let image_ratio = image_width as f32 / image_height as f32;
+                if display_ratio == image_ratio {
+                    (
+                        VEC_X_LEFT,
+                        VEC_X_RIGHT,
+                        VEC_Y_BOTTOM,
+                        VEC_Y_TOP,
+                        TEX_X_LEFT,
+                        TEX_X_RIGHT,
+                        TEX_Y_BOTTOM,
+                        TEX_Y_TOP,
+                    )
+                } else if display_ratio > image_ratio {
+                    let x = image_ratio / display_ratio;
+                    (
+                        -x,
+                        x,
+                        VEC_Y_BOTTOM,
+                        VEC_Y_TOP,
+                        TEX_X_LEFT,
+                        TEX_X_RIGHT,
+                        TEX_Y_BOTTOM,
+                        TEX_Y_TOP,
+                    )
+                } else {
+                    let y = 1.0 - display_ratio / image_ratio;
+                    (
+                        VEC_X_LEFT,
+                        VEC_X_RIGHT,
+                        VEC_Y_BOTTOM - y,
+                        VEC_Y_TOP + y,
+                        TEX_X_LEFT,
+                        TEX_X_RIGHT,
+                        TEX_Y_BOTTOM,
+                        TEX_Y_TOP,
+                    )
+                }
+            }
+            BackgroundMode::Tile => {
+                // Tile using the original image size
+                let x = self.width as f32 / image_width as f32;
+                let y = self.height as f32 / image_height as f32;
+                (
+                    VEC_X_LEFT,
+                    VEC_X_RIGHT,
+                    VEC_Y_BOTTOM,
+                    VEC_Y_TOP,
+                    TEX_X_LEFT,
+                    x,
+                    TEX_Y_BOTTOM,
+                    y,
+                )
+            }
+        };
+
+        #[rustfmt::skip]
+        let vertex_data = [
+            vec_x_left,  vec_y_top,    tex_x_left,  tex_y_top,    // top left
+            vec_x_left,  vec_y_bottom, tex_x_left,  tex_y_bottom, // bottom left
+            vec_x_right, vec_y_bottom, tex_x_right, tex_y_bottom, // bottom right
+            vec_x_right, vec_y_top,    tex_x_right, tex_y_top,    // top right
+        ];
+        vertex_data
     }
 }
 
@@ -374,6 +567,7 @@ impl Drop for Renderer {
         unsafe {
             self.gl.DeleteProgram(self.program);
             self.gl.DeleteBuffers(1, &self.vbo);
+            self.gl.DeleteBuffers(1, &self.eab);
             self.gl.DeleteVertexArrays(1, &self.vao);
         }
     }
@@ -418,16 +612,6 @@ unsafe fn create_shader(
         Ok(shader)
     }
 }
-
-#[rustfmt::skip]
-static VERTEX_DATA: [f32; 24] = [
-    -1.0, -1.0,  0.0,  1.0,
-    -1.0,  1.0,  0.0,  0.0,
-     1.0,  1.0,  1.0,  0.0,
-     1.0,  1.0,  1.0,  0.0,
-     1.0, -1.0,  1.0,  1.0,
-    -1.0, -1.0,  0.0,  1.0,
-];
 
 const VERTEX_SHADER_SOURCE: &[u8] = b"
 #version 320 es

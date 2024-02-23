@@ -13,10 +13,10 @@ use smithay_client_toolkit::reexports::client::protocol::wl_surface;
 use smithay_client_toolkit::reexports::client::QueueHandle;
 use smithay_client_toolkit::shell::wlr_layer::{LayerSurface, LayerSurfaceConfigure};
 
-use crate::filelist_cache::{self, FilelistCache};
+use crate::filelist_cache::FilelistCache;
 use crate::image_picker::ImagePicker;
 use crate::render::{EglContext, Renderer};
-use crate::wallpaper_info::WallpaperInfo;
+use crate::wallpaper_info::{BackgroundMode, WallpaperInfo};
 use crate::wpaperd::Wpaperd;
 
 pub struct Surface {
@@ -85,9 +85,10 @@ impl Surface {
         // Use the correct context before loading the texture and drawing
         self.egl_context.make_current()?;
 
-        if let Some(image) = self.image_picker.get_image()? {
+        if let Some(mut image) = self.image_picker.get_image()? {
             let image = image.into_rgba8();
-            self.renderer.load_texture(image.into())?;
+            self.renderer
+                .load_texture(image.into(), self.wallpaper_info.mode)?;
             self.renderer.start_animation(time);
 
             // self.apply_shadow(&mut image, width.try_into()?);

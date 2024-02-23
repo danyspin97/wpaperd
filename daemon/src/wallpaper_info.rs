@@ -7,13 +7,14 @@ use serde::Deserialize;
 pub struct WallpaperInfo {
     #[serde(deserialize_with = "tilde_expansion_deserialize")]
     pub path: Option<PathBuf>,
-    pub mode: Option<()>,
     #[serde(default, with = "humantime_serde")]
     pub duration: Option<Duration>,
     #[serde(rename = "apply-shadow")]
     pub apply_shadow: Option<bool>,
     #[serde(default)]
     pub sorting: Sorting,
+    #[serde(default)]
+    pub mode: BackgroundMode,
 }
 
 #[derive(Debug, Copy, Clone, Default, Eq, PartialEq, Deserialize)]
@@ -23,6 +24,16 @@ pub enum Sorting {
     Random,
     Ascending,
     Descending,
+}
+
+#[derive(Debug, Copy, Clone, Default, Eq, PartialEq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum BackgroundMode {
+    #[default]
+    Stretch,
+    Fill,
+    Fit,
+    Tile,
 }
 
 pub fn tilde_expansion_deserialize<'de, D>(deserializer: D) -> Result<Option<PathBuf>, D::Error>
