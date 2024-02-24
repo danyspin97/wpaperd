@@ -8,7 +8,6 @@ use color_eyre::{
     Result,
 };
 use egl::API as egl;
-use glutin::api::egl::display;
 use image::DynamicImage;
 use smithay_client_toolkit::reexports::client::{protocol::wl_surface::WlSurface, Proxy};
 use wayland_egl::WlEglSurface;
@@ -203,7 +202,7 @@ impl Renderer {
         gl_check!(gl, "generating the vbo buffer");
         gl.BindBuffer(gl::ARRAY_BUFFER, vbo);
         gl_check!(gl, "binding the vbo buffer");
-        let mut vertex_data: Vec<f32> = vec![0.0; 16 as _];
+        let vertex_data: Vec<f32> = vec![0.0; 16 as _];
         gl.BufferData(
             gl::ARRAY_BUFFER,
             (vertex_data.len() * std::mem::size_of::<f32>()) as gl::types::GLsizeiptr,
@@ -287,7 +286,7 @@ impl Renderer {
 
     pub unsafe fn draw(&self, time: u32) -> Result<()> {
         self.gl.Clear(gl::COLOR_BUFFER_BIT);
-        self.check_error("clearing the screen");
+        self.check_error("clearing the screen")?;
 
         let elapsed = time - self.time_started;
         let mut progress = (elapsed as f32 / self.animation_time as f32).min(1.0);
@@ -352,6 +351,7 @@ impl Renderer {
             // Delete the old texture and update order
             std::mem::swap(&mut self.texture1, &mut self.texture2);
             self.gl.DeleteTextures(1, &mut self.texture2);
+            self.check_error("deleting the texture")?;
             self.texture2 = texture;
 
             let vertex = self.generate_vertex_data(mode, image.width(), image.height());
@@ -362,16 +362,12 @@ impl Renderer {
                 (vertex.len() * std::mem::size_of::<f32>()) as gl::types::GLsizeiptr,
                 vertex.as_ptr() as *const _,
             );
-            self.check_error("buffering the data");
+            self.check_error("buffering the data")?;
         })
     }
 
     pub fn start_animation(&mut self, time: u32) {
         self.time_started = time;
-    }
-
-    pub fn assign_textures(&mut self) -> Result<()> {
-        Ok(())
     }
 
     pub fn clear_after_draw(&self) -> Result<()> {

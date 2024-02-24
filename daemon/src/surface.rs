@@ -16,7 +16,7 @@ use smithay_client_toolkit::shell::wlr_layer::{LayerSurface, LayerSurfaceConfigu
 use crate::filelist_cache::FilelistCache;
 use crate::image_picker::ImagePicker;
 use crate::render::{EglContext, Renderer};
-use crate::wallpaper_info::{BackgroundMode, WallpaperInfo};
+use crate::wallpaper_info::WallpaperInfo;
 use crate::wpaperd::Wpaperd;
 
 pub struct Surface {
@@ -85,7 +85,7 @@ impl Surface {
         // Use the correct context before loading the texture and drawing
         self.egl_context.make_current()?;
 
-        if let Some(mut image) = self.image_picker.get_image()? {
+        if let Some(image) = self.image_picker.get_image()? {
             let image = image.into_rgba8();
             self.renderer
                 .load_texture(image.into(), self.wallpaper_info.mode)?;
@@ -120,7 +120,7 @@ impl Surface {
         Ok(())
     }
 
-    fn apply_shadow(&self, image: &mut ImageBuffer<Rgba<u8>, Vec<u8>>, width: u32) {
+    fn _apply_shadow(&self, image: &mut ImageBuffer<Rgba<u8>, Vec<u8>>, width: u32) {
         if self.wallpaper_info.apply_shadow.unwrap_or_default() {
             const GRADIENT_HEIGHT: u32 = 11;
             type RgbaImage = image::ImageBuffer<image::Rgba<u8>, Vec<u8>>;

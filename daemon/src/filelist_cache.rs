@@ -3,6 +3,7 @@ use std::{
     sync::{atomic::AtomicBool, Arc},
 };
 
+use color_eyre::eyre::Context;
 use hotwatch::Hotwatch;
 use walkdir::WalkDir;
 
@@ -66,7 +67,12 @@ impl FilelistCache {
                 true
             } else {
                 // Stop watching paths that have been removed
-                hotwatch.unwatch(&filelist.path);
+                if let Err(err) = hotwatch
+                    .unwatch(&filelist.path)
+                    .with_context(|| format!("hotwatch unwatch error on path {:?}", &filelist.path))
+                {
+                    log::error!("{err}");
+                }
                 // and remove them from the vec
                 false
             }
@@ -80,10 +86,15 @@ impl FilelistCache {
                 .is_none()
             {
                 self.cache.push(Filelist::new(&path));
-                hotwatch.watch(path, |event| match event.kind {
-                    hotwatch::EventKind::Create(_) | hotwatch::EventKind::Remove(_) => {}
-                    _ => {}
-                });
+                if let Err(err) = hotwatch
+                    .watch(&path, |event| match event.kind {
+                        hotwatch::EventKind::Create(_) | hotwatch::EventKind::Remove(_) => {}
+                        _ => {}
+                    })
+                    .with_context(|| format!("hotwatch watch error on path {:?}", &path))
+                {
+                    log::error!("{err}");
+                }
             }
         }
 

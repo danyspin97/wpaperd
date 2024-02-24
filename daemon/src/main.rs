@@ -97,7 +97,7 @@ fn run(config: Config, xdg_dirs: BaseDirectories) -> Result<()> {
     let mut hotwatch = Hotwatch::new().context("hotwatch failed to initialize")?;
     wallpaper_config.listen_to_changes(&mut hotwatch, ev_tx)?;
 
-    let mut filelist_cache = Rc::new(RefCell::new(FilelistCache::new()));
+    let filelist_cache = Rc::new(RefCell::new(FilelistCache::new()));
     filelist_cache
         .borrow_mut()
         .update_paths(wallpaper_config.paths(), &mut hotwatch);
@@ -120,7 +120,9 @@ fn run(config: Config, xdg_dirs: BaseDirectories) -> Result<()> {
                 // them when that happens
                 if surface.is_configured() {
                     surface.add_timer(None, &event_loop.handle(), qh.clone());
-                    surface.draw(&qh, 0);
+                    if let Err(err) = surface.draw(&qh, 0) {
+                        log::error!("{err}");
+                    }
                     true
                 } else {
                     false

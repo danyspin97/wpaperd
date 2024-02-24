@@ -88,7 +88,7 @@ Either remove `duration` or set `path` to a directory"
     /// Return true if the struct changed
     pub(crate) fn try_update(&mut self) -> bool {
         // When the config file has been written into
-        let mut new_config = WallpapersConfig::new_from_path(&self.path)
+        let new_config = WallpapersConfig::new_from_path(&self.path)
             .with_context(|| format!("reading configuration from file {:?}", self.path));
         match new_config {
             Ok(new_config) if new_config != *self => {
@@ -107,7 +107,6 @@ Either remove `duration` or set `path` to a directory"
             }
         }
     }
-
 }
 
 impl PartialEq for WallpapersConfig {

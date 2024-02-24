@@ -1,7 +1,6 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use color_eyre::eyre::Context;
 use color_eyre::Result;
 use smithay_client_toolkit::compositor::{CompositorHandler, CompositorState, Region};
 use smithay_client_toolkit::output::{OutputHandler, OutputState};
@@ -19,7 +18,7 @@ use smithay_client_toolkit::{
     registry_handlers,
 };
 
-use crate::filelist_cache::{self, FilelistCache};
+use crate::filelist_cache::FilelistCache;
 use crate::surface::Surface;
 use crate::wallpaper_config::WallpapersConfig;
 
@@ -127,8 +126,8 @@ impl CompositorHandler for Wpaperd {
         &mut self,
         _conn: &Connection,
         _qh: &QueueHandle<Self>,
-        surface: &wl_surface::WlSurface,
-        new_transform: wl_output::Transform,
+        _surface: &wl_surface::WlSurface,
+        _new_transform: wl_output::Transform,
     ) {
         // self.surface_from_wl_surface(surface)
         //     .unwrap()
