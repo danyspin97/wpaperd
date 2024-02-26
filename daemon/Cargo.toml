@@ -16,37 +16,36 @@ rust-version = "1.58.1"
 
 [dependencies]
 wpaperd-ipc = { path = "../ipc" }
-clap = { version = "4.4.11", features = ["derive", "wrap_help"] }
-color-eyre = { version = "0.6.2", default_features = false }
+clap = { version = "4.5.1", features = ["derive", "wrap_help"] }
+color-eyre = { version = "0.6.2", default-features = false }
 figment = { version = "0.10.14", features = ["toml"] }
-flexi_logger = { version = "0.27.4", default_features = false, features = ["colors"] }
-image = { version = "0.24.8", default_features = false, features = ["jpeg", "png", "webp"] }
+flexi_logger = { version = "0.27.4", default-features = false, features = ["colors"] }
+image = { version = "0.24.9", default-features = false, features = ["jpeg", "png", "webp"] }
 hotwatch = "0.5.0"
 humantime-serde = "1.1.1"
 log = "0.4.20"
 mime = "0.3.17"
 new_mime_guess = "4.0.1"
-nix = { version = "0.27.1", features = ["process"] }
+nix = { version = "0.28.0", features = ["process"] }
 rand = "0.8.5"
-serde = { version = "1.0.195", features = ["derive", "rc"] }
-smithay-client-toolkit = { version = "0.18.0", default_features = false, features = [ "calloop" ] }
-toml = "0.8.8"
+serde = { version = "1.0.197", features = ["derive", "rc"] }
+smithay-client-toolkit = { version = "0.18.1", default-features = false, features = [ "calloop" ] }
+toml = "0.8.10"
 xdg = "2.5.2"
 walkdir = "2.4.0"
 dirs = "5.0.1"
-serde_json = "1.0.111"
+serde_json = "1.0.114"
 wayland-egl = "0.32.0"
-wayland-backend = { version = "0.3.2", features = ["client_system"] }
-glutin = { version = "0.31.2", default-features = false, features = ["egl"] }
+wayland-backend = { version = "0.3.3", features = ["client_system"] }
 gl_generator = "0.14.0"
 khronos-egl = { version = "6.0.0", features = [ "static" ] }
 
 [build-dependencies]
-clap = { version = "4.4.18", features = ["derive", "cargo"] }
-clap_complete = "4.4.9"
-clap_mangen = "0.2.17"
+clap = { version = "4.5.1", features = ["derive", "cargo"] }
+clap_complete = "4.5.1"
+clap_mangen = "0.2.20"
 # used for the imports in src/config.rs
-serde = { version = "1.0.195", features = ["derive"] }
+serde = { version = "1.0.197", features = ["derive"] }
 gl_generator = "0.14.0"
 
 [features]
