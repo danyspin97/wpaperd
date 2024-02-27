@@ -309,7 +309,7 @@ impl Renderer {
 
     pub fn load_texture(&mut self, image: DynamicImage, mode: BackgroundMode) -> Result<()> {
         let mut texture = 0;
-        Ok(unsafe {
+        unsafe {
             self.gl.GenTextures(1, &mut texture);
             self.check_error("generating textures")?;
             self.gl.ActiveTexture(if self.reverse {
@@ -350,7 +350,7 @@ impl Renderer {
 
             // Delete the old texture and update order
             std::mem::swap(&mut self.texture1, &mut self.texture2);
-            self.gl.DeleteTextures(1, &mut self.texture2);
+            self.gl.DeleteTextures(1, &self.texture2);
             self.check_error("deleting the texture")?;
             self.texture2 = texture;
 
@@ -363,7 +363,9 @@ impl Renderer {
                 vertex.as_ptr() as *const _,
             );
             self.check_error("buffering the data")?;
-        })
+        }
+
+        Ok(())
     }
 
     pub fn start_animation(&mut self, time: u32) {

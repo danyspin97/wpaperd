@@ -66,7 +66,7 @@ impl ImagePicker {
     }
 
     /// Get the next image based on the sorting method
-    fn get_image_path(&mut self, files: &Vec<PathBuf>) -> (usize, PathBuf) {
+    fn get_image_path(&mut self, files: &[PathBuf]) -> (usize, PathBuf) {
         match (&self.action, &mut self.sorting) {
             (None, _) if self.current_img.exists() => unreachable!(),
             (
@@ -86,7 +86,7 @@ impl ImagePicker {
                         break (index, files[index].to_path_buf());
                     }
 
-                    tries = tries - 1;
+                    tries -= 1;
                 }
             }
             (
@@ -289,16 +289,14 @@ impl ImagePicker {
                     "tried reading an image from the directory {path:?} without success",
                 );
             }
+        } else if path == self.current_img {
+            None
         } else {
-            if path == self.current_img {
-                None
-            } else {
-                self.current_img = path;
-                Some(
-                    open(&self.current_img)
-                        .with_context(|| format!("opening the image {:?}", &self.current_img))?,
-                )
-            }
+            self.current_img = path;
+            Some(
+                open(&self.current_img)
+                    .with_context(|| format!("opening the image {:?}", &self.current_img))?,
+            )
         })
     }
 

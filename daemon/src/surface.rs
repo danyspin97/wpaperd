@@ -183,7 +183,7 @@ impl Surface {
         if self.wallpaper_info != wallpaper_info {
             // Put the new value in place
             std::mem::swap(&mut self.wallpaper_info, &mut wallpaper_info);
-            let path_changed = self.image_picker.update(&*self.wallpaper_info);
+            let path_changed = self.image_picker.update(&self.wallpaper_info);
             if self.wallpaper_info.duration != wallpaper_info.duration {
                 match (self.wallpaper_info.duration, wallpaper_info.duration) {
                     (None, None) => {
@@ -223,10 +223,8 @@ impl Surface {
                         self.add_timer(timer, handle, qh.clone());
                     }
                 }
-            } else {
-                if path_changed {
-                    self.queue_draw(qh);
-                }
+            } else if path_changed {
+                self.queue_draw(qh);
             }
         }
     }

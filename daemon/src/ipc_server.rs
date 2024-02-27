@@ -119,24 +119,24 @@ fn handle_message(
         }),
 
         IpcMessage::PreviousWallpaper { monitors } => {
-            check_monitors(wpaperd, &monitors).and_then(|_| {
+            check_monitors(wpaperd, &monitors).map(|_| {
                 for surface in collect_surfaces(wpaperd, monitors) {
                     surface.image_picker.previous_image();
                     surface.queue_draw(&qh);
                 }
 
-                Ok(IpcResponse::Ok)
+                IpcResponse::Ok
             })
         }
 
         IpcMessage::NextWallpaper { monitors } => {
-            check_monitors(wpaperd, &monitors).and_then(|_| {
+            check_monitors(wpaperd, &monitors).map(|_| {
                 for surface in collect_surfaces(wpaperd, monitors) {
                     surface.image_picker.next_image();
                     surface.queue_draw(&qh);
                 }
 
-                Ok(IpcResponse::Ok)
+                IpcResponse::Ok
             })
         }
     };

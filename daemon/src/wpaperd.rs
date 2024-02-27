@@ -66,7 +66,7 @@ impl Wpaperd {
         if self.wallpaper_config.try_update() {
             for surface in &mut self.surfaces {
                 let wallpaper_info = self.wallpaper_config.get_output_by_name(surface.name());
-                surface.update_wallpaper_info(&ev_handle, &qh, wallpaper_info);
+                surface.update_wallpaper_info(&ev_handle, qh, wallpaper_info);
             }
         }
     }

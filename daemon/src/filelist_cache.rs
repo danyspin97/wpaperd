@@ -63,7 +63,7 @@ impl FilelistCache {
     /// paths must be sorted
     pub fn update_paths(&mut self, paths: Vec<PathBuf>, hotwatch: &mut Hotwatch) {
         self.cache.retain(|filelist| {
-            if paths.contains(&&filelist.path) {
+            if paths.contains(&filelist.path) {
                 true
             } else {
                 // Stop watching paths that have been removed
@@ -79,11 +79,9 @@ impl FilelistCache {
         });
 
         for path in paths {
-            if self
+            if !self
                 .cache
-                .iter()
-                .find(|filelist| filelist.path == path)
-                .is_none()
+                .iter().any(|filelist| filelist.path == path)
             {
                 self.cache.push(Filelist::new(&path));
                 if let Err(err) = hotwatch
