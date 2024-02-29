@@ -251,7 +251,6 @@ impl Surface {
         if info.change_size(configure) {
             drop(info);
             self.resize(qh);
-            println!("{:?}", self.info.borrow());
         }
     }
 
