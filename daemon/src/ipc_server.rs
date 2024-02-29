@@ -3,14 +3,12 @@
 
 use std::collections::HashSet;
 use std::fs;
-use std::io::{BufRead, BufReader, BufWriter, Write};
+use std::io::{BufReader, BufWriter, Read, Write};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 
-use color_eyre::eyre::Context;
-use color_eyre::Result;
-use log::error;
-use smithay_client_toolkit::reexports::calloop::LoopHandle;
+use color_eyre::eyre::{ensure, Context};
+use color_eyre::{Result, Section};
 use smithay_client_toolkit::reexports::client::QueueHandle;
 use wpaperd_ipc::{IpcError, IpcMessage, IpcResponse};
 
@@ -19,11 +17,7 @@ use crate::surface::Surface;
 use crate::Wpaperd;
 
 /// Create an IPC socket.
-pub fn spawn_ipc_socket(
-    socket_path: &Path,
-    event_loop: &LoopHandle<Wpaperd>,
-    qh: QueueHandle<Wpaperd>,
-) -> Result<()> {
+pub fn listen_on_ipc_socket(socket_path: &Path) -> Result<SocketSource> {
     // Try to delete the socket if it exists already.
     if socket_path.exists() {
         fs::remove_file(socket_path)?;
@@ -32,16 +26,7 @@ pub fn spawn_ipc_socket(
     // Spawn unix socket event source.
     let listener = UnixListener::bind(socket_path)?;
     let socket = SocketSource::new(listener)?;
-
-    // Add source to calloop loop.
-    let mut message_buffer = String::new();
-    event_loop.insert_source(socket, move |stream, _, wpaperd| {
-        if let Err(err) = handle_message(&mut message_buffer, stream, qh.clone(), wpaperd) {
-            error!("{}", err);
-        }
-    })?;
-
-    Ok(())
+    Ok(socket)
 }
 
 fn check_monitors(wpaperd: &Wpaperd, monitors: &Vec<String>) -> Result<(), IpcError> {
@@ -74,26 +59,29 @@ fn collect_surfaces(wpaperd: &mut Wpaperd, monitors: Vec<String>) -> Vec<&mut Su
 }
 
 /// Handle IPC socket messages.
-fn handle_message(
-    buffer: &mut String,
+pub fn handle_message(
     ustream: UnixStream,
     qh: QueueHandle<Wpaperd>,
     wpaperd: &mut Wpaperd,
 ) -> Result<()> {
-    buffer.clear();
+    // Use a buffer of 4Kb, it should be big enough for all messages sent by wpaperctl
+    let mut buffer = [0; 4 * 1024];
 
     // Read new content to buffer.
     let mut stream = BufReader::new(&ustream);
     let n = stream
-        .read_line(buffer)
+        .read(&mut buffer)
         .context("error while reading line from IPC")?;
-    // The message is empty
-    if n == 0 {
-        return Ok(());
-    }
+    ensure!(n != 0, "");
+
+    let mut tmp = [0; 1];
+    let n = stream
+        .read(&mut tmp)
+        .context("error while reading line from IPC")?;
+    ensure!(n == 0, "The buffer is big enough");
 
     // Read pending events on socket.
-    let message: IpcMessage = serde_json::from_str(buffer)
+    let message: IpcMessage = serde_json::from_slice(&buffer)
         .with_context(|| format!("error while deserializing message {buffer:?}"))?;
 
     // Handle IPC events.
@@ -142,7 +130,8 @@ fn handle_message(
     let mut stream = BufWriter::new(ustream);
     stream
         .write_all(&serde_json::to_vec(&resp).unwrap())
-        .unwrap();
+        .context("unable to write response to the IPC client")
+        .suggestion("Probably the client died, try running it again")?;
 
     Ok(())
 }

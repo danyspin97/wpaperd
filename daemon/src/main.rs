@@ -37,6 +37,7 @@ use figment::{
 use filelist_cache::FilelistCache;
 use flexi_logger::{Duplicate, FileSpec, Logger};
 use hotwatch::Hotwatch;
+use ipc_server::{handle_message, listen_on_ipc_socket};
 use log::error;
 use nix::unistd::fork;
 use smithay_client_toolkit::reexports::{
@@ -148,10 +149,22 @@ fn run(config: Config, xdg_dirs: BaseDirectories) -> Result<()> {
             .context("dispatching the event loop")?;
     }
 
-    ipc_server::spawn_ipc_socket(&socket_path()?, &event_loop.handle(), qh.clone()).unwrap();
+    // Start listening on the IPC socket
+    let socket = listen_on_ipc_socket(&socket_path()?).context("spawning the ipc socket")?;
+
+    // Add source to calloop loop.
+    event_loop
+        .handle()
+        .insert_source(socket, |stream, _, wpaperd| {
+            if let Err(err) = handle_message(stream, qh.clone(), wpaperd) {
+                error!("{:?}", err);
+            }
+        })?;
+
     if let Some(notify) = config.notify {
         let mut f = unsafe { File::from_raw_fd(notify as i32) };
         if let Err(err) = writeln!(f) {
+            // This is not a hard error, just log it and go on
             error!("Could not write to FD {notify}: {err:?}");
         }
     }
