@@ -1,6 +1,8 @@
 use std::{
+    cell::RefCell,
     ffi::{c_void, CStr},
     ops::Deref,
+    rc::Rc,
 };
 
 use color_eyre::{
@@ -12,7 +14,7 @@ use image::DynamicImage;
 use smithay_client_toolkit::reexports::client::{protocol::wl_surface::WlSurface, Proxy};
 use wayland_egl::WlEglSurface;
 
-use crate::wallpaper_info::BackgroundMode;
+use crate::{surface::DisplayInfo, wallpaper_info::BackgroundMode};
 
 pub mod gl {
     #![allow(clippy::all)]
@@ -39,8 +41,7 @@ pub struct Renderer {
     pub time_started: u32,
     texture1: gl::types::GLuint,
     texture2: gl::types::GLuint,
-    width: i32,
-    height: i32,
+    display_info: Rc<RefCell<DisplayInfo>>,
 }
 
 // Macro that check the error code of the last OpenGL call and returns a Result.
@@ -163,7 +164,7 @@ impl EglContext {
 }
 
 impl Renderer {
-    pub unsafe fn new(image: DynamicImage) -> Result<Self> {
+    pub unsafe fn new(image: DynamicImage, display_info: Rc<RefCell<DisplayInfo>>) -> Result<Self> {
         let gl = gl::Gl::load_with(|name| {
             egl.get_proc_address(name).unwrap() as *const std::ffi::c_void
         });
@@ -268,8 +269,7 @@ impl Renderer {
             animation_time: 3000,
             texture1: 0,
             texture2: 0,
-            width: 0,
-            height: 0,
+            display_info,
         };
 
         renderer.load_texture(image, BackgroundMode::Stretch)?;
@@ -386,12 +386,11 @@ impl Renderer {
         Ok(())
     }
 
-    pub fn resize(&mut self, width: i32, height: i32) -> Result<()> {
-        self.width = width;
-        self.height = height;
-
+    pub fn resize(&mut self) -> Result<()> {
+        let info = self.display_info.borrow();
         unsafe {
-            self.gl.Viewport(0, 0, width, height);
+            self.gl
+                .Viewport(0, 0, info.adjusted_width(), info.adjusted_height());
             self.check_error("resizing the viewport")
         }
     }
@@ -416,6 +415,13 @@ impl Renderer {
         const TEX_Y_BOTTOM: f32 = 0.0;
         const TEX_Y_TOP: f32 = 1.0;
 
+        // adjusted_width and adjusted_height returns the rotated sizes in case
+        // the display is rotated. However, openGL is drawing in the same orientation
+        // as our display (i.e. we don't apply any transform here)
+        // We still need the scale
+        let display_width = self.display_info.borrow().scaled_width();
+        let display_height = self.display_info.borrow().scaled_height();
+
         let (
             vec_x_left,
             vec_x_right,
@@ -437,7 +443,7 @@ impl Renderer {
                 TEX_Y_TOP,
             ),
             BackgroundMode::Fill => {
-                let display_ratio = self.width as f32 / self.height as f32;
+                let display_ratio = display_width as f32 / display_height as f32;
                 let image_ratio = image_width as f32 / image_height as f32;
                 if display_ratio == image_ratio {
                     (
@@ -488,7 +494,7 @@ impl Renderer {
                 }
             }
             BackgroundMode::Fit => {
-                let display_ratio = self.width as f32 / self.height as f32;
+                let display_ratio = display_width as f32 / display_height as f32;
                 let image_ratio = image_width as f32 / image_height as f32;
                 if display_ratio == image_ratio {
                     (
@@ -529,8 +535,8 @@ impl Renderer {
             }
             BackgroundMode::Tile => {
                 // Tile using the original image size
-                let x = self.width as f32 / image_width as f32;
-                let y = self.height as f32 / image_height as f32;
+                let x = display_width as f32 / image_width as f32;
+                let y = display_height as f32 / image_height as f32;
                 (
                     VEC_X_LEFT,
                     VEC_X_RIGHT,

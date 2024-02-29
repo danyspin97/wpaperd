@@ -105,13 +105,11 @@ fn run(config: Config, xdg_dirs: BaseDirectories) -> Result<()> {
     let mut wpaperd = Wpaperd::new(
         &qh,
         &globals,
-        &conn,
         wallpaper_config,
         egl_display,
         filelist_cache.clone(),
     )?;
 
-    // Loop until the wayland server has sent us the configure event for all the displays
     loop {
         let all_configured = !wpaperd.surfaces.is_empty()
             && wpaperd.surfaces.iter_mut().all(|surface| {

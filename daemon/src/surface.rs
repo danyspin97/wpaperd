@@ -6,9 +6,10 @@ use std::time::{Duration, Instant};
 use color_eyre::Result;
 use image::imageops::FilterType;
 use image::{DynamicImage, ImageBuffer, Pixel, Rgba};
+use smithay_client_toolkit::output::OutputInfo;
 use smithay_client_toolkit::reexports::calloop::timer::{TimeoutAction, Timer};
 use smithay_client_toolkit::reexports::calloop::{LoopHandle, RegistrationToken};
-use smithay_client_toolkit::reexports::client::protocol::wl_output::WlOutput;
+use smithay_client_toolkit::reexports::client::protocol::wl_output::{Transform, WlOutput};
 use smithay_client_toolkit::reexports::client::protocol::wl_surface;
 use smithay_client_toolkit::reexports::client::QueueHandle;
 use smithay_client_toolkit::shell::wlr_layer::{LayerSurface, LayerSurfaceConfigure};
@@ -19,28 +20,109 @@ use crate::render::{EglContext, Renderer};
 use crate::wallpaper_info::WallpaperInfo;
 use crate::wpaperd::Wpaperd;
 
+#[derive(Debug)]
+pub struct DisplayInfo {
+    name: String,
+    width: i32,
+    height: i32,
+    scale: i32,
+    transform: Transform,
+}
+
 pub struct Surface {
-    pub name: String,
     pub surface: wl_surface::WlSurface,
     pub output: WlOutput,
     pub layer: LayerSurface,
-    pub width: u32,
-    pub height: u32,
-    pub scale: i32,
     egl_context: EglContext,
     renderer: Renderer,
     pub image_picker: ImagePicker,
     pub event_source: Option<RegistrationToken>,
     wallpaper_info: Arc<WallpaperInfo>,
+    info: Rc<RefCell<DisplayInfo>>,
+}
+
+impl DisplayInfo {
+    pub fn new(info: OutputInfo) -> Self {
+        // let width = info.logical_size.unwrap().0;
+        // let height = info.logical_size.unwrap().1;
+        Self {
+            name: info.name.unwrap(),
+            width: 0,
+            height: 0,
+            scale: info.scale_factor,
+            transform: info.transform,
+        }
+    }
+
+    pub fn scaled_width(&self) -> i32 {
+        self.width * self.scale
+    }
+
+    pub fn scaled_height(&self) -> i32 {
+        self.height * self.scale
+    }
+
+    pub fn adjusted_width(&self) -> i32 {
+        match self.transform {
+            Transform::Normal | Transform::_180 | Transform::Flipped | Transform::Flipped180 => {
+                self.width as i32 * self.scale
+            }
+            Transform::_90 | Transform::_270 | Transform::Flipped90 | Transform::Flipped270 => {
+                self.height as i32 * self.scale
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn adjusted_height(&self) -> i32 {
+        match self.transform {
+            Transform::Normal | Transform::_180 | Transform::Flipped | Transform::Flipped180 => {
+                self.height as i32 * self.scale
+            }
+            Transform::_90 | Transform::_270 | Transform::Flipped90 | Transform::Flipped270 => {
+                self.width as i32 * self.scale
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn change_size(&mut self, configure: LayerSurfaceConfigure) -> bool {
+        let new_width = configure.new_size.0 as i32;
+        let new_height = configure.new_size.1 as i32;
+        if (self.width, self.height) != (new_width, new_height) {
+            self.width = new_width;
+            self.height = new_height;
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn change_transform(&mut self, transform: Transform) -> bool {
+        if self.transform != transform {
+            self.transform = transform;
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn change_scale_factor(&mut self, scale_factor: i32) -> bool {
+        if self.scale != self.scale {
+            self.scale = scale_factor;
+            true
+        } else {
+            false
+        }
+    }
 }
 
 impl Surface {
     pub fn new(
-        name: String,
         layer: LayerSurface,
         output: WlOutput,
         surface: wl_surface::WlSurface,
-        scale_factor: i32,
+        info: DisplayInfo,
         wallpaper_info: Arc<WallpaperInfo>,
         egl_display: egl::Display,
         filelist_cache: Rc<RefCell<FilelistCache>>,
@@ -57,15 +139,13 @@ impl Surface {
         let image = image::open(image_picker.current_image())
             .unwrap()
             .into_rgba8();
-        let renderer = unsafe { Renderer::new(image.into()).unwrap() };
+        let info = Rc::new(RefCell::new(info));
+        let renderer = unsafe { Renderer::new(image.into(), info.clone()).unwrap() };
 
         Self {
-            name,
             output,
             layer,
-            width: 0,
-            height: 0,
-            scale: scale_factor,
+            info,
             surface,
             egl_context,
             renderer,
@@ -77,10 +157,11 @@ impl Surface {
 
     /// Returns true if something has been drawn to the surface
     pub fn draw(&mut self, qh: &QueueHandle<Wpaperd>, time: u32) -> Result<()> {
-        debug_assert!(self.width != 0 || self.height != 0);
+        debug_assert!(self.is_configured());
 
-        let width = self.width as i32 * self.scale;
-        let height = self.height as i32 * self.scale;
+        let info = self.info.borrow();
+        let width = info.adjusted_width();
+        let height = info.adjusted_height();
 
         // Use the correct context before loading the texture and drawing
         self.egl_context.make_current()?;
@@ -137,7 +218,7 @@ impl Surface {
             )
             .resize_exact(
                 width,
-                GRADIENT_HEIGHT * 4 * self.scale as u32,
+                GRADIENT_HEIGHT * 4 * self.info.borrow().scale as u32,
                 FilterType::Triangle,
             )
             .into_rgba8();
@@ -149,27 +230,53 @@ impl Surface {
         }
     }
 
-    pub fn name(&self) -> &str {
-        &self.name
+    pub fn name(&self) -> String {
+        self.info.borrow().name.to_string()
     }
 
     /// Resize the surface
-    /// configure: None means that the scale factor has changed
-    pub fn resize(&mut self, configure: Option<LayerSurfaceConfigure>) {
-        if let Some(configure) = configure {
-            (self.width, self.height) = configure.new_size;
-        }
-        let width = self.width as i32 * self.scale;
-        let height = self.height as i32 * self.scale;
+    pub fn resize(&mut self, qh: &QueueHandle<Wpaperd>) {
+        let info = self.info.borrow();
+        let width = info.adjusted_width();
+        let height = info.adjusted_height();
+        // self.layer.set_size(width as u32, height as u32);
         self.egl_context.resize(&self.surface, width, height);
         // Resize the gl viewport
         self.egl_context.make_current().unwrap();
-        self.renderer.resize(width, height).unwrap();
+        self.renderer.resize().unwrap();
+        self.surface.frame(qh, self.surface.clone());
+    }
+
+    pub fn change_size(&mut self, configure: LayerSurfaceConfigure, qh: &QueueHandle<Wpaperd>) {
+        let mut info = self.info.borrow_mut();
+        if info.change_size(configure) {
+            drop(info);
+            self.resize(qh);
+            println!("{:?}", self.info.borrow());
+        }
+    }
+
+    pub fn change_transform(&mut self, transform: Transform, qh: &QueueHandle<Wpaperd>) {
+        let mut info = self.info.borrow_mut();
+        if info.change_transform(transform) {
+            drop(info);
+            self.surface.set_buffer_transform(transform);
+            self.resize(qh);
+        }
+    }
+
+    pub fn change_scale_factor(&mut self, scale_factor: i32, qh: &QueueHandle<Wpaperd>) {
+        let mut info = self.info.borrow_mut();
+        if info.change_scale_factor(scale_factor) {
+            drop(info);
+            self.surface.set_buffer_scale(scale_factor);
+            self.resize(qh);
+        }
     }
 
     /// Check that the dimensions are valid
     pub(crate) fn is_configured(&self) -> bool {
-        self.width != 0 && self.height != 0
+        self.info.borrow().width != 0 && self.info.borrow().height != 0
     }
 
     /// Update the wallpaper_info of this Surface
@@ -243,7 +350,7 @@ impl Surface {
                 return;
             }
 
-            let name = self.name.clone();
+            let name = self.name().clone();
             let registration_token = handle
                 .insert_source(
                     timer,

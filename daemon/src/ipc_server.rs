@@ -49,7 +49,7 @@ fn check_monitors(wpaperd: &Wpaperd, monitors: &Vec<String>) -> Result<(), IpcEr
         if !wpaperd
             .surfaces
             .iter()
-            .any(|surface| surface.name() == monitor)
+            .any(|surface| &surface.name() == monitor)
         {
             return Err(IpcError::MonitorNotFound {
                 monitor: monitor.to_owned(),
@@ -69,7 +69,7 @@ fn collect_surfaces(wpaperd: &mut Wpaperd, monitors: Vec<String>) -> Vec<&mut Su
     wpaperd
         .surfaces
         .iter_mut()
-        .filter(|surface| monitors.contains(surface.name()))
+        .filter(|surface| monitors.contains(&surface.name()))
         .collect()
 }
 
@@ -129,16 +129,14 @@ fn handle_message(
             })
         }
 
-        IpcMessage::NextWallpaper { monitors } => {
-            check_monitors(wpaperd, &monitors).map(|_| {
-                for surface in collect_surfaces(wpaperd, monitors) {
-                    surface.image_picker.next_image();
-                    surface.queue_draw(&qh);
-                }
+        IpcMessage::NextWallpaper { monitors } => check_monitors(wpaperd, &monitors).map(|_| {
+            for surface in collect_surfaces(wpaperd, monitors) {
+                surface.image_picker.next_image();
+                surface.queue_draw(&qh);
+            }
 
-                IpcResponse::Ok
-            })
-        }
+            IpcResponse::Ok
+        }),
     };
 
     let mut stream = BufWriter::new(ustream);

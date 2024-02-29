@@ -19,7 +19,7 @@ use smithay_client_toolkit::{
 };
 
 use crate::filelist_cache::FilelistCache;
-use crate::surface::Surface;
+use crate::surface::{DisplayInfo, Surface};
 use crate::wallpaper_config::WallpapersConfig;
 
 pub struct Wpaperd {
@@ -38,7 +38,6 @@ impl Wpaperd {
     pub fn new(
         qh: &QueueHandle<Self>,
         globals: &GlobalList,
-        _conn: &Connection,
         wallpaper_config: WallpapersConfig,
         egl_display: egl::Display,
         filelist_cache: Rc<RefCell<FilelistCache>>,
@@ -65,7 +64,7 @@ impl Wpaperd {
     ) {
         if self.wallpaper_config.try_update() {
             for surface in &mut self.surfaces {
-                let wallpaper_info = self.wallpaper_config.get_output_by_name(surface.name());
+                let wallpaper_info = self.wallpaper_config.get_output_by_name(&surface.name());
                 surface.update_wallpaper_info(&ev_handle, qh, wallpaper_info);
             }
         }
@@ -74,7 +73,7 @@ impl Wpaperd {
     pub fn surface_from_name(&mut self, name: &str) -> Option<&mut Surface> {
         self.surfaces
             .iter_mut()
-            .find(|surface| surface.name == name)
+            .find(|surface| surface.name() == name)
     }
     pub fn surface_from_wl_surface(
         &mut self,
@@ -84,7 +83,7 @@ impl Wpaperd {
     }
 }
 
-impl CompositorHandler for Wpaperd {
+impl<'a> CompositorHandler for Wpaperd {
     fn scale_factor_changed(
         &mut self,
         _conn: &Connection,
@@ -92,17 +91,9 @@ impl CompositorHandler for Wpaperd {
         surface: &wl_surface::WlSurface,
         new_factor: i32,
     ) {
-        // If we are using the native resolution, we need to update the buffer scale of the surface
-        // Otherwise it's the compositor that will upscale the wallpaper
-        let surface = self.surface_from_wl_surface(surface).unwrap();
-
-        // Ignore unnecessary updates
-        if surface.scale != new_factor {
-            surface.scale = new_factor;
-            surface.surface.set_buffer_scale(new_factor);
-            surface.resize(None);
-            surface.queue_draw(qh);
-        }
+        self.surface_from_wl_surface(surface)
+            .unwrap()
+            .change_scale_factor(new_factor, qh);
     }
 
     fn frame(
@@ -125,18 +116,17 @@ impl CompositorHandler for Wpaperd {
     fn transform_changed(
         &mut self,
         _conn: &Connection,
-        _qh: &QueueHandle<Self>,
-        _surface: &wl_surface::WlSurface,
-        _new_transform: wl_output::Transform,
+        qh: &QueueHandle<Self>,
+        surface: &wl_surface::WlSurface,
+        new_transform: wl_output::Transform,
     ) {
-        // self.surface_from_wl_surface(surface)
-        //     .unwrap()
-        //     .surface
-        //     .set_buffer_transform(new_transform);
+        self.surface_from_wl_surface(surface)
+            .unwrap()
+            .change_transform(new_transform, qh);
     }
 }
 
-impl OutputHandler for Wpaperd {
+impl<'a> OutputHandler for Wpaperd {
     fn output_state(&mut self) -> &mut OutputState {
         &mut self.output_state
     }
@@ -152,8 +142,10 @@ impl OutputHandler for Wpaperd {
 
         let info = self.output_state.info(&output).unwrap();
         surface.set_buffer_scale(info.scale_factor);
+        surface.set_buffer_transform(info.transform);
 
         let name = info.name.as_ref().unwrap().to_string();
+        let display_info = DisplayInfo::new(info);
 
         let layer = self.layer_state.create_layer_surface(
             qh,
@@ -164,7 +156,10 @@ impl OutputHandler for Wpaperd {
         );
         layer.set_anchor(Anchor::TOP | Anchor::LEFT | Anchor::RIGHT | Anchor::BOTTOM);
         layer.set_exclusive_zone(-1);
-        layer.set_size(0, 0);
+        layer.set_size(
+            display_info.adjusted_width() as u32,
+            display_info.adjusted_height() as u32,
+        );
 
         let empty_region = Region::new(&self.compositor_state).unwrap();
         // Wayland clients are expected to render the cursor on their input region. By setting the
@@ -180,11 +175,10 @@ impl OutputHandler for Wpaperd {
         let wallpaper_info = self.wallpaper_config.get_output_by_name(&name);
 
         self.surfaces.push(Surface::new(
-            name,
             layer,
             output,
             surface,
-            info.scale_factor,
+            display_info,
             wallpaper_info,
             self.egl_display,
             self.filelist_cache.clone(),
@@ -218,7 +212,7 @@ impl OutputHandler for Wpaperd {
     }
 }
 
-impl LayerShellHandler for Wpaperd {
+impl<'a> LayerShellHandler for Wpaperd {
     fn closed(&mut self, _conn: &Connection, _qh: &QueueHandle<Self>, _layer: &LayerSurface) {}
 
     fn configure(
@@ -229,18 +223,12 @@ impl LayerShellHandler for Wpaperd {
         configure: LayerSurfaceConfigure,
         _serial: u32,
     ) {
-        let surface = self
-            .surfaces
+        self.surfaces
             .iter_mut()
             .find(|surface| &surface.layer == layer)
             // We always know the surface that it is being configured
-            .unwrap();
-
-        if (surface.width, surface.height) != configure.new_size {
-            // Update dimensions
-            surface.resize(Some(configure));
-            surface.queue_draw(qh);
-        }
+            .unwrap()
+            .change_size(configure, qh);
     }
 }
 
