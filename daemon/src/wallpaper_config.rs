@@ -102,7 +102,7 @@ Either remove `duration` or set `path` to a directory"
                 false
             }
             Err(err) => {
-                error!("{:?}", err);
+                error!("{err:?}");
                 false
             }
         }

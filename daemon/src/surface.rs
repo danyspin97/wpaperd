@@ -3,6 +3,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use color_eyre::eyre::{Context, ContextCompat};
 use color_eyre::Result;
 use image::imageops::FilterType;
 use image::{DynamicImage, ImageBuffer, Pixel, Rgba};
@@ -190,7 +191,7 @@ impl Surface {
         // Reset the context
         egl::API
             .make_current(self.egl_context.display, None, None, None)
-            .unwrap();
+            .context("Resetting the GL context")?;
 
         // Mark the entire surface as damaged
         self.surface.damage_buffer(0, 0, width, height);
@@ -355,8 +356,10 @@ impl Surface {
                 .insert_source(
                     timer,
                     move |_deadline, _: &mut (), wpaperd: &mut Wpaperd| {
-                        // TODO: error handling
-                        let surface = wpaperd.surface_from_name(&name).unwrap();
+                        let surface = wpaperd
+                            .surface_from_name(&name)
+                            .with_context(|| format!("expecting surface {name} to be available"))
+                            .unwrap();
                         if let Some(duration) = surface.wallpaper_info.duration {
                             // Check that the timer has expired
                             // if the daemon received a next or previous image command

@@ -25,7 +25,10 @@ use std::{
 };
 
 use clap::Parser;
-use color_eyre::{eyre::WrapErr, Result};
+use color_eyre::{
+    eyre::{anyhow, ContextCompat, WrapErr},
+    Result, Section,
+};
 use egl::API as egl;
 use figment::{
     providers::{Format, Serialized, Toml},
@@ -54,11 +57,15 @@ fn run(config: Config, xdg_dirs: BaseDirectories) -> Result<()> {
         wallpaper_config
     } else {
         // Read the new config or the legacy file
-        let legacy_config_file = xdg_dirs.place_config_file("output.conf").unwrap();
+        let legacy_config_file = xdg_dirs
+            .place_config_file("output.conf")
+            .context("unable to identify output.conf")?;
         if legacy_config_file.exists() {
             legacy_config_file
         } else {
-            xdg_dirs.place_config_file("wallpaper.toml").unwrap()
+            xdg_dirs
+                .place_config_file("wallpaper.toml")
+                .context("unable to identify config file wallpaper.toml")?
         }
     };
 
@@ -69,30 +76,34 @@ fn run(config: Config, xdg_dirs: BaseDirectories) -> Result<()> {
     // we use the OpenGL ES API because it's more widely supported
     // and it's used by wlroots
     egl.bind_api(egl::OPENGL_ES_API)
-        .expect("unable to select OpenGL API");
+        .context("unable to select OpenGL API")?;
 
-    let conn = Connection::connect_to_env().unwrap();
+    let conn = Connection::connect_to_env()
+        .context("connecting to wayland")
+        .suggestion("Are you running a wayland compositor?")?;
 
     let egl_display = unsafe {
         egl.get_display(conn.display().id().as_ptr() as *mut std::ffi::c_void)
-            .unwrap()
+            .context("getting the display from the WlDisplay")?
     };
-    egl.initialize(egl_display).unwrap();
+    egl.initialize(egl_display)
+        .context("initializing the egl display")?;
 
-    let (globals, event_queue) = registry_queue_init(&conn).unwrap();
+    let (globals, event_queue) =
+        registry_queue_init(&conn).context("initializing the wayland registry queue")?;
     let qh = event_queue.handle();
 
     let mut event_loop = calloop::EventLoop::<Wpaperd>::try_new()?;
 
     WaylandSource::new(conn.clone(), event_queue)
         .insert(event_loop.handle())
-        .unwrap();
+        .map_err(|e| anyhow!("insterting the wayland source into the event loop: {e}"))?;
 
     let (ev_tx, ev_rx) = calloop::channel::channel();
     event_loop
         .handle()
         .insert_source(ev_rx, |_, _, _| {})
-        .unwrap();
+        .map_err(|e| anyhow!("inserting the hotwatch event listener in the event loop: {e}"))?;
 
     let mut hotwatch = Hotwatch::new().context("hotwatch failed to initialize")?;
     wallpaper_config.listen_to_changes(&mut hotwatch, ev_tx)?;
@@ -119,7 +130,7 @@ fn run(config: Config, xdg_dirs: BaseDirectories) -> Result<()> {
                 if surface.is_configured() {
                     surface.add_timer(None, &event_loop.handle(), qh.clone());
                     if let Err(err) = surface.draw(&qh, 0) {
-                        log::error!("{err}");
+                        error!("{err:?}");
                     }
                     true
                 } else {
@@ -141,7 +152,7 @@ fn run(config: Config, xdg_dirs: BaseDirectories) -> Result<()> {
     if let Some(notify) = config.notify {
         let mut f = unsafe { File::from_raw_fd(notify as i32) };
         if let Err(err) = writeln!(f) {
-            error!("Could not write to FD {notify}: {err}");
+            error!("Could not write to FD {notify}: {err:?}");
         }
     }
 

@@ -2,6 +2,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use color_eyre::Result;
+use log::error;
 use smithay_client_toolkit::compositor::{CompositorHandler, CompositorState, Region};
 use smithay_client_toolkit::output::{OutputHandler, OutputState};
 use smithay_client_toolkit::reexports::calloop::LoopHandle;
@@ -75,11 +76,11 @@ impl Wpaperd {
             .iter_mut()
             .find(|surface| surface.name() == name)
     }
-    pub fn surface_from_wl_surface(
-        &mut self,
-        surface: &wl_surface::WlSurface,
-    ) -> Option<&mut Surface> {
-        self.surfaces.iter_mut().find(|s| surface == &s.surface)
+    pub fn surface_from_wl_surface(&mut self, surface: &wl_surface::WlSurface) -> &mut Surface {
+        self.surfaces
+            .iter_mut()
+            .find(|s| surface == &s.surface)
+            .unwrap()
     }
 }
 
@@ -92,7 +93,6 @@ impl<'a> CompositorHandler for Wpaperd {
         new_factor: i32,
     ) {
         self.surface_from_wl_surface(surface)
-            .unwrap()
             .change_scale_factor(new_factor, qh);
     }
 
@@ -103,12 +103,12 @@ impl<'a> CompositorHandler for Wpaperd {
         surface: &wl_surface::WlSurface,
         time: u32,
     ) {
-        let surface = self.surface_from_wl_surface(surface).unwrap();
+        let surface = self.surface_from_wl_surface(surface);
 
         match surface.draw(qh, time) {
             Ok(_) => {}
             Err(err) => {
-                log::error!("Error drawing surface: {}", err);
+                error!("Error drawing surface: {err:?}");
             }
         }
     }
@@ -121,7 +121,6 @@ impl<'a> CompositorHandler for Wpaperd {
         new_transform: wl_output::Transform,
     ) {
         self.surface_from_wl_surface(surface)
-            .unwrap()
             .change_transform(new_transform, qh);
     }
 }

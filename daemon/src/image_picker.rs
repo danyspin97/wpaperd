@@ -60,7 +60,11 @@ impl ImagePicker {
                 Sorting::Ascending => ImagePickerSorting::Ascending(usize::MAX),
                 Sorting::Descending => ImagePickerSorting::Descending(usize::MAX),
             },
-            path: wallpaper_info.path.as_ref().unwrap().clone(),
+            path: wallpaper_info
+                .path
+                .as_ref()
+                .expect("All wallpaper_info to have a path")
+                .clone(),
             filelist_cache,
         }
     }
@@ -164,7 +168,15 @@ impl ImagePicker {
                 files
                     .get(*current_index - 1)
                     .map(|p| (*current_index - 1, p.to_path_buf()))
-                    .unwrap_or_else(|| (files.len(), files.last().unwrap().to_path_buf()))
+                    .unwrap_or_else(|| {
+                        (
+                            files.len(),
+                            files
+                                .last()
+                                .expect("files vec to not be empty")
+                                .to_path_buf(),
+                        )
+                    })
             }
             // The image index is different
             (
@@ -228,16 +240,12 @@ impl ImagePicker {
                     bail!("Directory {path:?} does not contain any valid image files.");
                 }
 
-                log::debug!("before: {:?}\n{:?}", self.action, self.sorting);
                 let (index, img_path) = self.get_image_path(&files);
                 if img_path == self.current_img {
                     break None;
                 }
                 match open(&img_path).with_context(|| format!("opening the image {img_path:?}")) {
                     Ok(image) => {
-                        // TODO
-                        // info!("New image for monitor {:?}: {img_path:?}", self.name());
-
                         match (self.action.take(), &mut self.sorting) {
                             (
                                 Some(ImagePickerAction::Next),

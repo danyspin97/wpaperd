@@ -5,6 +5,7 @@ use std::{
 
 use color_eyre::eyre::Context;
 use hotwatch::Hotwatch;
+use log::error;
 use walkdir::WalkDir;
 
 struct Filelist {
@@ -55,7 +56,7 @@ impl FilelistCache {
         self.cache
             .iter()
             .find(|filelist| filelist.path == path)
-            .unwrap()
+            .expect("path passed to Filelist::get has been cached")
             .filelist
             .clone()
     }
@@ -71,7 +72,7 @@ impl FilelistCache {
                     .unwatch(&filelist.path)
                     .with_context(|| format!("hotwatch unwatch error on path {:?}", &filelist.path))
                 {
-                    log::error!("{err}");
+                    error!("{err:?}");
                 }
                 // and remove them from the vec
                 false
@@ -79,10 +80,7 @@ impl FilelistCache {
         });
 
         for path in paths {
-            if !self
-                .cache
-                .iter().any(|filelist| filelist.path == path)
-            {
+            if !self.cache.iter().any(|filelist| filelist.path == path) {
                 self.cache.push(Filelist::new(&path));
                 if let Err(err) = hotwatch
                     .watch(&path, |event| match event.kind {
@@ -91,7 +89,7 @@ impl FilelistCache {
                     })
                     .with_context(|| format!("hotwatch watch error on path {:?}", &path))
                 {
-                    log::error!("{err}");
+                    error!("{err:?}");
                 }
             }
         }
