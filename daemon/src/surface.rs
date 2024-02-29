@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 use color_eyre::eyre::{Context, ContextCompat};
 use color_eyre::Result;
 use image::imageops::FilterType;
-use image::{DynamicImage, ImageBuffer, Pixel, Rgba};
+use image::{DynamicImage, ImageBuffer, Pixel, Rgba, RgbaImage};
 use smithay_client_toolkit::output::OutputInfo;
 use smithay_client_toolkit::reexports::calloop::timer::{TimeoutAction, Timer};
 use smithay_client_toolkit::reexports::calloop::{LoopHandle, RegistrationToken};
@@ -137,9 +137,7 @@ impl Surface {
 
         let image_picker = ImagePicker::new(wallpaper_info.clone(), filelist_cache);
 
-        let image = image::open(image_picker.current_image())
-            .unwrap()
-            .into_rgba8();
+        let image = black_image();
         let info = Rc::new(RefCell::new(info));
         let renderer = unsafe { Renderer::new(image.into(), info.clone()).unwrap() };
 
@@ -397,6 +395,10 @@ impl Surface {
         self.surface.frame(qh, self.surface.clone());
         self.surface.commit();
     }
+}
+
+fn black_image() -> RgbaImage {
+    RgbaImage::from_raw(1, 1, vec![0, 0, 0, 255]).unwrap()
 }
 
 fn remaining_duration(duration: Duration, image_changed: Instant) -> Option<Duration> {

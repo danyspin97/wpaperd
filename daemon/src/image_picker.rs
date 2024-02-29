@@ -52,7 +52,7 @@ impl ImagePicker {
         filelist_cache: Rc<RefCell<FilelistCache>>,
     ) -> Self {
         Self {
-            current_img: PathBuf::from("/tmp/new.png"),
+            current_img: PathBuf::from(""),
             image_changed_instant: Instant::now(),
             action: Some(ImagePickerAction::Next),
             sorting: match wallpaper_info.sorting {
