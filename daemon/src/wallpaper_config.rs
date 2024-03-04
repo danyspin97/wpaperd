@@ -15,7 +15,7 @@ use color_eyre::{
 use hotwatch::{Event, Hotwatch};
 use log::error;
 use serde::Deserialize;
-use smithay_client_toolkit::reexports::calloop::channel::Sender;
+use smithay_client_toolkit::reexports::calloop::ping::Ping;
 
 use crate::wallpaper_info::WallpaperInfo;
 
@@ -61,13 +61,13 @@ Either remove `duration` or set `path` to a directory"
         self.data.get(name).unwrap_or(&self.default_config).clone()
     }
 
-    pub fn listen_to_changes(&self, hotwatch: &mut Hotwatch, ev_tx: Sender<()>) -> Result<()> {
+    pub fn listen_to_changes(&self, hotwatch: &mut Hotwatch, ping: Ping) -> Result<()> {
         let reloaded = self.reloaded.as_ref().unwrap().clone();
         hotwatch
             .watch(&self.path, move |event: Event| {
                 if let hotwatch::EventKind::Modify(_) = event.kind {
                     reloaded.store(true, Ordering::Relaxed);
-                    ev_tx.send(()).unwrap();
+                    ping.ping();
                 }
             })
             .with_context(|| format!("watching file {:?}", &self.path))?;

@@ -100,14 +100,15 @@ fn run(config: Config, xdg_dirs: BaseDirectories) -> Result<()> {
         .insert(event_loop.handle())
         .map_err(|e| anyhow!("insterting the wayland source into the event loop: {e}"))?;
 
-    let (ev_tx, ev_rx) = calloop::channel::channel();
+    let (ping, ping_source) =
+        calloop::ping::make_ping().context("Unable to create a calloop::ping::Ping")?;
     event_loop
         .handle()
-        .insert_source(ev_rx, |_, _, _| {})
+        .insert_source(ping_source, |_, _, _| {})
         .map_err(|e| anyhow!("inserting the hotwatch event listener in the event loop: {e}"))?;
 
     let mut hotwatch = Hotwatch::new().context("hotwatch failed to initialize")?;
-    wallpaper_config.listen_to_changes(&mut hotwatch, ev_tx)?;
+    wallpaper_config.listen_to_changes(&mut hotwatch, ping)?;
 
     let filelist_cache = Rc::new(RefCell::new(FilelistCache::new()));
     filelist_cache
