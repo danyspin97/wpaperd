@@ -266,7 +266,7 @@ impl Renderer {
             gl,
             reverse: true,
             time_started: 0,
-            animation_time: 3000,
+            animation_time: 300,
             texture1: 0,
             texture2: 0,
             display_info,
