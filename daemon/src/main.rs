@@ -122,33 +122,6 @@ fn run(config: Config, xdg_dirs: BaseDirectories) -> Result<()> {
         filelist_cache.clone(),
     )?;
 
-    loop {
-        let all_configured = !wpaperd.surfaces.is_empty()
-            && wpaperd.surfaces.iter_mut().all(|surface| {
-                // We need to add the first timer here, so that in the next
-                // loop we will always receive timeout events and create
-                // them when that happens
-                if surface.is_configured() {
-                    surface.add_timer(None, &event_loop.handle(), qh.clone());
-                    if let Err(err) = surface.draw(&qh, 0) {
-                        error!("{err:?}");
-                    }
-                    true
-                } else {
-                    false
-                }
-            });
-
-        // Break to the actual event_loop
-        if all_configured {
-            break;
-        }
-
-        event_loop
-            .dispatch(None, &mut wpaperd)
-            .context("dispatching the event loop")?;
-    }
-
     // Start listening on the IPC socket
     let socket = listen_on_ipc_socket(&socket_path()?).context("spawning the ipc socket")?;
 
@@ -186,6 +159,20 @@ fn run(config: Config, xdg_dirs: BaseDirectories) -> Result<()> {
                 .borrow_mut()
                 .update_paths(wpaperd.wallpaper_config.paths(), &mut hotwatch);
         }
+
+        // Due to how LayerSurface works, we cannot attach the egl window right away.
+        // The LayerSurface needs to have received a configure callback first.
+        // Afterwards we need to draw for the first time and then add a timer if needed.
+        // We cannot use WlSurface::frame() because it only works for windows that are
+        // already visible, hence we need to draw for the first time and then commit.
+        wpaperd.surfaces.iter_mut().for_each(|surface| {
+            if surface.is_configured() && !surface.drawn() {
+                surface.add_timer(None, &event_loop.handle(), qh.clone());
+                if let Err(err) = surface.draw(&qh, 0) {
+                    error!("{err:?}");
+                }
+            }
+        });
 
         event_loop
             .dispatch(None, &mut wpaperd)

@@ -40,6 +40,7 @@ pub struct Surface {
     pub event_source: Option<RegistrationToken>,
     wallpaper_info: Arc<WallpaperInfo>,
     info: Rc<RefCell<DisplayInfo>>,
+    drawn: bool,
 }
 
 impl DisplayInfo {
@@ -151,12 +152,13 @@ impl Surface {
             image_picker,
             event_source: None,
             wallpaper_info,
+            drawn: false,
         }
     }
 
     /// Returns true if something has been drawn to the surface
     pub fn draw(&mut self, qh: &QueueHandle<Wpaperd>, time: u32) -> Result<()> {
-        debug_assert!(self.is_configured());
+        self.drawn = true;
 
         let info = self.info.borrow();
         let width = info.adjusted_width();
@@ -273,8 +275,13 @@ impl Surface {
     }
 
     /// Check that the dimensions are valid
-    pub(crate) fn is_configured(&self) -> bool {
-        self.info.borrow().width != 0 && self.info.borrow().height != 0
+    pub fn is_configured(&self) -> bool {
+        let info = self.info.borrow();
+        info.width != 0 && info.height != 0
+    }
+
+    pub fn drawn(&self) -> bool {
+        self.drawn
     }
 
     /// Update the wallpaper_info of this Surface
