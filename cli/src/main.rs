@@ -33,8 +33,6 @@ fn main() {
         SubCmd::PreviousWallpaper { monitors } => IpcMessage::PreviousWallpaper { monitors },
     };
     conn.write_all(&serde_json::to_vec(&msg).unwrap()).unwrap();
-    // Add a new line after the message
-    conn.write_all(b"\n").unwrap();
     let mut buf = String::new();
     conn.read_to_string(&mut buf).unwrap();
     let res: Result<IpcResponse, IpcError> = serde_json::from_str(&buf).unwrap();

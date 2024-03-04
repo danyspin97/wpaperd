@@ -64,25 +64,23 @@ pub fn handle_message(
     qh: QueueHandle<Wpaperd>,
     wpaperd: &mut Wpaperd,
 ) -> Result<()> {
-    // Use a buffer of 4Kb, it should be big enough for all messages sent by wpaperctl
-    let mut buffer = [0; 4 * 1024];
+    const SIZE: usize = 4096;
+    let mut buffer = [0; SIZE];
 
     // Read new content to buffer.
     let mut stream = BufReader::new(&ustream);
     let n = stream
         .read(&mut buffer)
         .context("error while reading line from IPC")?;
-    ensure!(n != 0, "");
-
-    let mut tmp = [0; 1];
-    let n = stream
-        .read(&mut tmp)
-        .context("error while reading line from IPC")?;
-    ensure!(n == 0, "The buffer is big enough");
+    // The message is empty
+    if n == 0 {
+        return Ok(());
+    }
+    ensure!(n != SIZE, "The message received was too big");
 
     // Read pending events on socket.
-    let message: IpcMessage = serde_json::from_slice(&buffer)
-        .with_context(|| format!("error while deserializing message {buffer:?}"))?;
+    let message: IpcMessage = serde_json::from_slice(&buffer[..n])
+        .with_context(|| format!("error while deserializing message {:?}", &buffer[..n]))?;
 
     // Handle IPC events.
     let resp: Result<IpcResponse, IpcError> = match message {
