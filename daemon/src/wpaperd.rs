@@ -32,7 +32,7 @@ pub struct Wpaperd {
     pub surfaces: Vec<Surface>,
     pub wallpaper_config: WallpapersConfig,
     egl_display: egl::Display,
-    filelist_cache: Rc<RefCell<FilelistCache>>,
+    pub filelist_cache: Rc<RefCell<FilelistCache>>,
 }
 
 impl Wpaperd {

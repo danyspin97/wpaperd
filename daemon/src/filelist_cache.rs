@@ -1,13 +1,20 @@
 use std::{
     path::{Path, PathBuf},
-    sync::{atomic::AtomicBool, Arc},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
 };
 
-use color_eyre::eyre::Context;
+use color_eyre::eyre::{anyhow, Context, Result};
 use hotwatch::Hotwatch;
 use log::error;
+use smithay_client_toolkit::reexports::calloop::{self, ping::Ping, LoopHandle};
 use walkdir::WalkDir;
 
+use crate::wpaperd::Wpaperd;
+
+#[derive(Debug)]
 struct Filelist {
     path: PathBuf,
     filelist: Arc<Vec<PathBuf>>,
@@ -40,6 +47,7 @@ impl Filelist {
                 .map(|e| e.path().to_path_buf())
                 .collect(),
         );
+        self.outdated.store(false, Ordering::Relaxed);
     }
 }
 
@@ -48,8 +56,23 @@ pub struct FilelistCache {
 }
 
 impl FilelistCache {
-    pub fn new() -> Self {
-        Self { cache: Vec::new() }
+    pub fn new(
+        paths: Vec<PathBuf>,
+        hotwatch: &mut Hotwatch,
+        event_loop_handle: LoopHandle<Wpaperd>,
+    ) -> Result<(Ping, Self)> {
+        let (ping, ping_source) =
+            calloop::ping::make_ping().context("Unable to create a calloop::ping::Ping")?;
+
+        let mut filelist_cache = Self { cache: Vec::new() };
+        filelist_cache.update_paths(paths, hotwatch, ping.clone());
+        event_loop_handle
+            .insert_source(ping_source, move |_, _, wpaperd| {
+                wpaperd.filelist_cache.borrow_mut().update_cache();
+            })
+            .map_err(|e| anyhow!("inserting the filelist event listener in the event loop: {e}"))?;
+
+        Ok((ping, filelist_cache))
     }
 
     pub fn get(&self, path: &Path) -> Arc<Vec<PathBuf>> {
@@ -62,7 +85,12 @@ impl FilelistCache {
     }
 
     /// paths must be sorted
-    pub fn update_paths(&mut self, paths: Vec<PathBuf>, hotwatch: &mut Hotwatch) {
+    pub fn update_paths(
+        &mut self,
+        paths: Vec<PathBuf>,
+        hotwatch: &mut Hotwatch,
+        event_loop_ping: Ping,
+    ) {
         self.cache.retain(|filelist| {
             if paths.contains(&filelist.path) {
                 true
@@ -81,10 +109,23 @@ impl FilelistCache {
 
         for path in paths {
             if !self.cache.iter().any(|filelist| filelist.path == path) {
-                self.cache.push(Filelist::new(&path));
+                let filelist = Filelist::new(&path);
+                let outdated = filelist.outdated.clone();
+                self.cache.push(filelist);
+                let ping_clone = event_loop_ping.clone();
                 if let Err(err) = hotwatch
-                    .watch(&path, |event| match event.kind {
-                        hotwatch::EventKind::Create(_) | hotwatch::EventKind::Remove(_) => {}
+                    .watch(&path, move |event| match event.kind {
+                        hotwatch::EventKind::Create(_)
+                        | hotwatch::EventKind::Remove(_)
+                        | hotwatch::EventKind::Modify(_) => {
+                            // We could manually update the list of files with the information
+                            // we get here, but the inotify on linux is not reliable,
+                            // so we prefer to always trigger an update and just reload
+                            // the entire list
+                            // See: https://github.com/notify-rs/notify/issues/412
+                            outdated.store(true, Ordering::Release);
+                            ping_clone.ping();
+                        }
                         _ => {}
                     })
                     .with_context(|| format!("hotwatch watch error on path {:?}", &path))
@@ -94,10 +135,10 @@ impl FilelistCache {
             }
         }
 
-        self.update();
+        self.update_cache();
     }
 
-    pub fn update(&mut self) {
+    pub fn update_cache(&mut self) {
         for filelist in &mut self.cache {
             if filelist.outdated.load(std::sync::atomic::Ordering::Relaxed) {
                 filelist.populate();

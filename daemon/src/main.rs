@@ -110,10 +110,9 @@ fn run(config: Config, xdg_dirs: BaseDirectories) -> Result<()> {
     let mut hotwatch = Hotwatch::new().context("hotwatch failed to initialize")?;
     wallpaper_config.listen_to_changes(&mut hotwatch, ping)?;
 
-    let filelist_cache = Rc::new(RefCell::new(FilelistCache::new()));
-    filelist_cache
-        .borrow_mut()
-        .update_paths(wallpaper_config.paths(), &mut hotwatch);
+    let (ping, filelist_cache) =
+        FilelistCache::new(wallpaper_config.paths(), &mut hotwatch, event_loop.handle())?;
+    let filelist_cache = Rc::new(RefCell::new(filelist_cache));
 
     let mut wpaperd = Wpaperd::new(
         &qh,
@@ -156,9 +155,11 @@ fn run(config: Config, xdg_dirs: BaseDirectories) -> Result<()> {
             wpaperd.update_wallpaper_config(event_loop.handle(), &qh);
 
             // Update the filelist cache as well, keep it up to date
-            filelist_cache
-                .borrow_mut()
-                .update_paths(wpaperd.wallpaper_config.paths(), &mut hotwatch);
+            filelist_cache.borrow_mut().update_paths(
+                wpaperd.wallpaper_config.paths(),
+                &mut hotwatch,
+                ping.clone(),
+            );
         }
 
         // Due to how LayerSurface works, we cannot attach the egl window right away.
