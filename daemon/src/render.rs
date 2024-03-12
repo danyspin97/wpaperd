@@ -23,27 +23,6 @@ pub mod gl {
     pub use Gles2 as Gl;
 }
 
-pub struct Renderer {
-    pub program: gl::types::GLuint,
-    vao: gl::types::GLuint,
-    vbo: gl::types::GLuint,
-    eab: gl::types::GLuint,
-    gl: gl::Gl,
-    // reverse: false
-    // old gl texture0
-    // new gl texture1
-    // reverse: true
-    // new gl texture0
-    // old texture1
-    reverse: bool,
-    // milliseconds time for the animation
-    animation_time: u32,
-    pub time_started: u32,
-    texture1: gl::types::GLuint,
-    texture2: gl::types::GLuint,
-    display_info: Rc<RefCell<DisplayInfo>>,
-}
-
 // Macro that check the error code of the last OpenGL call and returns a Result.
 macro_rules! gl_check {
     ($gl:expr, $desc:tt) => {{
@@ -63,6 +42,224 @@ macro_rules! gl_check {
             bail!("OpenGL error when {}: {} ({})", $desc, error, error_string);
         }
     }};
+}
+
+fn load_texture(gl: &gl::Gl, image: DynamicImage) -> Result<gl::types::GLuint> {
+    Ok(unsafe {
+        let mut texture = 0;
+        gl.GenTextures(1, &mut texture);
+        gl_check!(gl, "generating textures");
+        gl.ActiveTexture(gl::TEXTURE0);
+        gl_check!(gl, "activating textures");
+        gl.BindTexture(gl::TEXTURE_2D, texture);
+        gl_check!(gl, "binding textures");
+        gl.TexImage2D(
+            gl::TEXTURE_2D,
+            0,
+            gl::RGBA8.try_into().unwrap(),
+            image.width().try_into().unwrap(),
+            image.height().try_into().unwrap(),
+            0,
+            gl::RGBA,
+            gl::UNSIGNED_BYTE,
+            image.as_bytes().as_ptr() as *const c_void,
+        );
+        gl_check!(gl, "defining the texture");
+        gl.GenerateMipmap(gl::TEXTURE_2D);
+        gl_check!(gl, "generating the mipmap");
+        gl.TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, gl::LINEAR as i32);
+        gl_check!(gl, "defining the texture min filter");
+        gl.TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, gl::LINEAR as i32);
+        gl_check!(gl, "defining the texture mag filter");
+
+        texture
+    })
+}
+
+pub struct Renderer {
+    gl: gl::Gl,
+    pub program: gl::types::GLuint,
+    vao: gl::types::GLuint,
+    vbo: gl::types::GLuint,
+    eab: gl::types::GLuint,
+    // milliseconds time for the animation
+    animation_time: u32,
+    pub time_started: u32,
+    display_info: Rc<RefCell<DisplayInfo>>,
+    old_wallpaper: Wallpaper,
+    current_wallpaper: Wallpaper,
+}
+
+pub struct Wallpaper {
+    texture: gl::types::GLuint,
+    image_width: u32,
+    image_height: u32,
+    mode: BackgroundMode,
+    display_info: Rc<RefCell<DisplayInfo>>, // transparent_texture: gl::types::GLuint,
+}
+
+struct Coordinates {
+    x_left: f32,
+    x_right: f32,
+    y_bottom: f32,
+    y_top: f32,
+}
+
+impl Coordinates {
+    const VEC_X_LEFT: f32 = -1.0;
+    const VEC_X_RIGHT: f32 = 1.0;
+    const VEC_Y_BOTTOM: f32 = 1.0;
+    const VEC_Y_TOP: f32 = -1.0;
+
+    const TEX_X_LEFT: f32 = 0.0;
+    const TEX_X_RIGHT: f32 = 1.0;
+    const TEX_Y_BOTTOM: f32 = 0.0;
+    const TEX_Y_TOP: f32 = 1.0;
+
+    fn new(x_left: f32, x_right: f32, y_bottom: f32, y_top: f32) -> Self {
+        Self {
+            x_left,
+            x_right,
+            y_bottom,
+            y_top,
+        }
+    }
+
+    fn default_vec_coordinates() -> Self {
+        Self {
+            x_right: Self::VEC_X_RIGHT,
+            x_left: Self::VEC_X_LEFT,
+            y_bottom: Self::VEC_Y_BOTTOM,
+            y_top: Self::VEC_Y_TOP,
+        }
+    }
+
+    fn default_texture_coordinates() -> Self {
+        Self {
+            x_right: Self::TEX_X_RIGHT,
+            x_left: Self::TEX_X_LEFT,
+            y_bottom: Self::TEX_Y_BOTTOM,
+            y_top: Self::TEX_Y_TOP,
+        }
+    }
+}
+
+impl Wallpaper {
+    pub fn new(display_info: Rc<RefCell<DisplayInfo>>) -> Self {
+        Self {
+            texture: 0,
+            image_width: 10,
+            image_height: 10,
+            mode: BackgroundMode::default(),
+            display_info,
+        }
+    }
+
+    pub fn bind(&self, gl: &gl::Gl) -> Result<()> {
+        unsafe {
+            gl.BindTexture(gl::TEXTURE_2D, self.texture);
+            gl_check!(gl, "binding textures");
+        }
+
+        Ok(())
+    }
+
+    pub fn load_image(&mut self, gl: &gl::Gl, image: DynamicImage) -> Result<()> {
+        self.image_width = image.width();
+        self.image_height = image.height();
+
+        let texture = load_texture(gl, image)?;
+
+        unsafe {
+            // Delete from memory the previous texture
+            gl.DeleteTextures(1, &self.texture);
+        }
+        self.texture = texture;
+
+        Ok(())
+    }
+
+    fn generate_texture_coordinates(&self) -> Coordinates {
+        // adjusted_width and adjusted_height returns the rotated sizes in case
+        // the display is rotated. However, openGL is drawing in the same orientation
+        // as our display (i.e. we don't apply any transform here)
+        // We still need the scale
+        let display_width = self.display_info.borrow().scaled_width();
+        let display_height = self.display_info.borrow().scaled_height();
+        let display_ratio = display_width as f32 / display_height as f32;
+        let image_ratio = self.image_width as f32 / self.image_height as f32;
+
+        match self.mode {
+            BackgroundMode::Stretch => Coordinates::default_texture_coordinates(),
+            BackgroundMode::Fit => Coordinates::default_texture_coordinates(),
+            BackgroundMode::Fill if display_ratio == image_ratio => {
+                Coordinates::default_texture_coordinates()
+            }
+            BackgroundMode::Fill if display_ratio > image_ratio => {
+                // Same as width calculation below , but with inverted parameters
+                // This is the expanded expression
+                // adjusted_height = image_width as f32 / display_ratio;
+                // y = (1.0 - image_height as f32 / adjusted_height) / 2.0;
+                // We can simplify by just doing display_ration / image_ratio
+                let y = (1.0 - display_ratio / image_ratio) / 2.0;
+                Coordinates::new(
+                    Coordinates::TEX_X_LEFT,
+                    Coordinates::TEX_X_RIGHT,
+                    Coordinates::TEX_Y_BOTTOM - y,
+                    Coordinates::TEX_Y_TOP + y,
+                )
+            }
+            BackgroundMode::Fill => {
+                // Calculte the adjusted width, i.e. the width that the image should have to
+                // have the same ratio as the display
+                // adjusted_width = image_height as f32 * display_ratio;
+                // Calculate the ratio between the adjusted_width and the image_width
+                // x = (1.0 - adjusted_width / image_width as f32) / 2.0;
+                // Simplify the expression and do the same as above
+                let x = (1.0 - display_ratio / image_ratio) / 2.0;
+                Coordinates::new(
+                    Coordinates::TEX_X_LEFT + x,
+                    Coordinates::TEX_X_RIGHT - x,
+                    Coordinates::TEX_Y_BOTTOM,
+                    Coordinates::TEX_Y_TOP,
+                )
+            }
+            BackgroundMode::Tile => {
+                // Tile using the original image size
+                let x = display_width as f32 / self.image_width as f32;
+                let y = display_height as f32 / self.image_height as f32;
+                Coordinates::new(Coordinates::TEX_X_LEFT, x, Coordinates::TEX_Y_BOTTOM, y)
+            }
+        }
+    }
+
+    fn generate_vertices_coordinates(&self) -> Coordinates {
+        match self.mode {
+            BackgroundMode::Stretch | BackgroundMode::Fill | BackgroundMode::Tile => {
+                Coordinates::default_vec_coordinates()
+            }
+            BackgroundMode::Fit => {
+                let display_width = self.display_info.borrow().scaled_width();
+                let display_height = self.display_info.borrow().scaled_height();
+                let display_ratio = display_width as f32 / display_height as f32;
+                let image_ratio = self.image_width as f32 / self.image_height as f32;
+                if display_ratio == image_ratio {
+                    Coordinates::default_vec_coordinates()
+                } else if display_ratio > image_ratio {
+                    let x = image_ratio / display_ratio;
+                    Coordinates::new(-x, x, Coordinates::VEC_Y_BOTTOM, Coordinates::VEC_Y_TOP)
+                } else {
+                    let y = 1.0 - display_ratio / image_ratio;
+                    Coordinates::new(
+                        Coordinates::VEC_X_LEFT,
+                        Coordinates::VEC_X_RIGHT,
+                        Coordinates::VEC_Y_BOTTOM - y,
+                        Coordinates::VEC_Y_TOP + y,
+                    )
+                }
+            }
+        }
+    }
 }
 
 pub struct EglContext {
@@ -193,86 +390,28 @@ impl Renderer {
         gl_check!(gl, "deleting the vertex shader");
         gl.DeleteShader(fragment_shader);
         gl_check!(gl, "deleting the fragment shader");
-        let mut vao = 0;
-        gl.GenVertexArrays(1, &mut vao);
-        gl_check!(gl, "generating the vertex array");
-        gl.BindVertexArray(vao);
-        gl_check!(gl, "binding the vertex array");
-        let mut vbo = 0;
-        gl.GenBuffers(1, &mut vbo);
-        gl_check!(gl, "generating the vbo buffer");
-        gl.BindBuffer(gl::ARRAY_BUFFER, vbo);
-        gl_check!(gl, "binding the vbo buffer");
-        let vertex_data: Vec<f32> = vec![0.0; 16 as _];
-        gl.BufferData(
-            gl::ARRAY_BUFFER,
-            (vertex_data.len() * std::mem::size_of::<f32>()) as gl::types::GLsizeiptr,
-            vertex_data.as_ptr() as *const _,
-            gl::STATIC_DRAW,
-        );
-        gl_check!(gl, "buffering the data");
-
-        let mut eab = 0;
-        gl.GenBuffers(1, &mut eab);
-        gl_check!(gl, "generating the eab buffer");
-        gl.BindBuffer(gl::ELEMENT_ARRAY_BUFFER, eab);
-        gl_check!(gl, "binding the eab buffer");
-        const INDICES: [gl::types::GLuint; 6] = [0, 1, 2, 2, 3, 0];
-        gl.BufferData(
-            gl::ELEMENT_ARRAY_BUFFER,
-            (INDICES.len() * std::mem::size_of::<gl::types::GLuint>()) as gl::types::GLsizeiptr,
-            INDICES.as_ptr() as *const _,
-            gl::STATIC_DRAW,
-        );
-        gl_check!(gl, "buffering the data");
-
-        const POS_ATTRIB: i32 = 0;
-        const TEX_ATTRIB: i32 = 1;
-        gl.VertexAttribPointer(
-            POS_ATTRIB as gl::types::GLuint,
-            2,
-            gl::FLOAT,
-            0,
-            4 * std::mem::size_of::<f32>() as gl::types::GLsizei,
-            std::ptr::null(),
-        );
-        gl_check!(gl, "setting the position attribute for the vertex");
-        gl.EnableVertexAttribArray(POS_ATTRIB as gl::types::GLuint);
-        gl_check!(gl, "enabling the position attribute for the vertex");
-        gl.VertexAttribPointer(
-            TEX_ATTRIB as gl::types::GLuint,
-            2,
-            gl::FLOAT,
-            0,
-            4 * std::mem::size_of::<f32>() as gl::types::GLsizei,
-            (2 * std::mem::size_of::<f32>()) as *const () as *const _,
-        );
-        gl_check!(gl, "setting the texture attribute for the vertex");
-        gl.EnableVertexAttribArray(TEX_ATTRIB as gl::types::GLuint);
-        gl_check!(gl, "enabling the texture attribute for the vertex");
-
         gl.UseProgram(program);
         gl_check!(gl, "calling UseProgram");
-        gl.BindVertexArray(vao);
-        gl_check!(gl, "binding the vertex array");
-        gl.BindBuffer(gl::ARRAY_BUFFER, vbo);
-        gl_check!(gl, "binding the buffer");
+
+        let (vao, vbo, eab) = initialize_objects(&gl)?;
+
+        let old_wallpaper = Wallpaper::new(display_info.clone());
+        let current_wallpaper = Wallpaper::new(display_info.clone());
 
         let mut renderer = Self {
+            gl,
             program,
             vao,
             vbo,
             eab,
-            gl,
-            reverse: true,
             time_started: 0,
             animation_time: 300,
-            texture1: 0,
-            texture2: 0,
+            old_wallpaper,
+            current_wallpaper,
             display_info,
         };
 
-        renderer.load_texture(image, BackgroundMode::Stretch)?;
+        renderer.load_wallpaper(image, BackgroundMode::Stretch)?;
 
         Ok(renderer)
     }
@@ -289,10 +428,7 @@ impl Renderer {
         self.check_error("clearing the screen")?;
 
         let elapsed = time - self.time_started;
-        let mut progress = (elapsed as f32 / self.animation_time as f32).min(1.0);
-        if self.reverse {
-            progress = 1.0 - progress;
-        }
+        let progress = (elapsed as f32 / self.animation_time as f32).min(1.0);
 
         let loc = self
             .gl
@@ -300,6 +436,18 @@ impl Renderer {
         self.check_error("getting the uniform location")?;
         self.gl.Uniform1f(loc, progress);
         self.check_error("calling Uniform1i")?;
+
+        self.gl.ActiveTexture(gl::TEXTURE0);
+        self.check_error("activating gl::TEXTURE0")?;
+        self.old_wallpaper.bind(&self.gl)?;
+        self.gl.Uniform1i(0, 0);
+        self.check_error("calling Uniform1i")?;
+        self.gl.ActiveTexture(gl::TEXTURE1);
+        self.check_error("activating gl::TEXTURE0")?;
+        self.current_wallpaper.bind(&self.gl)?;
+        self.gl.Uniform1i(1, 1);
+        self.check_error("calling Uniform1i")?;
+
         self.gl
             .DrawElements(gl::TRIANGLES, 6, gl::UNSIGNED_INT, std::ptr::null());
         self.check_error("drawing the triangles")?;
@@ -307,64 +455,58 @@ impl Renderer {
         Ok(())
     }
 
-    pub fn load_texture(&mut self, image: DynamicImage, mode: BackgroundMode) -> Result<()> {
-        let mut texture = 0;
-        unsafe {
-            self.gl.GenTextures(1, &mut texture);
-            self.check_error("generating textures")?;
-            self.gl.ActiveTexture(if self.reverse {
-                gl::TEXTURE0
-            } else {
-                gl::TEXTURE1
-            });
-            self.check_error("activating textures")?;
-            self.gl.BindTexture(gl::TEXTURE_2D, texture);
-            self.check_error("binding textures")?;
-            self.gl.TexImage2D(
-                gl::TEXTURE_2D,
-                0,
-                gl::RGBA8.try_into().unwrap(),
-                image.width().try_into().unwrap(),
-                image.height().try_into().unwrap(),
-                0,
-                gl::RGBA,
-                gl::UNSIGNED_BYTE,
-                image.as_bytes().as_ptr() as *const c_void,
-            );
-            self.check_error("defining the texture")?;
-            self.gl.GenerateMipmap(gl::TEXTURE_2D);
-            self.check_error("generating the mipmap")?;
-            self.gl
-                .TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, gl::LINEAR as i32);
-            self.check_error("defining the texture min filter")?;
-            self.gl
-                .TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, gl::LINEAR as i32);
-            self.check_error("defining the texture mag filter")?;
-            // We assume that the we still have an active texture
-            if self.reverse {
-                self.gl.Uniform1i(0, 0);
-            } else {
-                self.gl.Uniform1i(1, 1);
+    pub fn load_wallpaper(&mut self, image: DynamicImage, mode: BackgroundMode) -> Result<()> {
+        std::mem::swap(&mut self.old_wallpaper, &mut self.current_wallpaper);
+        self.current_wallpaper.load_image(&self.gl, image)?;
+        self.current_wallpaper.mode = mode;
+
+        match mode {
+            BackgroundMode::Stretch | BackgroundMode::Fill | BackgroundMode::Tile => {
+                unsafe {
+                    // The vertex data depends on the image and the mode
+                    let vec_coordinates = self.current_wallpaper.generate_vertices_coordinates();
+                    let current_tex_coord = &self.current_wallpaper.generate_texture_coordinates();
+                    let old_tex_coord = &self.old_wallpaper.generate_texture_coordinates();
+
+                    let vertex_data = [
+                        vec_coordinates.x_left, // top left start
+                        vec_coordinates.y_top,
+                        current_tex_coord.x_left,
+                        current_tex_coord.y_top,
+                        old_tex_coord.x_left,
+                        old_tex_coord.y_top,    // top left stop
+                        vec_coordinates.x_left, // bottom left start
+                        vec_coordinates.y_bottom,
+                        current_tex_coord.x_left,
+                        current_tex_coord.y_bottom,
+                        old_tex_coord.x_left,
+                        old_tex_coord.y_bottom,  // bottom left stop
+                        vec_coordinates.x_right, // bottom right start
+                        vec_coordinates.y_bottom,
+                        current_tex_coord.x_right,
+                        current_tex_coord.y_bottom,
+                        old_tex_coord.x_right,
+                        old_tex_coord.y_bottom,  // bottom right stop
+                        vec_coordinates.x_right, // top right start
+                        vec_coordinates.y_top,
+                        current_tex_coord.x_right,
+                        current_tex_coord.y_top,
+                        old_tex_coord.x_right,
+                        old_tex_coord.y_top, // top right // stop
+                    ];
+
+                    // Update the vertex buffer
+                    self.gl.BufferSubData(
+                        gl::ARRAY_BUFFER,
+                        0,
+                        (vertex_data.len() * std::mem::size_of::<f32>()) as gl::types::GLsizeiptr,
+                        vertex_data.as_ptr() as *const _,
+                    );
+                    self.check_error("buffering the data")?;
+                }
             }
-            self.reverse = !self.reverse;
-
-            // Delete the old texture and update order
-            std::mem::swap(&mut self.texture1, &mut self.texture2);
-            self.gl.DeleteTextures(1, &self.texture2);
-            self.check_error("deleting the texture")?;
-            self.texture2 = texture;
-
-            let vertex = self.generate_vertex_data(mode, image.width(), image.height());
-            // Update the vertex buffer
-            self.gl.BufferSubData(
-                gl::ARRAY_BUFFER,
-                0,
-                (vertex.len() * std::mem::size_of::<f32>()) as gl::types::GLsizeiptr,
-                vertex.as_ptr() as *const _,
-            );
-            self.check_error("buffering the data")?;
+            BackgroundMode::Fit => {}
         }
-
         Ok(())
     }
 
@@ -398,167 +540,6 @@ impl Renderer {
     pub(crate) fn is_drawing_animation(&self, time: u32) -> bool {
         time < (self.time_started + self.animation_time)
     }
-
-    fn generate_vertex_data(
-        &self,
-        mode: BackgroundMode,
-        image_width: u32,
-        image_height: u32,
-    ) -> [f32; 16] {
-        const VEC_X_LEFT: f32 = -1.0;
-        const VEC_X_RIGHT: f32 = 1.0;
-        const VEC_Y_BOTTOM: f32 = 1.0;
-        const VEC_Y_TOP: f32 = -1.0;
-
-        const TEX_X_LEFT: f32 = 0.0;
-        const TEX_X_RIGHT: f32 = 1.0;
-        const TEX_Y_BOTTOM: f32 = 0.0;
-        const TEX_Y_TOP: f32 = 1.0;
-
-        // adjusted_width and adjusted_height returns the rotated sizes in case
-        // the display is rotated. However, openGL is drawing in the same orientation
-        // as our display (i.e. we don't apply any transform here)
-        // We still need the scale
-        let display_width = self.display_info.borrow().scaled_width();
-        let display_height = self.display_info.borrow().scaled_height();
-
-        let (
-            vec_x_left,
-            vec_x_right,
-            vec_y_bottom,
-            vec_y_top,
-            tex_x_left,
-            tex_x_right,
-            tex_y_bottom,
-            tex_y_top,
-        ) = match mode {
-            BackgroundMode::Stretch => (
-                VEC_X_LEFT,
-                VEC_X_RIGHT,
-                VEC_Y_BOTTOM,
-                VEC_Y_TOP,
-                TEX_X_LEFT,
-                TEX_X_RIGHT,
-                TEX_Y_BOTTOM,
-                TEX_Y_TOP,
-            ),
-            BackgroundMode::Fill => {
-                let display_ratio = display_width as f32 / display_height as f32;
-                let image_ratio = image_width as f32 / image_height as f32;
-                if display_ratio == image_ratio {
-                    (
-                        VEC_X_LEFT,
-                        VEC_X_RIGHT,
-                        VEC_Y_BOTTOM,
-                        VEC_Y_TOP,
-                        TEX_X_LEFT,
-                        TEX_X_RIGHT,
-                        TEX_Y_BOTTOM,
-                        TEX_Y_TOP,
-                    )
-                } else if display_ratio > image_ratio {
-                    // Same as width calculation below , but with inverted parameters
-                    // This is the expanded expression
-                    // adjusted_height = image_width as f32 / display_ratio;
-                    // y = (1.0 - image_height as f32 / adjusted_height) / 2.0;
-                    // We can simplify by just doing display_ration / image_ratio
-                    let y = (1.0 - display_ratio / image_ratio) / 2.0;
-                    (
-                        VEC_X_LEFT,
-                        VEC_X_RIGHT,
-                        VEC_Y_BOTTOM,
-                        VEC_Y_TOP,
-                        TEX_X_LEFT,
-                        TEX_X_RIGHT,
-                        TEX_Y_BOTTOM - y,
-                        TEX_Y_TOP + y,
-                    )
-                } else {
-                    // Calculte the adjusted width, i.e. the width that the image should have to
-                    // have the same ratio as the display
-                    // adjusted_width = image_height as f32 * display_ratio;
-                    // Calculate the ratio between the adjusted_width and the image_width
-                    // x = (1.0 - adjusted_width / image_width as f32) / 2.0;
-                    // Simplify the expression and do the same as above
-                    let x = (1.0 - display_ratio / image_ratio) / 2.0;
-                    (
-                        VEC_X_LEFT,
-                        VEC_X_RIGHT,
-                        VEC_Y_BOTTOM,
-                        VEC_Y_TOP,
-                        TEX_X_LEFT + x,
-                        TEX_X_RIGHT - x,
-                        TEX_Y_BOTTOM,
-                        TEX_Y_TOP,
-                    )
-                }
-            }
-            BackgroundMode::Fit => {
-                let display_ratio = display_width as f32 / display_height as f32;
-                let image_ratio = image_width as f32 / image_height as f32;
-                if display_ratio == image_ratio {
-                    (
-                        VEC_X_LEFT,
-                        VEC_X_RIGHT,
-                        VEC_Y_BOTTOM,
-                        VEC_Y_TOP,
-                        TEX_X_LEFT,
-                        TEX_X_RIGHT,
-                        TEX_Y_BOTTOM,
-                        TEX_Y_TOP,
-                    )
-                } else if display_ratio > image_ratio {
-                    let x = image_ratio / display_ratio;
-                    (
-                        -x,
-                        x,
-                        VEC_Y_BOTTOM,
-                        VEC_Y_TOP,
-                        TEX_X_LEFT,
-                        TEX_X_RIGHT,
-                        TEX_Y_BOTTOM,
-                        TEX_Y_TOP,
-                    )
-                } else {
-                    let y = 1.0 - display_ratio / image_ratio;
-                    (
-                        VEC_X_LEFT,
-                        VEC_X_RIGHT,
-                        VEC_Y_BOTTOM - y,
-                        VEC_Y_TOP + y,
-                        TEX_X_LEFT,
-                        TEX_X_RIGHT,
-                        TEX_Y_BOTTOM,
-                        TEX_Y_TOP,
-                    )
-                }
-            }
-            BackgroundMode::Tile => {
-                // Tile using the original image size
-                let x = display_width as f32 / image_width as f32;
-                let y = display_height as f32 / image_height as f32;
-                (
-                    VEC_X_LEFT,
-                    VEC_X_RIGHT,
-                    VEC_Y_BOTTOM,
-                    VEC_Y_TOP,
-                    TEX_X_LEFT,
-                    x,
-                    TEX_Y_BOTTOM,
-                    y,
-                )
-            }
-        };
-
-        #[rustfmt::skip]
-        let vertex_data = [
-            vec_x_left,  vec_y_top,    tex_x_left,  tex_y_top,    // top left
-            vec_x_left,  vec_y_bottom, tex_x_left,  tex_y_bottom, // bottom left
-            vec_x_right, vec_y_bottom, tex_x_right, tex_y_bottom, // bottom right
-            vec_x_right, vec_y_top,    tex_x_right, tex_y_top,    // top right
-        ];
-        vertex_data
-    }
 }
 
 impl Deref for Renderer {
@@ -572,10 +553,12 @@ impl Deref for Renderer {
 impl Drop for Renderer {
     fn drop(&mut self) {
         unsafe {
-            self.gl.DeleteProgram(self.program);
-            self.gl.DeleteBuffers(1, &self.vbo);
+            self.gl.DeleteTextures(1, &self.current_wallpaper.texture);
+            self.gl.DeleteTextures(1, &self.old_wallpaper.texture);
             self.gl.DeleteBuffers(1, &self.eab);
-            self.gl.DeleteVertexArrays(1, &self.vao);
+            self.gl.DeleteBuffers(1, &self.vbo);
+            self.gl.DeleteBuffers(1, &self.vao);
+            self.gl.DeleteProgram(self.program);
         }
     }
 }
@@ -620,18 +603,100 @@ unsafe fn create_shader(
     }
 }
 
+fn initialize_objects(
+    gl: &gl::Gl,
+) -> Result<(gl::types::GLuint, gl::types::GLuint, gl::types::GLuint)> {
+    unsafe {
+        let mut vao = 0;
+        gl.GenVertexArrays(1, &mut vao);
+        gl_check!(gl, "generating the vertex array");
+        gl.BindVertexArray(vao);
+        gl_check!(gl, "binding the vertex array");
+        let mut vbo = 0;
+        gl.GenBuffers(1, &mut vbo);
+        gl_check!(gl, "generating the vbo buffer");
+        gl.BindBuffer(gl::ARRAY_BUFFER, vbo);
+        gl_check!(gl, "binding the vbo buffer");
+        let vertex_data: Vec<f32> = vec![0.0; 24 as _];
+        gl.BufferData(
+            gl::ARRAY_BUFFER,
+            (vertex_data.len() * std::mem::size_of::<f32>()) as gl::types::GLsizeiptr,
+            vertex_data.as_ptr() as *const _,
+            gl::STATIC_DRAW,
+        );
+        gl_check!(gl, "buffering the data");
+
+        let mut eab = 0;
+        gl.GenBuffers(1, &mut eab);
+        gl_check!(gl, "generating the eab buffer");
+        gl.BindBuffer(gl::ELEMENT_ARRAY_BUFFER, eab);
+        gl_check!(gl, "binding the eab buffer");
+        // We load the elements array buffer once, it's the same for each wallpaper
+        const INDICES: [gl::types::GLuint; 6] = [0, 1, 2, 2, 3, 0];
+        gl.BufferData(
+            gl::ELEMENT_ARRAY_BUFFER,
+            (INDICES.len() * std::mem::size_of::<gl::types::GLuint>()) as gl::types::GLsizeiptr,
+            INDICES.as_ptr() as *const _,
+            gl::STATIC_DRAW,
+        );
+        gl_check!(gl, "buffering the data");
+
+        const POS_ATTRIB: i32 = 0;
+        const TEX_ATTRIB: i32 = 1;
+        const TEX2_ATTRIB: i32 = 2;
+        gl.VertexAttribPointer(
+            POS_ATTRIB as gl::types::GLuint,
+            2,
+            gl::FLOAT,
+            0,
+            6 * std::mem::size_of::<f32>() as gl::types::GLsizei,
+            std::ptr::null(),
+        );
+        gl_check!(gl, "setting the position attribute for the vertex");
+        gl.EnableVertexAttribArray(POS_ATTRIB as gl::types::GLuint);
+        gl_check!(gl, "enabling the position attribute for the vertex");
+        gl.VertexAttribPointer(
+            TEX_ATTRIB as gl::types::GLuint,
+            2,
+            gl::FLOAT,
+            0,
+            6 * std::mem::size_of::<f32>() as gl::types::GLsizei,
+            (2 * std::mem::size_of::<f32>()) as *const () as *const _,
+        );
+        gl_check!(gl, "setting the texture attribute for the vertex");
+        gl.EnableVertexAttribArray(TEX_ATTRIB as gl::types::GLuint);
+        gl_check!(gl, "enabling the texture attribute for the vertex");
+        gl.VertexAttribPointer(
+            TEX2_ATTRIB as gl::types::GLuint,
+            2,
+            gl::FLOAT,
+            0,
+            6 * std::mem::size_of::<f32>() as gl::types::GLsizei,
+            (4 * std::mem::size_of::<f32>()) as *const () as *const _,
+        );
+        gl_check!(gl, "setting the texture attribute for the vertex");
+        gl.EnableVertexAttribArray(TEX2_ATTRIB as gl::types::GLuint);
+        gl_check!(gl, "enabling the texture attribute for the vertex");
+
+        Ok((vao, vbo, eab))
+    }
+}
+
 const VERTEX_SHADER_SOURCE: &[u8] = b"
 #version 320 es
 precision mediump float;
 
 layout (location = 0) in vec2 aPosition;
-layout (location = 1) in vec2 aTexCoord;
+layout (location = 1) in vec2 aCurrentTexCoord;
+layout (location = 2) in vec2 aOldTexCoord;
 
-out vec2 v_texcoord;
+out vec2 v_old_texcoord;
+out vec2 v_current_texcoord;
 
 void main() {
     gl_Position = vec4(aPosition, 1.0, 1.0);
-    v_texcoord = aTexCoord;
+    v_current_texcoord = aCurrentTexCoord;
+    v_old_texcoord = aOldTexCoord;
 }
 \0";
 
@@ -640,15 +705,15 @@ const FRAGMENT_SHADER_SOURCE: &[u8] = b"
 precision mediump float;
 out vec4 FragColor;
 
-in vec2 v_texcoord;
+in vec2 v_old_texcoord;
+in vec2 v_current_texcoord;
 
-layout(location = 0) uniform sampler2D u_texture0;
-layout(location = 1) uniform sampler2D u_texture1;
+layout(location = 0) uniform sampler2D u_old_texture;
+layout(location = 1) uniform sampler2D u_current_texture;
 
 layout(location = 2) uniform float u_progress;
 
 void main() {
-    FragColor = mix(texture(u_texture1, v_texcoord), texture(u_texture0, v_texcoord), u_progress);
-
+    FragColor = mix(texture(u_old_texture, v_old_texcoord), texture(u_current_texture, v_current_texcoord), u_progress);
 }
 \0";

@@ -170,7 +170,7 @@ impl Surface {
         if let Some(image) = self.image_picker.get_image()? {
             let image = image.into_rgba8();
             self.renderer
-                .load_texture(image.into(), self.wallpaper_info.mode)?;
+                .load_wallpaper(image.into(), self.wallpaper_info.mode)?;
             self.renderer.start_animation(time);
 
             // self.apply_shadow(&mut image, width.try_into()?);
