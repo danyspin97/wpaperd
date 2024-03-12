@@ -7,6 +7,7 @@ use color_eyre::eyre::{Context, ContextCompat};
 use color_eyre::Result;
 use image::imageops::FilterType;
 use image::{DynamicImage, ImageBuffer, Pixel, Rgba, RgbaImage};
+use log::error;
 use smithay_client_toolkit::output::OutputInfo;
 use smithay_client_toolkit::reexports::calloop::timer::{TimeoutAction, Timer};
 use smithay_client_toolkit::reexports::calloop::{LoopHandle, RegistrationToken};
@@ -335,6 +336,15 @@ impl Surface {
                         self.add_timer(timer, handle, qh.clone());
                     }
                 }
+            } else if self.wallpaper_info.mode != wallpaper_info.mode {
+                if let Err(err) = self
+                    .egl_context
+                    .make_current()
+                    .and_then(|_| self.renderer.set_mode(self.wallpaper_info.mode))
+                {
+                    error!("{err:?}");
+                }
+                self.queue_draw(qh);
             } else if path_changed {
                 self.queue_draw(qh);
             }

@@ -94,7 +94,6 @@ pub struct Wallpaper {
     texture: gl::types::GLuint,
     image_width: u32,
     image_height: u32,
-    mode: BackgroundMode,
     display_info: Rc<RefCell<DisplayInfo>>, // transparent_texture: gl::types::GLuint,
 }
 
@@ -150,7 +149,6 @@ impl Wallpaper {
             texture: 0,
             image_width: 10,
             image_height: 10,
-            mode: BackgroundMode::default(),
             display_info,
         }
     }
@@ -179,7 +177,7 @@ impl Wallpaper {
         Ok(())
     }
 
-    fn generate_texture_coordinates(&self) -> Coordinates {
+    fn generate_texture_coordinates(&self, mode: BackgroundMode) -> Coordinates {
         // adjusted_width and adjusted_height returns the rotated sizes in case
         // the display is rotated. However, openGL is drawing in the same orientation
         // as our display (i.e. we don't apply any transform here)
@@ -189,7 +187,7 @@ impl Wallpaper {
         let display_ratio = display_width as f32 / display_height as f32;
         let image_ratio = self.image_width as f32 / self.image_height as f32;
 
-        match self.mode {
+        match mode {
             BackgroundMode::Stretch => Coordinates::default_texture_coordinates(),
             BackgroundMode::Fit => Coordinates::default_texture_coordinates(),
             BackgroundMode::Fill if display_ratio == image_ratio => {
@@ -233,8 +231,8 @@ impl Wallpaper {
         }
     }
 
-    fn generate_vertices_coordinates(&self) -> Coordinates {
-        match self.mode {
+    fn generate_vertices_coordinates(&self, mode: BackgroundMode) -> Coordinates {
+        match mode {
             BackgroundMode::Stretch | BackgroundMode::Fill | BackgroundMode::Tile => {
                 Coordinates::default_vec_coordinates()
             }
@@ -458,15 +456,21 @@ impl Renderer {
     pub fn load_wallpaper(&mut self, image: DynamicImage, mode: BackgroundMode) -> Result<()> {
         std::mem::swap(&mut self.old_wallpaper, &mut self.current_wallpaper);
         self.current_wallpaper.load_image(&self.gl, image)?;
-        self.current_wallpaper.mode = mode;
 
-        match mode {
+        self.set_mode(mode)?;
+        Ok(())
+    }
+
+    pub fn set_mode(&mut self, mode: BackgroundMode) -> Result<()> {
+        Ok(match mode {
             BackgroundMode::Stretch | BackgroundMode::Fill | BackgroundMode::Tile => {
                 unsafe {
                     // The vertex data depends on the image and the mode
-                    let vec_coordinates = self.current_wallpaper.generate_vertices_coordinates();
-                    let current_tex_coord = &self.current_wallpaper.generate_texture_coordinates();
-                    let old_tex_coord = &self.old_wallpaper.generate_texture_coordinates();
+                    let vec_coordinates =
+                        self.current_wallpaper.generate_vertices_coordinates(mode);
+                    let current_tex_coord =
+                        &self.current_wallpaper.generate_texture_coordinates(mode);
+                    let old_tex_coord = &self.old_wallpaper.generate_texture_coordinates(mode);
 
                     let vertex_data = [
                         vec_coordinates.x_left, // top left start
@@ -506,8 +510,7 @@ impl Renderer {
                 }
             }
             BackgroundMode::Fit => {}
-        }
-        Ok(())
+        })
     }
 
     pub fn start_animation(&mut self, time: u32) {
