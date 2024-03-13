@@ -205,12 +205,12 @@ impl Wallpaper {
                 // adjusted_height = image_width as f32 / display_ratio;
                 // y = (1.0 - image_height as f32 / adjusted_height) / 2.0;
                 // We can simplify by just doing display_ration / image_ratio
-                let y = (1.0 - display_ratio / image_ratio) / 2.0;
+                let y = (1.0 - image_ratio / display_ratio) / 2.0;
                 Coordinates::new(
                     Coordinates::TEX_X_LEFT,
                     Coordinates::TEX_X_RIGHT,
-                    Coordinates::TEX_Y_BOTTOM - y,
-                    Coordinates::TEX_Y_TOP + y,
+                    Coordinates::TEX_Y_BOTTOM + y,
+                    Coordinates::TEX_Y_TOP - y,
                 )
             }
             BackgroundMode::Fill => {
