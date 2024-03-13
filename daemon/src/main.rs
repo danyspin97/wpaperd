@@ -179,7 +179,7 @@ fn main() -> Result<()> {
 
     let opts = Opts::parse();
 
-    let mut logger = Logger::try_with_env_or_str(if opts.verbose { "info" } else { "debug" })?;
+    let mut logger = Logger::try_with_env_or_str(if opts.verbose { "debug" } else { "info" })?;
 
     if opts.daemon {
         // If wpaperd detach, then log to files
