@@ -10,7 +10,7 @@ use color_eyre::{
     Result,
 };
 use egl::API as egl;
-use image::DynamicImage;
+use image::{DynamicImage, RgbaImage};
 use smithay_client_toolkit::reexports::client::{protocol::wl_surface::WlSurface, Proxy};
 use wayland_egl::WlEglSurface;
 
@@ -21,6 +21,10 @@ pub mod gl {
     include!(concat!(env!("OUT_DIR"), "/gl_bindings.rs"));
 
     pub use Gles2 as Gl;
+}
+
+fn transparent_image() -> RgbaImage {
+    RgbaImage::from_raw(1, 1, vec![0, 0, 0, 0]).unwrap()
 }
 
 // Macro that check the error code of the last OpenGL call and returns a Result.
@@ -88,6 +92,8 @@ pub struct Renderer {
     display_info: Rc<RefCell<DisplayInfo>>,
     old_wallpaper: Wallpaper,
     current_wallpaper: Wallpaper,
+    transparent_texture: gl::types::GLuint,
+    animation_fit_changed: bool,
 }
 
 pub struct Wallpaper {
@@ -231,31 +237,24 @@ impl Wallpaper {
         }
     }
 
-    fn generate_vertices_coordinates(&self, mode: BackgroundMode) -> Coordinates {
-        match mode {
-            BackgroundMode::Stretch | BackgroundMode::Fill | BackgroundMode::Tile => {
-                Coordinates::default_vec_coordinates()
-            }
-            BackgroundMode::Fit => {
-                let display_width = self.display_info.borrow().scaled_width();
-                let display_height = self.display_info.borrow().scaled_height();
-                let display_ratio = display_width as f32 / display_height as f32;
-                let image_ratio = self.image_width as f32 / self.image_height as f32;
-                if display_ratio == image_ratio {
-                    Coordinates::default_vec_coordinates()
-                } else if display_ratio > image_ratio {
-                    let x = image_ratio / display_ratio;
-                    Coordinates::new(-x, x, Coordinates::VEC_Y_BOTTOM, Coordinates::VEC_Y_TOP)
-                } else {
-                    let y = 1.0 - display_ratio / image_ratio;
-                    Coordinates::new(
-                        Coordinates::VEC_X_LEFT,
-                        Coordinates::VEC_X_RIGHT,
-                        Coordinates::VEC_Y_BOTTOM - y,
-                        Coordinates::VEC_Y_TOP + y,
-                    )
-                }
-            }
+    fn generate_vertices_coordinates_for_fit_mode(&self) -> Coordinates {
+        let display_width = self.display_info.borrow().scaled_width();
+        let display_height = self.display_info.borrow().scaled_height();
+        let display_ratio = display_width as f32 / display_height as f32;
+        let image_ratio = self.image_width as f32 / self.image_height as f32;
+        if display_ratio == image_ratio {
+            Coordinates::default_vec_coordinates()
+        } else if display_ratio > image_ratio {
+            let x = image_ratio / display_ratio;
+            Coordinates::new(-x, x, Coordinates::VEC_Y_BOTTOM, Coordinates::VEC_Y_TOP)
+        } else {
+            let y = 1.0 - display_ratio / image_ratio;
+            Coordinates::new(
+                Coordinates::VEC_X_LEFT,
+                Coordinates::VEC_X_RIGHT,
+                Coordinates::VEC_Y_BOTTOM - y,
+                Coordinates::VEC_Y_TOP + y,
+            )
         }
     }
 }
@@ -393,8 +392,15 @@ impl Renderer {
 
         let (vao, vbo, eab) = initialize_objects(&gl)?;
 
+        gl.Uniform1i(0, 0);
+        gl_check!(gl, "calling Uniform1i");
+        gl.Uniform1i(1, 1);
+        gl_check!(gl, "calling Uniform1i");
+
         let old_wallpaper = Wallpaper::new(display_info.clone());
         let current_wallpaper = Wallpaper::new(display_info.clone());
+
+        let transparent_texture = load_texture(&gl, transparent_image().into())?;
 
         let mut renderer = Self {
             gl,
@@ -407,6 +413,8 @@ impl Renderer {
             old_wallpaper,
             current_wallpaper,
             display_info,
+            transparent_texture,
+            animation_fit_changed: false,
         };
 
         renderer.load_wallpaper(image, BackgroundMode::Stretch)?;
@@ -421,29 +429,40 @@ impl Renderer {
         Ok(())
     }
 
-    pub unsafe fn draw(&self, time: u32) -> Result<()> {
+    pub unsafe fn draw(&mut self, time: u32, mode: BackgroundMode) -> Result<()> {
         self.gl.Clear(gl::COLOR_BUFFER_BIT);
         self.check_error("clearing the screen")?;
 
         let elapsed = time - self.time_started;
-        let progress = (elapsed as f32 / self.animation_time as f32).min(1.0);
+        let mut progress = (elapsed as f32 / self.animation_time as f32).min(1.0);
+
+        match mode {
+            BackgroundMode::Stretch | BackgroundMode::Fill | BackgroundMode::Tile => {}
+            BackgroundMode::Fit => {
+                if progress > 0.5 && !self.animation_fit_changed {
+                    self.gl.ActiveTexture(gl::TEXTURE0);
+                    self.check_error("activating gl::TEXTURE0")?;
+                    self.gl
+                        .BindTexture(gl::TEXTURE_2D, self.transparent_texture);
+                    self.gl.ActiveTexture(gl::TEXTURE1);
+                    self.check_error("activating gl::TEXTURE0")?;
+                    self.current_wallpaper.bind(&self.gl)?;
+
+                    self.animation_fit_changed = true;
+                    // This will recalculate the vertices
+                    self.set_mode(mode, true)?;
+                }
+                if progress < 1.0 {
+                    progress = (progress % 0.5) * 2.0;
+                }
+            }
+        }
 
         let loc = self
             .gl
             .GetUniformLocation(self.program, b"u_progress\0".as_ptr() as *const _);
         self.check_error("getting the uniform location")?;
         self.gl.Uniform1f(loc, progress);
-        self.check_error("calling Uniform1i")?;
-
-        self.gl.ActiveTexture(gl::TEXTURE0);
-        self.check_error("activating gl::TEXTURE0")?;
-        self.old_wallpaper.bind(&self.gl)?;
-        self.gl.Uniform1i(0, 0);
-        self.check_error("calling Uniform1i")?;
-        self.gl.ActiveTexture(gl::TEXTURE1);
-        self.check_error("activating gl::TEXTURE0")?;
-        self.current_wallpaper.bind(&self.gl)?;
-        self.gl.Uniform1i(1, 1);
         self.check_error("calling Uniform1i")?;
 
         self.gl
@@ -457,48 +476,48 @@ impl Renderer {
         std::mem::swap(&mut self.old_wallpaper, &mut self.current_wallpaper);
         self.current_wallpaper.load_image(&self.gl, image)?;
 
-        self.set_mode(mode)?;
+        match mode {
+            BackgroundMode::Stretch | BackgroundMode::Fill | BackgroundMode::Tile => unsafe {
+                self.set_mode(mode, false)?;
+                self.gl.ActiveTexture(gl::TEXTURE0);
+                self.check_error("activating gl::TEXTURE0")?;
+                self.old_wallpaper.bind(&self.gl)?;
+                self.gl.ActiveTexture(gl::TEXTURE1);
+                self.check_error("activating gl::TEXTURE0")?;
+                self.current_wallpaper.bind(&self.gl)?;
+            },
+            BackgroundMode::Fit => unsafe {
+                // We don't change the vertices, we still use the previous ones for the first half
+                // of the animation
+                self.gl.ActiveTexture(gl::TEXTURE0);
+                self.check_error("activating gl::TEXTURE0")?;
+                self.old_wallpaper.bind(&self.gl)?;
+                self.gl.ActiveTexture(gl::TEXTURE1);
+                self.check_error("activating gl::TEXTURE0")?;
+                self.gl
+                    .BindTexture(gl::TEXTURE_2D, self.transparent_texture);
+            },
+        }
+
         Ok(())
     }
 
-    pub fn set_mode(&mut self, mode: BackgroundMode) -> Result<()> {
+    pub fn set_mode(
+        &mut self,
+        mode: BackgroundMode,
+        half_animation_for_fit_mode: bool,
+    ) -> Result<()> {
         Ok(match mode {
             BackgroundMode::Stretch | BackgroundMode::Fill | BackgroundMode::Tile => {
+                // The vertex data will be the default in this case
+                let vec_coordinates = Coordinates::default_vec_coordinates();
+                let current_tex_coord = &self.current_wallpaper.generate_texture_coordinates(mode);
+                let old_tex_coord = &self.old_wallpaper.generate_texture_coordinates(mode);
+
+                let vertex_data =
+                    get_opengl_point_coordinates(vec_coordinates, current_tex_coord, old_tex_coord);
+
                 unsafe {
-                    // The vertex data depends on the image and the mode
-                    let vec_coordinates =
-                        self.current_wallpaper.generate_vertices_coordinates(mode);
-                    let current_tex_coord =
-                        &self.current_wallpaper.generate_texture_coordinates(mode);
-                    let old_tex_coord = &self.old_wallpaper.generate_texture_coordinates(mode);
-
-                    let vertex_data = [
-                        vec_coordinates.x_left, // top left start
-                        vec_coordinates.y_top,
-                        current_tex_coord.x_left,
-                        current_tex_coord.y_top,
-                        old_tex_coord.x_left,
-                        old_tex_coord.y_top,    // top left stop
-                        vec_coordinates.x_left, // bottom left start
-                        vec_coordinates.y_bottom,
-                        current_tex_coord.x_left,
-                        current_tex_coord.y_bottom,
-                        old_tex_coord.x_left,
-                        old_tex_coord.y_bottom,  // bottom left stop
-                        vec_coordinates.x_right, // bottom right start
-                        vec_coordinates.y_bottom,
-                        current_tex_coord.x_right,
-                        current_tex_coord.y_bottom,
-                        old_tex_coord.x_right,
-                        old_tex_coord.y_bottom,  // bottom right stop
-                        vec_coordinates.x_right, // top right start
-                        vec_coordinates.y_top,
-                        current_tex_coord.x_right,
-                        current_tex_coord.y_top,
-                        old_tex_coord.x_right,
-                        old_tex_coord.y_top, // top right // stop
-                    ];
-
                     // Update the vertex buffer
                     self.gl.BufferSubData(
                         gl::ARRAY_BUFFER,
@@ -509,12 +528,39 @@ impl Renderer {
                     self.check_error("buffering the data")?;
                 }
             }
-            BackgroundMode::Fit => {}
+            BackgroundMode::Fit => {
+                let vec_coordinates = if half_animation_for_fit_mode {
+                    self.current_wallpaper
+                        .generate_vertices_coordinates_for_fit_mode()
+                } else {
+                    self.old_wallpaper.generate_texture_coordinates(mode)
+                };
+
+                let old_tex_coord = &self.old_wallpaper.generate_texture_coordinates(mode);
+
+                let vertex_data = get_opengl_point_coordinates(
+                    vec_coordinates,
+                    &Coordinates::default_texture_coordinates(),
+                    old_tex_coord,
+                );
+
+                unsafe {
+                    // Update the vertex buffer
+                    self.gl.BufferSubData(
+                        gl::ARRAY_BUFFER,
+                        0,
+                        (vertex_data.len() * std::mem::size_of::<f32>()) as gl::types::GLsizeiptr,
+                        vertex_data.as_ptr() as *const _,
+                    );
+                    self.check_error("buffering the data")?;
+                }
+            }
         })
     }
 
     pub fn start_animation(&mut self, time: u32) {
         self.time_started = time;
+        self.animation_fit_changed = false;
     }
 
     pub fn clear_after_draw(&self) -> Result<()> {
@@ -543,6 +589,40 @@ impl Renderer {
     pub(crate) fn is_drawing_animation(&self, time: u32) -> bool {
         time < (self.time_started + self.animation_time)
     }
+}
+
+fn get_opengl_point_coordinates(
+    vec_coordinates: Coordinates,
+    current_tex_coord: &Coordinates,
+    old_tex_coord: &Coordinates,
+) -> [f32; 24] {
+    let vertex_data = [
+        vec_coordinates.x_left, // top left start
+        vec_coordinates.y_top,
+        current_tex_coord.x_left,
+        current_tex_coord.y_top,
+        old_tex_coord.x_left,
+        old_tex_coord.y_top,    // top left stop
+        vec_coordinates.x_left, // bottom left start
+        vec_coordinates.y_bottom,
+        current_tex_coord.x_left,
+        current_tex_coord.y_bottom,
+        old_tex_coord.x_left,
+        old_tex_coord.y_bottom,  // bottom left stop
+        vec_coordinates.x_right, // bottom right start
+        vec_coordinates.y_bottom,
+        current_tex_coord.x_right,
+        current_tex_coord.y_bottom,
+        old_tex_coord.x_right,
+        old_tex_coord.y_bottom,  // bottom right stop
+        vec_coordinates.x_right, // top right start
+        vec_coordinates.y_top,
+        current_tex_coord.x_right,
+        current_tex_coord.y_top,
+        old_tex_coord.x_right,
+        old_tex_coord.y_top, // top right // stop
+    ];
+    vertex_data
 }
 
 impl Deref for Renderer {

@@ -180,7 +180,7 @@ impl Surface {
             self.renderer.start_animation(time);
         }
 
-        unsafe { self.renderer.draw(time)? };
+        unsafe { self.renderer.draw(time, self.wallpaper_info.mode)? };
 
         if self.is_drawing_animation(time) {
             self.queue_draw(qh);
@@ -340,7 +340,7 @@ impl Surface {
                 if let Err(err) = self
                     .egl_context
                     .make_current()
-                    .and_then(|_| self.renderer.set_mode(self.wallpaper_info.mode))
+                    .and_then(|_| self.renderer.set_mode(self.wallpaper_info.mode, false))
                 {
                     error!("{err:?}");
                 }
