@@ -597,7 +597,6 @@ fn get_opengl_point_coordinates(
     current_tex_coord: &Coordinates,
     old_tex_coord: &Coordinates,
 ) -> [f32; 24] {
-    
     [
         vec_coordinates.x_left, // top left start
         vec_coordinates.y_top,
