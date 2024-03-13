@@ -84,7 +84,7 @@ impl Wpaperd {
     }
 }
 
-impl<'a> CompositorHandler for Wpaperd {
+impl CompositorHandler for Wpaperd {
     fn scale_factor_changed(
         &mut self,
         _conn: &Connection,
@@ -125,7 +125,7 @@ impl<'a> CompositorHandler for Wpaperd {
     }
 }
 
-impl<'a> OutputHandler for Wpaperd {
+impl OutputHandler for Wpaperd {
     fn output_state(&mut self) -> &mut OutputState {
         &mut self.output_state
     }
@@ -211,7 +211,7 @@ impl<'a> OutputHandler for Wpaperd {
     }
 }
 
-impl<'a> LayerShellHandler for Wpaperd {
+impl LayerShellHandler for Wpaperd {
     fn closed(&mut self, _conn: &Connection, _qh: &QueueHandle<Self>, _layer: &LayerSurface) {}
 
     fn configure(

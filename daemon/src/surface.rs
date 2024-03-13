@@ -68,10 +68,10 @@ impl DisplayInfo {
     pub fn adjusted_width(&self) -> i32 {
         match self.transform {
             Transform::Normal | Transform::_180 | Transform::Flipped | Transform::Flipped180 => {
-                self.width as i32 * self.scale
+                self.width * self.scale
             }
             Transform::_90 | Transform::_270 | Transform::Flipped90 | Transform::Flipped270 => {
-                self.height as i32 * self.scale
+                self.height * self.scale
             }
             _ => unreachable!(),
         }
@@ -80,10 +80,10 @@ impl DisplayInfo {
     pub fn adjusted_height(&self) -> i32 {
         match self.transform {
             Transform::Normal | Transform::_180 | Transform::Flipped | Transform::Flipped180 => {
-                self.height as i32 * self.scale
+                self.height * self.scale
             }
             Transform::_90 | Transform::_270 | Transform::Flipped90 | Transform::Flipped270 => {
-                self.width as i32 * self.scale
+                self.width * self.scale
             }
             _ => unreachable!(),
         }
@@ -111,7 +111,7 @@ impl DisplayInfo {
     }
 
     pub fn change_scale_factor(&mut self, scale_factor: i32) -> bool {
-        if self.scale != self.scale {
+        if self.scale != scale_factor {
             self.scale = scale_factor;
             true
         } else {

@@ -121,7 +121,7 @@ impl Coordinates {
     const TEX_Y_BOTTOM: f32 = 0.0;
     const TEX_Y_TOP: f32 = 1.0;
 
-    fn new(x_left: f32, x_right: f32, y_bottom: f32, y_top: f32) -> Self {
+    const fn new(x_left: f32, x_right: f32, y_bottom: f32, y_top: f32) -> Self {
         Self {
             x_left,
             x_right,
@@ -130,7 +130,7 @@ impl Coordinates {
         }
     }
 
-    fn default_vec_coordinates() -> Self {
+    const fn default_vec_coordinates() -> Self {
         Self {
             x_right: Self::VEC_X_RIGHT,
             x_left: Self::VEC_X_LEFT,
@@ -139,7 +139,7 @@ impl Coordinates {
         }
     }
 
-    fn default_texture_coordinates() -> Self {
+    const fn default_texture_coordinates() -> Self {
         Self {
             x_right: Self::TEX_X_RIGHT,
             x_left: Self::TEX_X_LEFT,
@@ -150,7 +150,7 @@ impl Coordinates {
 }
 
 impl Wallpaper {
-    pub fn new(display_info: Rc<RefCell<DisplayInfo>>) -> Self {
+    pub const fn new(display_info: Rc<RefCell<DisplayInfo>>) -> Self {
         Self {
             texture: 0,
             image_width: 10,
@@ -507,7 +507,7 @@ impl Renderer {
         mode: BackgroundMode,
         half_animation_for_fit_mode: bool,
     ) -> Result<()> {
-        Ok(match mode {
+        match mode {
             BackgroundMode::Stretch | BackgroundMode::Fill | BackgroundMode::Tile => {
                 // The vertex data will be the default in this case
                 let vec_coordinates = Coordinates::default_vec_coordinates();
@@ -555,7 +555,8 @@ impl Renderer {
                     self.check_error("buffering the data")?;
                 }
             }
-        })
+        };
+        Ok(())
     }
 
     pub fn start_animation(&mut self, time: u32) {
@@ -596,7 +597,8 @@ fn get_opengl_point_coordinates(
     current_tex_coord: &Coordinates,
     old_tex_coord: &Coordinates,
 ) -> [f32; 24] {
-    let vertex_data = [
+    
+    [
         vec_coordinates.x_left, // top left start
         vec_coordinates.y_top,
         current_tex_coord.x_left,
@@ -621,8 +623,7 @@ fn get_opengl_point_coordinates(
         current_tex_coord.y_top,
         old_tex_coord.x_right,
         old_tex_coord.y_top, // top right // stop
-    ];
-    vertex_data
+    ]
 }
 
 impl Deref for Renderer {
