@@ -2,10 +2,10 @@ mod config;
 mod filelist_cache;
 mod image_picker;
 mod ipc_server;
+mod opts;
 mod render;
 mod socket;
 mod surface;
-mod wallpaper_config;
 mod wallpaper_info;
 mod wpaperd;
 
@@ -29,17 +29,15 @@ use color_eyre::{
     eyre::{anyhow, ContextCompat, WrapErr},
     Result, Section,
 };
+use config::Config;
 use egl::API as egl;
-use figment::{
-    providers::{Format, Serialized, Toml},
-    Figment,
-};
 use filelist_cache::FilelistCache;
 use flexi_logger::{Duplicate, FileSpec, Logger};
 use hotwatch::Hotwatch;
 use ipc_server::{handle_message, listen_on_ipc_socket};
 use log::error;
 use nix::unistd::fork;
+use opts::Opts;
 use smithay_client_toolkit::reexports::{
     calloop,
     calloop_wayland_source::WaylandSource,
@@ -48,31 +46,29 @@ use smithay_client_toolkit::reexports::{
 use wpaperd_ipc::socket_path;
 use xdg::BaseDirectories;
 
-use crate::config::Config;
-use crate::wallpaper_config::WallpapersConfig;
 use crate::wpaperd::Wpaperd;
 
-fn run(config: Config, xdg_dirs: BaseDirectories) -> Result<()> {
+fn run(opts: Opts, xdg_dirs: BaseDirectories) -> Result<()> {
     // Path passed from the CLI or the wpaperd.toml file has precedence
-    let wallpaper_config_file = if let Some(wallpaper_config) = config.wallpaper_config {
-        wallpaper_config
+    let config_file = if let Some(config) = opts.config {
+        config
     } else {
         // Read the new config or the legacy file
         let legacy_config_file = xdg_dirs
-            .place_config_file("output.conf")
-            .context("unable to identify output.conf")?;
+            .place_config_file("wallpaper.toml")
+            .context("unable to identify legacy config file wallpaper.toml")?;
         if legacy_config_file.exists() {
             legacy_config_file
         } else {
             xdg_dirs
-                .place_config_file("wallpaper.toml")
-                .context("unable to identify config file wallpaper.toml")?
+                .place_config_file("config.toml")
+                .context("unable to identify config file config.toml")?
         }
     };
 
     let reloaded = Arc::new(AtomicBool::new(false));
-    let mut wallpaper_config = WallpapersConfig::new_from_path(&wallpaper_config_file)?;
-    wallpaper_config.reloaded = Some(reloaded);
+    let mut config = Config::new_from_path(&config_file)?;
+    config.reloaded = Some(reloaded);
 
     // we use the OpenGL ES API because it's more widely supported
     // and it's used by wlroots
@@ -108,19 +104,13 @@ fn run(config: Config, xdg_dirs: BaseDirectories) -> Result<()> {
         .map_err(|e| anyhow!("inserting the hotwatch event listener in the event loop: {e}"))?;
 
     let mut hotwatch = Hotwatch::new().context("hotwatch failed to initialize")?;
-    wallpaper_config.listen_to_changes(&mut hotwatch, ping)?;
+    config.listen_to_changes(&mut hotwatch, ping)?;
 
     let (ping, filelist_cache) =
-        FilelistCache::new(wallpaper_config.paths(), &mut hotwatch, event_loop.handle())?;
+        FilelistCache::new(config.paths(), &mut hotwatch, event_loop.handle())?;
     let filelist_cache = Rc::new(RefCell::new(filelist_cache));
 
-    let mut wpaperd = Wpaperd::new(
-        &qh,
-        &globals,
-        wallpaper_config,
-        egl_display,
-        filelist_cache.clone(),
-    )?;
+    let mut wpaperd = Wpaperd::new(&qh, &globals, config, egl_display, filelist_cache.clone())?;
 
     // Start listening on the IPC socket
     let socket = listen_on_ipc_socket(&socket_path()?).context("spawning the ipc socket")?;
@@ -134,7 +124,7 @@ fn run(config: Config, xdg_dirs: BaseDirectories) -> Result<()> {
             }
         })?;
 
-    if let Some(notify) = config.notify {
+    if let Some(notify) = opts.notify {
         let mut f = unsafe { File::from_raw_fd(notify as i32) };
         if let Err(err) = writeln!(f) {
             // This is not a hard error, just log it and go on
@@ -187,40 +177,25 @@ fn main() -> Result<()> {
 
     let xdg_dirs = BaseDirectories::with_prefix("wpaperd")?;
 
-    let mut config = Figment::new();
-    let opts = Config::parse();
+    let opts = Opts::parse();
 
-    if let Some(opts_config) = &opts.config {
-        config = config.merge(Toml::file(opts_config));
-    } else {
-        // Otherwise read the new config or the legacy file
-        let legacy_config = xdg_dirs.place_config_file("wpaperd.conf").unwrap();
-        if legacy_config.exists() {
-            config = config.merge(Toml::file(legacy_config));
-        } else {
-            config = config.merge(Toml::file(
-                xdg_dirs.place_config_file("wpaperd.toml").unwrap(),
-            ))
-        }
-    }
+    let mut logger = Logger::try_with_env_or_str(if opts.verbose { "info" } else { "debug" })?;
 
-    let config: Config = config.merge(Serialized::defaults(opts)).extract()?;
-
-    let mut logger = Logger::try_with_env_or_str(if config.verbose { "info" } else { "warn" })?;
-
-    if config.no_daemon {
-        logger = logger.duplicate_to_stderr(Duplicate::Warn);
-    } else {
+    if opts.daemon {
+        // If wpaperd detach, then log to files
         logger = logger.log_to_file(FileSpec::default().directory(xdg_dirs.get_state_home()));
         match unsafe { fork()? } {
             nix::unistd::ForkResult::Parent { child: _ } => exit(0),
             nix::unistd::ForkResult::Child => {}
         }
+    } else {
+        // otherwise prints everything in the stdout/stderr
+        logger = logger.duplicate_to_stderr(Duplicate::Warn);
     }
 
     logger.start()?;
 
-    if let Err(err) = run(config, xdg_dirs) {
+    if let Err(err) = run(opts, xdg_dirs) {
         error!("{err:?}");
         Err(err)
     } else {

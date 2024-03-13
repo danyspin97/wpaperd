@@ -5,7 +5,7 @@ use std::fs::File;
 use std::io::Error;
 use std::path::Path;
 
-include!("src/config.rs");
+include!("src/opts.rs");
 
 fn build_shell_completion(outdir: &Path) -> Result<(), Error> {
     let mut app = Config::command();
@@ -30,7 +30,7 @@ fn build_manpages(outdir: &Path) -> Result<(), Error> {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    println!("cargo:rerun-if-changed=src/config.rs");
+    println!("cargo:rerun-if-changed=src/opts.rs");
     println!("cargo:rerun-if-changed=man");
 
     let comp_path = Path::new("completions");

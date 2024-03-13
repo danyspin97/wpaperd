@@ -19,9 +19,9 @@ use smithay_client_toolkit::{
     registry_handlers,
 };
 
+use crate::config::Config;
 use crate::filelist_cache::FilelistCache;
 use crate::surface::{DisplayInfo, Surface};
-use crate::wallpaper_config::WallpapersConfig;
 
 pub struct Wpaperd {
     pub compositor_state: CompositorState,
@@ -30,7 +30,7 @@ pub struct Wpaperd {
     pub layer_state: LayerShell,
     pub registry_state: RegistryState,
     pub surfaces: Vec<Surface>,
-    pub wallpaper_config: WallpapersConfig,
+    pub wallpaper_config: Config,
     egl_display: egl::Display,
     pub filelist_cache: Rc<RefCell<FilelistCache>>,
 }
@@ -39,7 +39,7 @@ impl Wpaperd {
     pub fn new(
         qh: &QueueHandle<Self>,
         globals: &GlobalList,
-        wallpaper_config: WallpapersConfig,
+        wallpaper_config: Config,
         egl_display: egl::Display,
         filelist_cache: Rc<RefCell<FilelistCache>>,
     ) -> Result<Self> {
