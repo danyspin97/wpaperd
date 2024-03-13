@@ -2,6 +2,7 @@ use std::{
     collections::HashMap,
     fs,
     path::{Path, PathBuf},
+    rc::Rc,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
@@ -22,9 +23,9 @@ use crate::wallpaper_info::WallpaperInfo;
 #[derive(Deserialize)]
 pub struct Config {
     #[serde(flatten)]
-    data: HashMap<String, Arc<WallpaperInfo>>,
+    data: HashMap<String, Rc<WallpaperInfo>>,
     #[serde(skip)]
-    default_config: Arc<WallpaperInfo>,
+    default_config: Rc<WallpaperInfo>,
     #[serde(skip)]
     pub path: PathBuf,
     #[serde(skip)]
@@ -38,7 +39,7 @@ impl Config {
         config_manager.default_config = config_manager
             .data
             .get("default")
-            .unwrap_or(&Arc::new(WallpaperInfo::default()))
+            .unwrap_or(&Rc::new(WallpaperInfo::default()))
             .clone();
         for (name, config) in &config_manager.data {
             let path = config.path.as_ref().unwrap();
@@ -57,7 +58,7 @@ Either remove `duration` or set `path` to a directory"
         Ok(config_manager)
     }
 
-    pub fn get_output_by_name(&self, name: &str) -> Arc<WallpaperInfo> {
+    pub fn get_output_by_name(&self, name: &str) -> Rc<WallpaperInfo> {
         self.data.get(name).unwrap_or(&self.default_config).clone()
     }
 

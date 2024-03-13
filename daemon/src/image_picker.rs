@@ -1,4 +1,4 @@
-use std::{cell::RefCell, path::PathBuf, rc::Rc, sync::Arc, time::Instant};
+use std::{cell::RefCell, path::PathBuf, rc::Rc, time::Instant};
 
 use color_eyre::eyre::{bail, ensure, Context};
 use image::{open, DynamicImage};
@@ -48,7 +48,7 @@ pub struct ImagePicker {
 
 impl ImagePicker {
     pub fn new(
-        wallpaper_info: Arc<WallpaperInfo>,
+        wallpaper_info: Rc<WallpaperInfo>,
         filelist_cache: Rc<RefCell<FilelistCache>>,
     ) -> Self {
         Self {

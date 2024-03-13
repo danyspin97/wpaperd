@@ -1,7 +1,8 @@
-use std::cell::RefCell;
-use std::rc::Rc;
-use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::{
+    cell::RefCell,
+    rc::Rc,
+    time::{Duration, Instant},
+};
 
 use color_eyre::eyre::{Context, ContextCompat};
 use color_eyre::Result;
@@ -39,7 +40,7 @@ pub struct Surface {
     renderer: Renderer,
     pub image_picker: ImagePicker,
     pub event_source: Option<RegistrationToken>,
-    wallpaper_info: Arc<WallpaperInfo>,
+    wallpaper_info: Rc<WallpaperInfo>,
     info: Rc<RefCell<DisplayInfo>>,
     drawn: bool,
 }
@@ -126,7 +127,7 @@ impl Surface {
         output: WlOutput,
         surface: wl_surface::WlSurface,
         info: DisplayInfo,
-        wallpaper_info: Arc<WallpaperInfo>,
+        wallpaper_info: Rc<WallpaperInfo>,
         egl_display: egl::Display,
         filelist_cache: Rc<RefCell<FilelistCache>>,
     ) -> Self {
@@ -291,7 +292,7 @@ impl Surface {
         &mut self,
         handle: &LoopHandle<Wpaperd>,
         qh: &QueueHandle<Wpaperd>,
-        mut wallpaper_info: Arc<WallpaperInfo>,
+        mut wallpaper_info: Rc<WallpaperInfo>,
     ) {
         if self.wallpaper_info != wallpaper_info {
             // Put the new value in place
