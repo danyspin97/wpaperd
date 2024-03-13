@@ -17,11 +17,13 @@ use smithay_client_toolkit::reexports::client::protocol::wl_surface;
 use smithay_client_toolkit::reexports::client::QueueHandle;
 use smithay_client_toolkit::shell::wlr_layer::{LayerSurface, LayerSurfaceConfigure};
 
-use crate::filelist_cache::FilelistCache;
 use crate::image_picker::ImagePicker;
-use crate::render::{EglContext, Renderer};
 use crate::wallpaper_info::WallpaperInfo;
 use crate::wpaperd::Wpaperd;
+use crate::{
+    filelist_cache::FilelistCache,
+    render::{EglContext, Renderer},
+};
 
 #[derive(Debug)]
 pub struct DisplayInfo {
