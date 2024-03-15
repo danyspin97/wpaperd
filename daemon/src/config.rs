@@ -16,7 +16,7 @@ use color_eyre::{
 };
 use dirs::home_dir;
 use hotwatch::{Event, Hotwatch};
-use log::{error, warn};
+use log::error;
 use serde::Deserialize;
 use smithay_client_toolkit::reexports::calloop::ping::Ping;
 
@@ -37,7 +37,7 @@ pub struct SerializedWallpaperInfo {
 impl SerializedWallpaperInfo {
     pub fn apply_and_validate(&self, default: &Self) -> Result<WallpaperInfo> {
         let mut path_inherited = false;
-        let path = match (&self.path, &default.path) { 
+        let path = match (&self.path, &default.path) {
             (Some(path), _) => path,
             (None, Some(path)) => {
                 path_inherited = true;
@@ -84,7 +84,7 @@ impl SerializedWallpaperInfo {
             // duration is inherited from default, but this section set path to a file, ignore
             // duration
             (Some(_), _) if path.is_file() => None,
-            (Some(duration), _) | (None, Some(duration)) => Some(duration.clone()),
+            (Some(duration), _) | (None, Some(duration)) => Some(*duration),
             (None, None) => None,
         };
         // duration can only be set when path is a directory
