@@ -92,15 +92,17 @@ impl FilelistCache {
         event_loop_ping: Ping,
     ) {
         self.cache.retain(|filelist| {
-            if paths.contains(&filelist.path) {
+            if paths.contains(&filelist.path) && filelist.path.exists() {
                 true
             } else {
                 // Stop watching paths that have been removed
-                if let Err(err) = hotwatch
-                    .unwatch(&filelist.path)
-                    .with_context(|| format!("hotwatch unwatch error on path {:?}", &filelist.path))
-                {
-                    error!("{err:?}");
+                // Check that it exists before
+                if filelist.path.exists() {
+                    if let Err(err) = hotwatch.unwatch(&filelist.path).with_context(|| {
+                        format!("hotwatch unwatch error on path {:?}", &filelist.path)
+                    }) {
+                        error!("{err:?}");
+                    }
                 }
                 // and remove them from the vec
                 false
@@ -109,6 +111,10 @@ impl FilelistCache {
 
         for path in paths {
             if !self.cache.iter().any(|filelist| filelist.path == path) {
+                // Skip paths that don't exists
+                if !path.exists() {
+                    continue;
+                }
                 let filelist = Filelist::new(&path);
                 let outdated = filelist.outdated.clone();
                 self.cache.push(filelist);

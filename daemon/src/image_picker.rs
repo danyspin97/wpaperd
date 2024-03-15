@@ -1,4 +1,9 @@
-use std::{cell::RefCell, path::PathBuf, rc::Rc, time::Instant};
+use std::{
+    cell::RefCell,
+    path::{Path, PathBuf},
+    rc::Rc,
+    time::Instant,
+};
 
 use color_eyre::eyre::{bail, ensure, Context};
 use image::{open, DynamicImage};
@@ -42,15 +47,11 @@ pub struct ImagePicker {
     pub image_changed_instant: Instant,
     action: Option<ImagePickerAction>,
     sorting: ImagePickerSorting,
-    path: PathBuf,
     filelist_cache: Rc<RefCell<FilelistCache>>,
 }
 
 impl ImagePicker {
-    pub fn new(
-        wallpaper_info: Rc<WallpaperInfo>,
-        filelist_cache: Rc<RefCell<FilelistCache>>,
-    ) -> Self {
+    pub fn new(wallpaper_info: &WallpaperInfo, filelist_cache: Rc<RefCell<FilelistCache>>) -> Self {
         Self {
             current_img: PathBuf::from(""),
             image_changed_instant: Instant::now(),
@@ -60,11 +61,6 @@ impl ImagePicker {
                 Sorting::Ascending => ImagePickerSorting::Ascending(usize::MAX),
                 Sorting::Descending => ImagePickerSorting::Descending(usize::MAX),
             },
-            path: wallpaper_info
-                .path
-                .as_ref()
-                .expect("All wallpaper_info to have a path")
-                .clone(),
             filelist_cache,
         }
     }
@@ -224,16 +220,18 @@ impl ImagePicker {
         }
     }
 
-    pub fn get_image(&mut self) -> Result<Option<DynamicImage>, color_eyre::Report> {
-        let path = self.path.to_path_buf();
-        Ok(if path.is_dir() {
+    pub fn get_image_from_path(
+        &mut self,
+        path: &Path,
+    ) -> Result<Option<DynamicImage>, color_eyre::Report> {
+        if path.is_dir() {
             if self.action.is_none() {
                 return Ok(None);
             }
 
             let mut tries = 0;
             loop {
-                let files = self.filelist_cache.borrow().get(&self.path);
+                let files = self.filelist_cache.borrow().get(path);
 
                 // There are no images, forcefully break out of the loop
                 if files.is_empty() {
@@ -242,7 +240,7 @@ impl ImagePicker {
 
                 let (index, img_path) = self.get_image_path(&files);
                 if img_path == self.current_img {
-                    break None;
+                    break Ok(None);
                 }
                 match open(&img_path).with_context(|| format!("opening the image {img_path:?}")) {
                     Ok(image) => {
@@ -284,7 +282,7 @@ impl ImagePicker {
 
                         self.current_img = img_path;
 
-                        break Some(image);
+                        break Ok(Some(image));
                     }
                     Err(err) => {
                         warn!("{err:?}");
@@ -298,14 +296,18 @@ impl ImagePicker {
                 );
             }
         } else if path == self.current_img {
-            None
+            Ok(None)
         } else {
-            self.current_img = path;
-            Some(
-                open(&self.current_img)
-                    .with_context(|| format!("opening the image {:?}", &self.current_img))?,
-            )
-        })
+            // path is not a directory and it's not the current image
+            // try open it and update the current image accordingly
+            match open(path).with_context(|| format!("opening the image {:?}", &path)) {
+                Ok(image) => {
+                    self.current_img = path.to_path_buf();
+                    Ok(Some(image))
+                }
+                Err(err) => Err(err),
+            }
+        }
     }
 
     /// Update wallpaper by going down 1 index through the cached image paths
@@ -324,20 +326,8 @@ impl ImagePicker {
     }
 
     /// Return true if the path changed
-    pub fn update(&mut self, wallpaper_info: &WallpaperInfo) -> bool {
-        let path_changed = if let Some(path) = wallpaper_info.path.as_ref() {
-            if self.path != *path {
-                self.path = path.clone();
-                // Change the image because the path has changed
-                self.action = Some(ImagePickerAction::Next);
-                true
-            } else {
-                false
-            }
-        } else {
-            false
-        };
-        match (&mut self.sorting, wallpaper_info.sorting) {
+    pub fn update_sorting(&mut self, new_sorting: Sorting, path_changed: bool) {
+        match (&mut self.sorting, new_sorting) {
             (
                 ImagePickerSorting::Random { .. } | ImagePickerSorting::Descending(_),
                 Sorting::Ascending,
@@ -377,6 +367,5 @@ impl ImagePicker {
             // No need to update the sorting if it's the same
             (_, _) => {}
         }
-        path_changed
     }
 }

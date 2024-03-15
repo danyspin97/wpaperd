@@ -1,8 +1,9 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
+use color_eyre::owo_colors::OwoColorize;
 use color_eyre::Result;
-use log::error;
+use log::{error, warn};
 use smithay_client_toolkit::compositor::{CompositorHandler, CompositorState, Region};
 use smithay_client_toolkit::output::{OutputHandler, OutputState};
 use smithay_client_toolkit::reexports::calloop::LoopHandle;
@@ -22,6 +23,7 @@ use smithay_client_toolkit::{
 use crate::config::Config;
 use crate::filelist_cache::FilelistCache;
 use crate::surface::{DisplayInfo, Surface};
+use crate::wallpaper_info::WallpaperInfo;
 
 pub struct Wpaperd {
     pub compositor_state: CompositorState,
@@ -65,8 +67,16 @@ impl Wpaperd {
     ) {
         if self.wallpaper_config.try_update() {
             for surface in &mut self.surfaces {
-                let wallpaper_info = self.wallpaper_config.get_output_by_name(&surface.name());
-                surface.update_wallpaper_info(&ev_handle, qh, wallpaper_info);
+                let res = self.wallpaper_config.get_output_by_name(&surface.name());
+                match res {
+                    Ok(wallpaper_info) => {
+                        surface.update_wallpaper_info(&ev_handle, qh, wallpaper_info);
+                    }
+                    Err(err) => warn!(
+                        "Configuration error for display {}: {err:?}",
+                        surface.name()
+                    ),
+                }
             }
         }
     }
@@ -171,7 +181,16 @@ impl OutputHandler for Wpaperd {
         // > wl_region object can be destroyed immediately.
         empty_region.wl_region().destroy();
 
-        let wallpaper_info = self.wallpaper_config.get_output_by_name(&name);
+        let wallpaper_info = match self.wallpaper_config.get_output_by_name(&name) {
+            Ok(wallpaper_info) => wallpaper_info,
+            Err(err) => {
+                warn!(
+                    "Configuration error on display {}: {err:?}",
+                    name.bold().magenta()
+                );
+                WallpaperInfo::default()
+            }
+        };
 
         self.surfaces.push(Surface::new(
             layer,

@@ -67,7 +67,16 @@ fn run(opts: Opts, xdg_dirs: BaseDirectories) -> Result<()> {
     };
 
     let reloaded = Arc::new(AtomicBool::new(false));
-    let mut config = Config::new_from_path(&config_file)?;
+    // Do not stop when the configuration is invalid, we can always reload it at runtime
+    let mut config = match Config::new_from_path(&config_file) {
+        Ok(config) => config,
+        Err(err) => {
+            error!("{err:?}");
+            let mut config = Config::default();
+            config.path = config_file;
+            config
+        }
+    };
     config.reloaded = Some(reloaded);
 
     // we use the OpenGL ES API because it's more widely supported

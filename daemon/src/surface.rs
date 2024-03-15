@@ -42,7 +42,7 @@ pub struct Surface {
     renderer: Renderer,
     pub image_picker: ImagePicker,
     pub event_source: Option<RegistrationToken>,
-    wallpaper_info: Rc<WallpaperInfo>,
+    wallpaper_info: WallpaperInfo,
     info: Rc<RefCell<DisplayInfo>>,
     drawn: bool,
 }
@@ -129,7 +129,7 @@ impl Surface {
         output: WlOutput,
         surface: wl_surface::WlSurface,
         info: DisplayInfo,
-        wallpaper_info: Rc<WallpaperInfo>,
+        wallpaper_info: WallpaperInfo,
         egl_display: egl::Display,
         filelist_cache: Rc<RefCell<FilelistCache>>,
     ) -> Self {
@@ -140,7 +140,7 @@ impl Surface {
         // Commit the surface
         surface.commit();
 
-        let image_picker = ImagePicker::new(wallpaper_info.clone(), filelist_cache);
+        let image_picker = ImagePicker::new(&wallpaper_info, filelist_cache);
 
         let image = black_image();
         let info = Rc::new(RefCell::new(info));
@@ -171,7 +171,10 @@ impl Surface {
         // Use the correct context before loading the texture and drawing
         self.egl_context.make_current()?;
 
-        if let Some(image) = self.image_picker.get_image()? {
+        if let Some(image) = self
+            .image_picker
+            .get_image_from_path(&self.wallpaper_info.path)?
+        {
             let image = image.into_rgba8();
             self.renderer
                 .load_wallpaper(image.into(), self.wallpaper_info.mode)?;
@@ -207,7 +210,7 @@ impl Surface {
     }
 
     fn _apply_shadow(&self, image: &mut ImageBuffer<Rgba<u8>, Vec<u8>>, width: u32) {
-        if self.wallpaper_info.apply_shadow.unwrap_or_default() {
+        if self.wallpaper_info.apply_shadow {
             const GRADIENT_HEIGHT: u32 = 11;
             type RgbaImage = image::ImageBuffer<image::Rgba<u8>, Vec<u8>>;
             let gradient = DynamicImage::ImageRgba8(
@@ -294,12 +297,18 @@ impl Surface {
         &mut self,
         handle: &LoopHandle<Wpaperd>,
         qh: &QueueHandle<Wpaperd>,
-        mut wallpaper_info: Rc<WallpaperInfo>,
+        mut wallpaper_info: WallpaperInfo,
     ) {
         if self.wallpaper_info != wallpaper_info {
             // Put the new value in place
             std::mem::swap(&mut self.wallpaper_info, &mut wallpaper_info);
-            let path_changed = self.image_picker.update(&self.wallpaper_info);
+            let path_changed = self.wallpaper_info.path != wallpaper_info.path;
+            self.image_picker
+                .update_sorting(self.wallpaper_info.sorting, path_changed);
+            if path_changed {
+                // ask the image_picker to pick a new a image
+                self.image_picker.next_image();
+            }
             if self.wallpaper_info.duration != wallpaper_info.duration {
                 match (self.wallpaper_info.duration, wallpaper_info.duration) {
                     (None, None) => {
