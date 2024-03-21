@@ -149,7 +149,7 @@ impl ImagePicker {
             action: Some(ImagePickerAction::Next),
             sorting: match wallpaper_info.sorting {
                 Sorting::Random => {
-                    ImagePickerSorting::new_random(DEFAULT_RANDOM_DRAWN_QUEUE_SIZE)
+                    ImagePickerSorting::new_random(wallpaper_info.drawn_images_queue_size)
                 }
                 Sorting::Ascending => ImagePickerSorting::Ascending(usize::MAX),
                 Sorting::Descending => ImagePickerSorting::Descending(usize::MAX),

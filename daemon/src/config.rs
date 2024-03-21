@@ -16,11 +16,14 @@ use color_eyre::{
 };
 use dirs::home_dir;
 use hotwatch::{Event, Hotwatch};
-use log::error;
+use log::{error, warn};
 use serde::Deserialize;
 use smithay_client_toolkit::reexports::calloop::ping::Ping;
 
-use crate::wallpaper_info::{BackgroundMode, Sorting, WallpaperInfo};
+use crate::{
+    image_picker::ImagePicker,
+    wallpaper_info::{BackgroundMode, Sorting, WallpaperInfo},
+};
 
 #[derive(Default, Deserialize, PartialEq, Debug, Clone)]
 pub struct SerializedWallpaperInfo {
@@ -32,6 +35,7 @@ pub struct SerializedWallpaperInfo {
     pub apply_shadow: Option<bool>,
     pub sorting: Option<Sorting>,
     pub mode: Option<BackgroundMode>,
+    pub drawn_images_queue_size: Option<usize>,
 }
 
 impl SerializedWallpaperInfo {
@@ -112,6 +116,13 @@ impl SerializedWallpaperInfo {
             (Some(mode), _) | (None, Some(mode)) => *mode,
             (None, None) => BackgroundMode::default(),
         };
+        let drawn_images_queue_size = match (
+            &self.drawn_images_queue_size,
+            &default.drawn_images_queue_size,
+        ) {
+            (Some(size), None) | (_, Some(size)) => *size,
+            (None, None) => ImagePicker::DEFAULT_DRAWN_IMAGES_QUEUE_SIZE,
+        };
 
         Ok(WallpaperInfo {
             path,
@@ -119,6 +130,7 @@ impl SerializedWallpaperInfo {
             apply_shadow: false,
             sorting,
             mode,
+            drawn_images_queue_size,
         })
     }
 }

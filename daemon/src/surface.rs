@@ -303,8 +303,11 @@ impl Surface {
             // Put the new value in place
             std::mem::swap(&mut self.wallpaper_info, &mut wallpaper_info);
             let path_changed = self.wallpaper_info.path != wallpaper_info.path;
-            self.image_picker
-                .update_sorting(self.wallpaper_info.sorting, path_changed);
+            self.image_picker.update_sorting(
+                self.wallpaper_info.sorting,
+                path_changed,
+                wallpaper_info.drawn_images_queue_size,
+            );
             if path_changed {
                 // ask the image_picker to pick a new a image
                 self.image_picker.next_image();
@@ -357,6 +360,11 @@ impl Surface {
                     error!("{err:?}");
                 }
                 self.queue_draw(qh);
+            } else if self.wallpaper_info.drawn_images_queue_size
+                != wallpaper_info.drawn_images_queue_size
+            {
+                self.image_picker
+                    .update_queue_size(self.wallpaper_info.drawn_images_queue_size);
             } else if path_changed {
                 self.queue_draw(qh);
             }
