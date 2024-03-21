@@ -1,6 +1,5 @@
 use std::{path::PathBuf, time::Duration};
 
-use color_eyre::owo_colors::OwoColorize;
 use serde::Deserialize;
 
 use crate::image_picker::ImagePicker;
