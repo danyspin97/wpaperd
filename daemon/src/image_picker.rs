@@ -14,31 +14,121 @@ use crate::{
     wallpaper_info::{Sorting, WallpaperInfo},
 };
 
-#[derive(Debug)]
+struct Queue {
+    buffer: Vec<PathBuf>,
+    current: usize,
+    tail: usize,
+    size: usize,
+}
+
+impl Queue {
+    fn with_capacity(size: usize) -> Self {
+        Self {
+            buffer: Vec::with_capacity(size),
+            current: 0,
+            tail: size - 1,
+            size,
+        }
+    }
+
+    #[cfg(test)]
+    fn current(&self) -> &Path {
+        &self.buffer[self.current]
+    }
+
+    fn next(&mut self) -> Option<&Path> {
+        let next_index = (self.current + 1) % self.size;
+        if !self.is_full() {
+            if next_index < self.buffer.len() {
+                self.current = next_index;
+                Some(&self.buffer[next_index])
+            } else {
+                None
+            }
+        } else if self.current != self.tail {
+            self.current = next_index;
+            Some(&self.buffer[next_index])
+        } else {
+            None
+        }
+    }
+
+    fn previous(&mut self) -> Option<&Path> {
+        let prev_index = (self.current + self.size - 1) % self.size;
+        if prev_index != self.tail {
+            self.current = prev_index;
+            Some(&self.buffer[prev_index])
+        } else {
+            None
+        }
+    }
+
+    fn is_full(&self) -> bool {
+        self.buffer.len() == self.size
+    }
+
+    fn contains(&self, p: &PathBuf) -> bool {
+        self.buffer.contains(p)
+    }
+
+    fn set_current_to(&mut self, p: &Path) {
+        if let Some(index) = self.buffer.iter().position(|path| p == path) {
+            self.current = index;
+        }
+    }
+
+    fn push(&mut self, p: PathBuf) {
+        if self.is_full() {
+            if self.current == self.tail {
+                let next_index = (self.current + 1) % self.size;
+                self.buffer[next_index] = p;
+                self.current = next_index;
+                self.tail = next_index;
+            }
+        } else {
+            self.buffer.push(p);
+            self.current = self.buffer.len() - 1;
+        }
+    }
+
+    fn has_reached_end(&self) -> bool {
+        self.current == self.tail
+    }
+
+    fn resize(&mut self, new_size: usize) {
+        if !self.is_full() {
+            self.buffer.reserve_exact(new_size);
+            self.size = new_size;
+        } else {
+            let relative_current = (self.current + self.size - self.tail) % self.size;
+            self.current = (self.tail + self.size - new_size % self.size) % self.size;
+            let relative_current = (relative_current + self.size - self.current - 1) % new_size;
+            let mut new_buf = Vec::new();
+            while let Some(prev) = self.next() {
+                new_buf.push(prev.to_path_buf());
+            }
+            self.current = relative_current;
+            self.tail = new_size - 1;
+            self.size = new_size;
+            self.buffer = new_buf;
+        }
+    }
+}
+
 enum ImagePickerAction {
     Next,
     Previous,
 }
 
-#[derive(Debug)]
 enum ImagePickerSorting {
-    Random {
-        drawn_images: Vec<PathBuf>,
-        tail: usize,
-        current: usize,
-    },
+    Random(Queue),
     Ascending(usize),
     Descending(usize),
 }
 
 impl ImagePickerSorting {
-    const RANDOM_DEFAULT_SIZE: usize = 10;
-    fn new_random() -> Self {
-        ImagePickerSorting::Random {
-            drawn_images: Vec::with_capacity(Self::RANDOM_DEFAULT_SIZE),
-            tail: 0,
-            current: Self::RANDOM_DEFAULT_SIZE - 1,
-        }
+    fn new_random(queue_size: usize) -> Self {
+        ImagePickerSorting::Random(Queue::with_capacity(queue_size))
     }
 }
 
@@ -51,13 +141,16 @@ pub struct ImagePicker {
 }
 
 impl ImagePicker {
+    pub const DEFAULT_DRAWN_IMAGES_QUEUE_SIZE: usize = 10;
     pub fn new(wallpaper_info: &WallpaperInfo, filelist_cache: Rc<RefCell<FilelistCache>>) -> Self {
         Self {
             current_img: PathBuf::from(""),
             image_changed_instant: Instant::now(),
             action: Some(ImagePickerAction::Next),
             sorting: match wallpaper_info.sorting {
-                Sorting::Random => ImagePickerSorting::new_random(),
+                Sorting::Random => {
+                    ImagePickerSorting::new_random(DEFAULT_RANDOM_DRAWN_QUEUE_SIZE)
+                }
                 Sorting::Ascending => ImagePickerSorting::Ascending(usize::MAX),
                 Sorting::Descending => ImagePickerSorting::Descending(usize::MAX),
             },
@@ -69,92 +162,37 @@ impl ImagePicker {
     fn get_image_path(&mut self, files: &[PathBuf]) -> (usize, PathBuf) {
         match (&self.action, &mut self.sorting) {
             (None, _) if self.current_img.exists() => unreachable!(),
-            (
-                None | Some(ImagePickerAction::Next),
-                ImagePickerSorting::Random {
-                    drawn_images,
-                    tail,
-                    current,
-                },
-            ) if (*current + 1) % drawn_images.capacity() == *tail => {
+            (None | Some(ImagePickerAction::Next), ImagePickerSorting::Random(queue)) => {
+                // Use the next images in the queue, if any
+                while let Some(next) = queue.next() {
+                    if next.exists() {
+                        return (usize::MAX, next.to_path_buf());
+                    }
+                }
                 let mut tries = 5;
+                // Otherwise pick a new random image
                 loop {
                     let index = rand::random::<usize>() % files.len();
                     // search for an image that has not been drawn yet
                     // fail after 5 tries
-                    if tries == 0 || !drawn_images.contains(&files[index]) {
+                    if tries == 0 || !queue.contains(&files[index]) {
                         break (index, files[index].to_path_buf());
                     }
 
                     tries -= 1;
                 }
             }
-            (
-                None | Some(ImagePickerAction::Next),
-                ImagePickerSorting::Random {
-                    drawn_images,
-                    tail: _,
-                    current,
-                },
-            ) => {
-                *current = (*current + 1) % drawn_images.capacity();
-                (*current, drawn_images[*current].clone())
-            }
-            (
-                Some(ImagePickerAction::Previous),
-                ImagePickerSorting::Random {
-                    drawn_images,
-                    tail,
-                    current,
-                },
-            ) if current == tail
-                || (drawn_images.len() != drawn_images.capacity() && *current == 0) =>
-            {
-                (usize::MAX, self.current_image())
-            }
-            (
-                Some(ImagePickerAction::Previous),
-                ImagePickerSorting::Random {
-                    drawn_images,
-                    tail,
-                    current,
-                },
-            ) if drawn_images.len() == drawn_images.capacity() => {
-                let mut i = *current;
-                loop {
-                    i = (i + drawn_images.capacity() - 1) % drawn_images.capacity();
-                    let path = &drawn_images[i];
-                    if path.exists() {
-                        // we update here in case the image could not be read and we want to start
-                        // from this index next time
-                        *current = i;
-                        break (i, path.clone());
-                    }
-
-                    // this is the last image
-                    if i == *tail {
-                        break (*current, self.current_image());
+            (Some(ImagePickerAction::Previous), ImagePickerSorting::Random(queue)) => {
+                while let Some(prev) = queue.previous() {
+                    if prev.exists() {
+                        return (usize::MAX, prev.to_path_buf());
                     }
                 }
+
+                // We didn't find any suitable image, reset to the last working one
+                queue.set_current_to(&self.current_img.to_path_buf());
+                (usize::MAX, self.current_image())
             }
-            (
-                Some(ImagePickerAction::Previous),
-                ImagePickerSorting::Random {
-                    drawn_images,
-                    tail,
-                    current,
-                },
-            ) => drawn_images
-                .iter()
-                .enumerate()
-                .rev()
-                .skip(*tail - *current)
-                .find(|(_, img)| img.exists())
-                .map(|(i, img)| {
-                    *current = i;
-                    (i, img.clone())
-                })
-                .unwrap_or_else(|| (*current, self.current_img.clone())),
             // The current image is still in the same place
             (Some(ImagePickerAction::Next), ImagePickerSorting::Descending(current_index))
             | (Some(ImagePickerAction::Previous), ImagePickerSorting::Ascending(current_index))
@@ -245,28 +283,10 @@ impl ImagePicker {
                 match open(&img_path).with_context(|| format!("opening the image {img_path:?}")) {
                     Ok(image) => {
                         match (self.action.take(), &mut self.sorting) {
-                            (
-                                Some(ImagePickerAction::Next),
-                                ImagePickerSorting::Random {
-                                    drawn_images,
-                                    tail,
-                                    current,
-                                },
-                                // if the current image is the last one in the list
-                            ) if (*current + 1) % drawn_images.capacity() == *tail => {
-                                // Use drawn_images as a circular buffer
-                                if drawn_images.len() == drawn_images.capacity() {
-                                    debug_assert!(tail != current);
-                                    *current = (*current + 1) % drawn_images.len();
-                                    drawn_images[*current] = img_path.clone();
-                                    if current == tail {
-                                        *tail = (*tail + 1) % drawn_images.capacity();
-                                    }
-                                } else {
-                                    drawn_images.push(img_path.clone());
-                                    *current = *tail;
-                                    *tail = (*tail + 1) % drawn_images.capacity();
-                                }
+                            (Some(ImagePickerAction::Next), ImagePickerSorting::Random(queue))
+                                if queue.has_reached_end() =>
+                            {
+                                queue.push(img_path.clone());
                             }
                             (Some(ImagePickerAction::Next), ImagePickerSorting::Random { .. }) => {}
                             (
@@ -326,7 +346,12 @@ impl ImagePicker {
     }
 
     /// Return true if the path changed
-    pub fn update_sorting(&mut self, new_sorting: Sorting, path_changed: bool) {
+    pub fn update_sorting(
+        &mut self,
+        new_sorting: Sorting,
+        path_changed: bool,
+        drawn_images_queue_size: usize,
+    ) {
         match (&mut self.sorting, new_sorting) {
             (
                 ImagePickerSorting::Random { .. } | ImagePickerSorting::Descending(_),
@@ -341,7 +366,7 @@ impl ImagePicker {
                 Sorting::Random,
             ) if path_changed => {
                 // If the path was changed, use a new random sorting
-                self.sorting = ImagePickerSorting::new_random();
+                self.sorting = ImagePickerSorting::new_random(drawn_images_queue_size);
             }
             (
                 ImagePickerSorting::Descending(_) | ImagePickerSorting::Ascending(_),
@@ -349,23 +374,92 @@ impl ImagePicker {
             ) => {
                 // if the path was not changed, use the current image as the first image of
                 // the drawn_images
-                self.sorting = ImagePickerSorting::Random {
-                    drawn_images: {
-                        let mut v = Vec::with_capacity(ImagePickerSorting::RANDOM_DEFAULT_SIZE);
-                        v.push(self.current_img.clone());
-                        v
-                    },
-                    tail: 1,
-                    current: 0,
-                };
+                let mut queue = Queue::with_capacity(drawn_images_queue_size);
+                queue.push(self.current_image());
+                self.sorting = ImagePickerSorting::Random(queue);
             }
             // The path has changed, use a new random sorting, otherwise we reuse the current
             // drawn_images
             (ImagePickerSorting::Random { .. }, Sorting::Random) if path_changed => {
-                self.sorting = ImagePickerSorting::new_random();
+                self.sorting = ImagePickerSorting::new_random(drawn_images_queue_size);
             }
             // No need to update the sorting if it's the same
             (_, _) => {}
         }
+    }
+
+    pub fn update_queue_size(&mut self, drawn_images_queue_size: usize) {
+        match &mut self.sorting {
+            ImagePickerSorting::Random(queue) => {
+                queue.resize(drawn_images_queue_size);
+            }
+            ImagePickerSorting::Ascending(_) | ImagePickerSorting::Descending(_) => {}
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    // Note this useful idiom: importing names from outer (for mod tests) scope.
+    use super::*;
+
+    #[test]
+    fn test_push() {
+        let mut queue = Queue::with_capacity(2);
+        queue.push(PathBuf::from("mypath"));
+        queue.push(PathBuf::from("mypath2"));
+        assert_eq!(Path::new("mypath2"), queue.current());
+        assert_eq!(Some(Path::new("mypath")), queue.previous());
+        assert_eq!(Path::new("mypath"), queue.current());
+
+        assert_eq!(None, queue.previous());
+
+        // Check that the buffer is circular
+        queue.next();
+        queue.push(PathBuf::from("mypath3"));
+        assert_eq!(Path::new("mypath3"), queue.current());
+        assert_eq!(Some(Path::new("mypath2")), queue.previous());
+        assert_eq!(None, queue.previous());
+    }
+
+    #[test]
+    fn test_resize() {
+        let mut queue = Queue::with_capacity(5);
+        queue.push(PathBuf::from("mypath"));
+        queue.push(PathBuf::from("mypath2"));
+        queue.push(PathBuf::from("mypath3"));
+        queue.push(PathBuf::from("mypath4"));
+        queue.push(PathBuf::from("mypath5"));
+        assert_eq!(Path::new("mypath5"), queue.current());
+        assert_eq!(Some(Path::new("mypath4")), queue.previous());
+
+        // Test that the current index works when it's inside the resizing range
+        queue.resize(2);
+        assert_eq!(Path::new("mypath4"), queue.current());
+        assert_eq!(None, queue.previous());
+        assert_eq!(Some(Path::new("mypath5")), queue.next());
+    }
+
+    #[test]
+    fn test_resize2() {
+        let mut queue = Queue::with_capacity(5);
+        queue.push(PathBuf::from("mypath"));
+        queue.push(PathBuf::from("mypath2"));
+        queue.push(PathBuf::from("mypath3"));
+        queue.push(PathBuf::from("mypath4"));
+        queue.push(PathBuf::from("mypath5"));
+        queue.push(PathBuf::from("mypath6"));
+        queue.push(PathBuf::from("mypath7"));
+        queue.push(PathBuf::from("mypath8"));
+        assert_eq!(Path::new("mypath8"), queue.current());
+        assert_eq!(Some(Path::new("mypath7")), queue.previous());
+        assert_eq!(Some(Path::new("mypath6")), queue.previous());
+        assert_eq!(Some(Path::new("mypath5")), queue.previous());
+
+        // Test that the current item point to the first item available
+        queue.resize(2);
+        assert_eq!(Path::new("mypath7"), queue.current());
+        assert_eq!(Some(Path::new("mypath8")), queue.next());
+        assert_eq!(None, queue.next());
     }
 }
