@@ -42,7 +42,7 @@ impl SerializedWallpaperInfo {
     pub fn apply_and_validate(&self, default: &Self) -> Result<WallpaperInfo> {
         let mut path_inherited = false;
         let path = match (&self.path, &default.path) {
-            (Some(path), _) => path,
+            (Some(path), None) | (Some(path), Some(_))=> path,
             (None, Some(path)) => {
                 path_inherited = true;
                 path
@@ -87,12 +87,12 @@ impl SerializedWallpaperInfo {
         let duration = match (&self.duration, &default.duration) {
             // duration is inherited from default, but this section set path to a file, ignore
             // duration
-            (Some(_), _) if path.is_file() => None,
+            (None, Some(_)) if path.is_file() && !path_inherited => None,
             (Some(duration), _) | (None, Some(duration)) => Some(*duration),
             (None, None) => None,
         };
         // duration can only be set when path is a directory
-        if !(duration.is_none() || path.is_dir()) {
+        if duration.is_some() && !path.is_dir() {
             // Do no use bail! to add suggestion
             return Err(anyhow!(
                 "Attribute {} is set to a file and attribute {} is also set.",
@@ -151,7 +151,7 @@ pub struct Config {
 
 impl Config {
     pub fn new_from_path(path: &Path) -> Result<Self> {
-        ensure!(path.exists(), "File {path:?} does not exists",);
+        ensure!(path.exists(), "File {path:?} does not exists");
         let mut config: Self = toml::from_str(&fs::read_to_string(path)?)?;
         config.default = config
             .data
@@ -163,14 +163,25 @@ impl Config {
             .get("any")
             .unwrap_or(&SerializedWallpaperInfo::default())
             .to_owned();
-        for (name, info) in &config.data {
+        config.data.retain(|name, info| {
             // The default configuration does not follow these rules
+            // We still need the default configuration here because the path needs to be cached
             if info == &config.default {
-                continue;
+                true
+            } else {
+                match info
+                    .apply_and_validate(&config.default)
+                    .with_context(|| format!("while validating display {}", name.bold().magenta()))
+                {
+                    Ok(_) => true,
+                    Err(err) => {
+                        // We do not want to exit when error occurs, print it and go forward
+                        warn!("{err:?}");
+                        false
+                    }
+                }
             }
-            info.apply_and_validate(&config.default)
-                .with_context(|| format!("while validating display {}", name.bold().magenta()))?;
-        }
+        });
 
         config.path = path.to_path_buf();
         Ok(config)
