@@ -195,7 +195,6 @@ impl OutputHandler for Wpaperd {
         self.surfaces.push(Surface::new(
             layer,
             output,
-            surface,
             display_info,
             wallpaper_info,
             self.egl_display,

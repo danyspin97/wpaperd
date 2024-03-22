@@ -10,12 +10,15 @@ use color_eyre::Result;
 use image::imageops::FilterType;
 use image::{DynamicImage, ImageBuffer, Pixel, Rgba, RgbaImage};
 use log::{error, warn};
-use smithay_client_toolkit::reexports::calloop::timer::{TimeoutAction, Timer};
 use smithay_client_toolkit::reexports::calloop::{LoopHandle, RegistrationToken};
 use smithay_client_toolkit::reexports::client::protocol::wl_output::{Transform, WlOutput};
 use smithay_client_toolkit::reexports::client::protocol::wl_surface;
 use smithay_client_toolkit::reexports::client::QueueHandle;
 use smithay_client_toolkit::shell::wlr_layer::{LayerSurface, LayerSurfaceConfigure};
+use smithay_client_toolkit::{
+    reexports::calloop::timer::{TimeoutAction, Timer},
+    shell::WaylandSurface,
+};
 
 use crate::wpaperd::Wpaperd;
 use crate::{display_info::DisplayInfo, wallpaper_info::WallpaperInfo};
@@ -45,13 +48,13 @@ impl Surface {
     pub fn new(
         layer: LayerSurface,
         output: WlOutput,
-        surface: wl_surface::WlSurface,
         info: DisplayInfo,
         wallpaper_info: WallpaperInfo,
         egl_display: egl::Display,
         filelist_cache: Rc<RefCell<FilelistCache>>,
         image_loader: Rc<RefCell<ImageLoader>>,
     ) -> Self {
+        let surface = layer.wl_surface().clone();
         let egl_context = EglContext::new(egl_display, &surface);
         // Make the egl context as current to make the renderer creation work
         egl_context.make_current().unwrap();
