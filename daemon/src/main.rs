@@ -144,20 +144,20 @@ fn run(opts: Opts, xdg_dirs: BaseDirectories) -> Result<()> {
     }
 
     loop {
-        // If wallpaper_config.toml has been modified, this value will return true
+        // If the config has been modified, this value will return true
         if wpaperd
-            .wallpaper_config
+            .config
             .reloaded
             .as_ref()
             .unwrap()
             .load(Ordering::Acquire)
-            && wpaperd.wallpaper_config.update()
+            && wpaperd.config.update()
         {
             // Update the filelist cache, keep it up to date
             // We need to call this before because updating the surfaces
             // will start loading the wallpapers in the background
             filelist_cache.borrow_mut().update_paths(
-                wpaperd.wallpaper_config.paths(),
+                wpaperd.config.paths(),
                 &mut hotwatch,
                 ping.clone(),
             );

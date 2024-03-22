@@ -34,7 +34,7 @@ pub struct Wpaperd {
     pub layer_state: LayerShell,
     pub registry_state: RegistryState,
     pub surfaces: Vec<Surface>,
-    pub wallpaper_config: Config,
+    pub config: Config,
     egl_display: egl::Display,
     pub filelist_cache: Rc<RefCell<FilelistCache>>,
     image_loader: Rc<RefCell<ImageLoader>>,
@@ -44,7 +44,7 @@ impl Wpaperd {
     pub fn new(
         qh: &QueueHandle<Self>,
         globals: &GlobalList,
-        wallpaper_config: Config,
+        config: Config,
         egl_display: egl::Display,
         filelist_cache: Rc<RefCell<FilelistCache>>,
     ) -> Result<Self> {
@@ -59,7 +59,7 @@ impl Wpaperd {
             layer_state: LayerShell::bind(globals, qh)?,
             registry_state: RegistryState::new(globals),
             surfaces: Vec::new(),
-            wallpaper_config,
+            config,
             egl_display,
             filelist_cache,
             image_loader,
@@ -68,7 +68,7 @@ impl Wpaperd {
 
     pub fn update_surfaces(&mut self, ev_handle: LoopHandle<Wpaperd>, qh: &QueueHandle<Wpaperd>) {
         for surface in &mut self.surfaces {
-            let res = self.wallpaper_config.get_output_by_name(&surface.name());
+            let res = self.config.get_output_by_name(&surface.name());
             match res {
                 Ok(wallpaper_info) => {
                     surface.update_wallpaper_info(&ev_handle, qh, wallpaper_info);
@@ -181,7 +181,7 @@ impl OutputHandler for Wpaperd {
         // > wl_region object can be destroyed immediately.
         empty_region.wl_region().destroy();
 
-        let wallpaper_info = match self.wallpaper_config.get_output_by_name(&name) {
+        let wallpaper_info = match self.config.get_output_by_name(&name) {
             Ok(wallpaper_info) => wallpaper_info,
             Err(err) => {
                 warn!(
