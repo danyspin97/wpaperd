@@ -279,7 +279,7 @@ impl Renderer {
         }
     }
 
-    pub(crate) fn is_drawing_animation(&self, time: u32) -> bool {
+    pub fn is_drawing_animation(&self, time: u32) -> bool {
         time < (self.time_started + self.animation_time)
     }
 

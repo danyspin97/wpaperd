@@ -339,6 +339,11 @@ impl ImagePicker {
                 // If the path was changed, use a new random sorting
                 self.sorting = ImagePickerSorting::new_random(drawn_images_queue_size);
             }
+            // The path has changed, use a new random sorting, otherwise we reuse the current
+            // drawn_images
+            (ImagePickerSorting::Random { .. }, Sorting::Random) if path_changed => {
+                self.sorting = ImagePickerSorting::new_random(drawn_images_queue_size);
+            }
             (
                 ImagePickerSorting::Descending(_) | ImagePickerSorting::Ascending(_),
                 Sorting::Random,
@@ -348,11 +353,6 @@ impl ImagePicker {
                 let mut queue = Queue::with_capacity(drawn_images_queue_size);
                 queue.push(self.current_image());
                 self.sorting = ImagePickerSorting::Random(queue);
-            }
-            // The path has changed, use a new random sorting, otherwise we reuse the current
-            // drawn_images
-            (ImagePickerSorting::Random { .. }, Sorting::Random) if path_changed => {
-                self.sorting = ImagePickerSorting::new_random(drawn_images_queue_size);
             }
             // No need to update the sorting if it's the same
             (_, _) => {}

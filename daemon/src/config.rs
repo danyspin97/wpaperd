@@ -122,7 +122,7 @@ impl SerializedWallpaperInfo {
             &self.drawn_images_queue_size,
             &default.drawn_images_queue_size,
         ) {
-            (Some(size), None) | (_, Some(size)) => *size,
+            (Some(size), _) | (None, Some(size)) => *size,
             (None, None) => ImagePicker::DEFAULT_DRAWN_IMAGES_QUEUE_SIZE,
         };
         let animation_time = match (&self.animation_time, &default.animation_time) {

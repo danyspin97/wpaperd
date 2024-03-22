@@ -288,6 +288,7 @@ impl Surface {
             if path_changed {
                 // ask the image_picker to pick a new a image
                 self.image_picker.next_image();
+                self.queue_draw(qh);
             }
             if self.wallpaper_info.duration != wallpaper_info.duration {
                 match (self.wallpaper_info.duration, wallpaper_info.duration) {
@@ -298,9 +299,6 @@ impl Surface {
                     (None, Some(_)) => {
                         if let Some(registration_token) = self.event_source.take() {
                             handle.remove(registration_token);
-                        }
-                        if path_changed {
-                            self.queue_draw(qh);
                         }
                     }
                     // There wasn't a duration before but now it has been added or it has changed
@@ -328,7 +326,8 @@ impl Surface {
                         self.add_timer(timer, handle, qh.clone());
                     }
                 }
-            } else if self.wallpaper_info.mode != wallpaper_info.mode {
+            }
+            if self.wallpaper_info.mode != wallpaper_info.mode {
                 if let Err(err) = self
                     .egl_context
                     .make_current()
@@ -336,15 +335,19 @@ impl Surface {
                 {
                     error!("{err:?}");
                 }
-                self.queue_draw(qh);
-            } else if self.wallpaper_info.drawn_images_queue_size
-                != wallpaper_info.drawn_images_queue_size
+                if !path_changed {
+                    // We should draw immediately
+                    if let Err(err) = self.draw(qh, 0) {
+                        warn!("{err:?}");
+                    }
+                }
+            }
+            if self.wallpaper_info.drawn_images_queue_size != wallpaper_info.drawn_images_queue_size
             {
                 self.image_picker
                     .update_queue_size(self.wallpaper_info.drawn_images_queue_size);
-            } else if path_changed {
-                self.queue_draw(qh);
-            } else if self.wallpaper_info.animation_time != wallpaper_info.animation_time {
+            }
+            if self.wallpaper_info.animation_time != wallpaper_info.animation_time {
                 self.renderer
                     .update_animation_time(self.wallpaper_info.animation_time);
             }
