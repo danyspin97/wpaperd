@@ -5,8 +5,6 @@ use std::{
     time::Instant,
 };
 
-use color_eyre::eyre::{bail, ensure, Context};
-use image::{open, DynamicImage};
 use log::warn;
 
 use crate::{
@@ -258,76 +256,49 @@ impl ImagePicker {
         }
     }
 
-    pub fn get_image_from_path(
-        &mut self,
-        path: &Path,
-    ) -> Result<Option<DynamicImage>, color_eyre::Report> {
+    pub fn get_image_from_path(&mut self, path: &Path) -> Option<(PathBuf, usize)> {
         if path.is_dir() {
-            if self.action.is_none() {
-                return Ok(None);
-            }
+            self.action.as_ref()?;
 
-            let mut tries = 0;
-            loop {
-                let files = self.filelist_cache.borrow().get(path);
+            let files = self.filelist_cache.borrow().get(path);
 
-                // There are no images, forcefully break out of the loop
-                if files.is_empty() {
-                    bail!("Directory {path:?} does not contain any valid image files.");
-                }
-
+            // There are no images, forcefully break out of the loop
+            if files.is_empty() {
+                warn!("Directory {path:?} does not contain any valid image files.");
+                None
+            } else {
                 let (index, img_path) = self.get_image_path(&files);
                 if img_path == self.current_img {
-                    break Ok(None);
+                    None
+                } else {
+                    Some((img_path, index))
                 }
-                match open(&img_path).with_context(|| format!("opening the image {img_path:?}")) {
-                    Ok(image) => {
-                        match (self.action.take(), &mut self.sorting) {
-                            (Some(ImagePickerAction::Next), ImagePickerSorting::Random(queue))
-                                if queue.has_reached_end() =>
-                            {
-                                queue.push(img_path.clone());
-                            }
-                            (Some(ImagePickerAction::Next), ImagePickerSorting::Random { .. }) => {}
-                            (
-                                None | Some(ImagePickerAction::Previous),
-                                ImagePickerSorting::Random { .. },
-                            ) => {}
-                            (
-                                _,
-                                ImagePickerSorting::Ascending(current_index)
-                                | ImagePickerSorting::Descending(current_index),
-                            ) => *current_index = index,
-                        }
-
-                        self.current_img = img_path;
-
-                        break Ok(Some(image));
-                    }
-                    Err(err) => {
-                        warn!("{err:?}");
-                        tries += 1;
-                    }
-                };
-
-                ensure!(
-                    tries < 5,
-                    "tried reading an image from the directory {path:?} without success",
-                );
             }
         } else if path == self.current_img {
-            Ok(None)
+            None
         } else {
             // path is not a directory and it's not the current image
-            // try open it and update the current image accordingly
-            match open(path).with_context(|| format!("opening the image {:?}", &path)) {
-                Ok(image) => {
-                    self.current_img = path.to_path_buf();
-                    Ok(Some(image))
-                }
-                Err(err) => Err(err),
-            }
+            Some((path.to_path_buf(), 0))
         }
+    }
+
+    pub fn update_current_image(&mut self, img_path: PathBuf, index: usize) {
+        match (self.action.take(), &mut self.sorting) {
+            (Some(ImagePickerAction::Next), ImagePickerSorting::Random(queue))
+                if queue.has_reached_end() =>
+            {
+                queue.push(img_path.clone());
+            }
+            (Some(ImagePickerAction::Next), ImagePickerSorting::Random { .. }) => {}
+            (None | Some(ImagePickerAction::Previous), ImagePickerSorting::Random { .. }) => {}
+            (
+                _,
+                ImagePickerSorting::Ascending(current_index)
+                | ImagePickerSorting::Descending(current_index),
+            ) => *current_index = index,
+        }
+
+        self.current_img = img_path;
     }
 
     /// Update wallpaper by going down 1 index through the cached image paths

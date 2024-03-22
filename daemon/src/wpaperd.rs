@@ -22,6 +22,7 @@ use smithay_client_toolkit::{
 
 use crate::config::Config;
 use crate::filelist_cache::FilelistCache;
+use crate::image_loader::ImageLoader;
 use crate::surface::{DisplayInfo, Surface};
 use crate::wallpaper_info::WallpaperInfo;
 
@@ -35,6 +36,7 @@ pub struct Wpaperd {
     pub wallpaper_config: Config,
     egl_display: egl::Display,
     pub filelist_cache: Rc<RefCell<FilelistCache>>,
+    image_loader: Rc<RefCell<ImageLoader>>,
 }
 
 impl Wpaperd {
@@ -47,6 +49,8 @@ impl Wpaperd {
     ) -> Result<Self> {
         let shm_state = Shm::bind(globals, qh)?;
 
+        let image_loader = Rc::new(RefCell::new(ImageLoader::new()));
+
         Ok(Self {
             compositor_state: CompositorState::bind(globals, qh)?,
             output_state: OutputState::new(globals, qh),
@@ -57,6 +61,7 @@ impl Wpaperd {
             wallpaper_config,
             egl_display,
             filelist_cache,
+            image_loader,
         })
     }
 
@@ -200,6 +205,7 @@ impl OutputHandler for Wpaperd {
             wallpaper_info,
             self.egl_display,
             self.filelist_cache.clone(),
+            self.image_loader.clone(),
         ));
     }
 

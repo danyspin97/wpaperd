@@ -1,5 +1,6 @@
 use std::{
     cell::RefCell,
+    path::PathBuf,
     rc::Rc,
     time::{Duration, Instant},
 };
@@ -8,7 +9,7 @@ use color_eyre::eyre::{Context, ContextCompat};
 use color_eyre::Result;
 use image::imageops::FilterType;
 use image::{DynamicImage, ImageBuffer, Pixel, Rgba, RgbaImage};
-use log::error;
+use log::{error, warn};
 use smithay_client_toolkit::output::OutputInfo;
 use smithay_client_toolkit::reexports::calloop::timer::{TimeoutAction, Timer};
 use smithay_client_toolkit::reexports::calloop::{LoopHandle, RegistrationToken};
@@ -17,13 +18,13 @@ use smithay_client_toolkit::reexports::client::protocol::wl_surface;
 use smithay_client_toolkit::reexports::client::QueueHandle;
 use smithay_client_toolkit::shell::wlr_layer::{LayerSurface, LayerSurfaceConfigure};
 
-use crate::image_picker::ImagePicker;
 use crate::wallpaper_info::WallpaperInfo;
 use crate::wpaperd::Wpaperd;
 use crate::{
     filelist_cache::FilelistCache,
     render::{EglContext, Renderer},
 };
+use crate::{image_loader::ImageLoader, image_picker::ImagePicker};
 
 #[derive(Debug)]
 pub struct DisplayInfo {
@@ -44,7 +45,10 @@ pub struct Surface {
     pub event_source: Option<RegistrationToken>,
     wallpaper_info: WallpaperInfo,
     info: Rc<RefCell<DisplayInfo>>,
+    image_loader: Rc<RefCell<ImageLoader>>,
     drawn: bool,
+    loading_image: Option<(PathBuf, usize)>,
+    loading_image_tries: u8,
 }
 
 impl DisplayInfo {
@@ -132,6 +136,7 @@ impl Surface {
         wallpaper_info: WallpaperInfo,
         egl_display: egl::Display,
         filelist_cache: Rc<RefCell<FilelistCache>>,
+        image_loader: Rc<RefCell<ImageLoader>>,
     ) -> Self {
         let egl_context = EglContext::new(egl_display, &surface);
         // Make the egl context as current to make the renderer creation work
@@ -146,7 +151,7 @@ impl Surface {
         let info = Rc::new(RefCell::new(info));
         let renderer = unsafe { Renderer::new(image.into(), info.clone()).unwrap() };
 
-        Self {
+        let mut surface = Self {
             output,
             layer,
             info,
@@ -157,38 +162,38 @@ impl Surface {
             event_source: None,
             wallpaper_info,
             drawn: false,
+            image_loader,
+            loading_image: None,
+            loading_image_tries: 0,
+        };
+
+        // Start loading the wallpaper as soon as possible (i.e. surface creation)
+        // It will still be loaded as a texture when we have an openGL context
+        if let Err(err) = surface.load_wallpaper(0) {
+            warn!("{err:?}");
         }
+
+        surface
     }
 
     /// Returns true if something has been drawn to the surface
     pub fn draw(&mut self, qh: &QueueHandle<Wpaperd>, time: u32) -> Result<()> {
-        self.drawn = true;
-
         let info = self.info.borrow();
         let width = info.adjusted_width();
         let height = info.adjusted_height();
+        // Drop the borrow to self
+        drop(info);
 
         // Use the correct context before loading the texture and drawing
         self.egl_context.make_current()?;
 
-        if let Some(image) = self
-            .image_picker
-            .get_image_from_path(&self.wallpaper_info.path)?
-        {
-            let image = image.into_rgba8();
-            self.renderer
-                .load_wallpaper(image.into(), self.wallpaper_info.mode)?;
-            self.renderer.start_animation(time);
-
-            // self.apply_shadow(&mut image, width.try_into()?);
-        }
-        if self.renderer.time_started == 0 {
-            self.renderer.start_animation(time);
-        }
+        let wallpaper_loaded = self.load_wallpaper(time)?;
 
         unsafe { self.renderer.draw(time, self.wallpaper_info.mode)? };
 
-        if self.is_drawing_animation(time) {
+        self.drawn = true;
+
+        if self.is_drawing_animation(time) || !wallpaper_loaded {
             self.queue_draw(qh);
         }
 
@@ -207,6 +212,59 @@ impl Surface {
         self.surface.commit();
 
         Ok(())
+    }
+
+    // Call surface::frame when this return false
+    pub fn load_wallpaper(&mut self, time: u32) -> Result<bool> {
+        Ok(loop {
+            // If we were already trying to load an image
+            if self.loading_image.is_none() {
+                if let Some(item) = self
+                    .image_picker
+                    .get_image_from_path(&self.wallpaper_info.path)
+                {
+                    // We are trying to load a new image
+                    self.loading_image = Some(item);
+                } else {
+                    // we don't need to load any image
+                    break true;
+                }
+            }
+            let (image_path, index) = self.loading_image.as_ref().unwrap().clone();
+            let res = self
+                .image_loader
+                .borrow_mut()
+                .background_load(image_path.to_owned(), self.name());
+            match res {
+                crate::image_loader::ImageLoaderStatus::Loaded(data) => {
+                    // Renderer::load_wallpaper load the wallpaper in a openGL texture
+                    // Set the correct opengl context
+                    self.egl_context.make_current()?;
+                    self.renderer
+                        .load_wallpaper(data.into(), self.wallpaper_info.mode)?;
+                    self.renderer.start_animation(time);
+                    self.image_picker.update_current_image(image_path, index);
+                    // Restart the counter
+                    self.loading_image_tries = 0;
+                    self.loading_image = None;
+                    break true;
+                }
+                crate::image_loader::ImageLoaderStatus::Waiting => {
+                    // wait until the image has been loaded
+                    break false;
+                }
+                crate::image_loader::ImageLoaderStatus::Error => {
+                    // We don't want to try too many times
+                    self.loading_image_tries += 1;
+                    // The image we were trying to load failed
+                    self.loading_image = None;
+                }
+            }
+            // If we have tried too many times, stop
+            if self.loading_image_tries == 5 {
+                break true;
+            }
+        })
     }
 
     fn _apply_shadow(&self, image: &mut ImageBuffer<Rgba<u8>, Vec<u8>>, width: u32) {
@@ -427,7 +485,11 @@ impl Surface {
         self.renderer.is_drawing_animation(time)
     }
 
-    pub(crate) fn queue_draw(&self, qh: &QueueHandle<Wpaperd>) {
+    pub fn queue_draw(&mut self, qh: &QueueHandle<Wpaperd>) {
+        // Start loading the next image immediately
+        if let Err(err) = self.load_wallpaper(0) {
+            warn!("{err:?}");
+        }
         self.surface.frame(qh, self.surface.clone());
         self.surface.commit();
     }

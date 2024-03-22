@@ -1,5 +1,6 @@
 mod config;
 mod filelist_cache;
+mod image_loader;
 mod image_picker;
 mod ipc_server;
 mod opts;
