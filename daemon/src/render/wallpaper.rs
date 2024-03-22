@@ -6,7 +6,7 @@ use color_eyre::{
 };
 use image::DynamicImage;
 
-use crate::{gl_check, render::gl, surface::DisplayInfo, wallpaper_info::BackgroundMode};
+use crate::{display_info::DisplayInfo, gl_check, render::gl, wallpaper_info::BackgroundMode};
 
 use super::{coordinates::Coordinates, load_texture};
 

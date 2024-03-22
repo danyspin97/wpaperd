@@ -1,4 +1,5 @@
 mod config;
+mod display_info;
 mod filelist_cache;
 mod image_loader;
 mod image_picker;

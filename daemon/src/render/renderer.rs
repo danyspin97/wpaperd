@@ -8,12 +8,12 @@ use egl::API as egl;
 use image::{DynamicImage, RgbaImage};
 
 use crate::{
+    display_info::DisplayInfo,
     gl_check,
     render::{
         initialize_objects, load_texture,
         shader::{create_shader, FRAGMENT_SHADER_SOURCE, VERTEX_SHADER_SOURCE},
     },
-    surface::DisplayInfo,
     wallpaper_info::BackgroundMode,
 };
 

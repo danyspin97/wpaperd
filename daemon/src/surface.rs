@@ -10,7 +10,6 @@ use color_eyre::Result;
 use image::imageops::FilterType;
 use image::{DynamicImage, ImageBuffer, Pixel, Rgba, RgbaImage};
 use log::{error, warn};
-use smithay_client_toolkit::output::OutputInfo;
 use smithay_client_toolkit::reexports::calloop::timer::{TimeoutAction, Timer};
 use smithay_client_toolkit::reexports::calloop::{LoopHandle, RegistrationToken};
 use smithay_client_toolkit::reexports::client::protocol::wl_output::{Transform, WlOutput};
@@ -18,22 +17,13 @@ use smithay_client_toolkit::reexports::client::protocol::wl_surface;
 use smithay_client_toolkit::reexports::client::QueueHandle;
 use smithay_client_toolkit::shell::wlr_layer::{LayerSurface, LayerSurfaceConfigure};
 
-use crate::wallpaper_info::WallpaperInfo;
 use crate::wpaperd::Wpaperd;
+use crate::{display_info::DisplayInfo, wallpaper_info::WallpaperInfo};
 use crate::{
     filelist_cache::FilelistCache,
     render::{EglContext, Renderer},
 };
 use crate::{image_loader::ImageLoader, image_picker::ImagePicker};
-
-#[derive(Debug)]
-pub struct DisplayInfo {
-    name: String,
-    width: i32,
-    height: i32,
-    scale: i32,
-    transform: Transform,
-}
 
 pub struct Surface {
     pub surface: wl_surface::WlSurface,
@@ -49,82 +39,6 @@ pub struct Surface {
     drawn: bool,
     loading_image: Option<(PathBuf, usize)>,
     loading_image_tries: u8,
-}
-
-impl DisplayInfo {
-    pub fn new(info: OutputInfo) -> Self {
-        // let width = info.logical_size.unwrap().0;
-        // let height = info.logical_size.unwrap().1;
-        Self {
-            name: info.name.unwrap(),
-            width: 0,
-            height: 0,
-            scale: info.scale_factor,
-            transform: info.transform,
-        }
-    }
-
-    pub fn scaled_width(&self) -> i32 {
-        self.width * self.scale
-    }
-
-    pub fn scaled_height(&self) -> i32 {
-        self.height * self.scale
-    }
-
-    pub fn adjusted_width(&self) -> i32 {
-        match self.transform {
-            Transform::Normal | Transform::_180 | Transform::Flipped | Transform::Flipped180 => {
-                self.width * self.scale
-            }
-            Transform::_90 | Transform::_270 | Transform::Flipped90 | Transform::Flipped270 => {
-                self.height * self.scale
-            }
-            _ => unreachable!(),
-        }
-    }
-
-    pub fn adjusted_height(&self) -> i32 {
-        match self.transform {
-            Transform::Normal | Transform::_180 | Transform::Flipped | Transform::Flipped180 => {
-                self.height * self.scale
-            }
-            Transform::_90 | Transform::_270 | Transform::Flipped90 | Transform::Flipped270 => {
-                self.width * self.scale
-            }
-            _ => unreachable!(),
-        }
-    }
-
-    pub fn change_size(&mut self, configure: LayerSurfaceConfigure) -> bool {
-        let new_width = configure.new_size.0 as i32;
-        let new_height = configure.new_size.1 as i32;
-        if (self.width, self.height) != (new_width, new_height) {
-            self.width = new_width;
-            self.height = new_height;
-            true
-        } else {
-            false
-        }
-    }
-
-    pub fn change_transform(&mut self, transform: Transform) -> bool {
-        if self.transform != transform {
-            self.transform = transform;
-            true
-        } else {
-            false
-        }
-    }
-
-    pub fn change_scale_factor(&mut self, scale_factor: i32) -> bool {
-        if self.scale != scale_factor {
-            self.scale = scale_factor;
-            true
-        } else {
-            false
-        }
-    }
 }
 
 impl Surface {

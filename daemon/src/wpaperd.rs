@@ -21,9 +21,10 @@ use smithay_client_toolkit::{
 };
 
 use crate::config::Config;
+use crate::display_info::DisplayInfo;
 use crate::filelist_cache::FilelistCache;
 use crate::image_loader::ImageLoader;
-use crate::surface::{DisplayInfo, Surface};
+use crate::surface::Surface;
 use crate::wallpaper_info::WallpaperInfo;
 
 pub struct Wpaperd {
