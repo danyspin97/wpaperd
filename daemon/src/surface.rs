@@ -66,7 +66,9 @@ impl Surface {
 
         let image = black_image();
         let info = Rc::new(RefCell::new(info));
-        let renderer = unsafe { Renderer::new(image.into(), info.clone()).unwrap() };
+        let renderer = unsafe {
+            Renderer::new(image.into(), info.clone(), wallpaper_info.animation_time).unwrap()
+        };
 
         let mut surface = Self {
             output,
@@ -342,6 +344,9 @@ impl Surface {
                     .update_queue_size(self.wallpaper_info.drawn_images_queue_size);
             } else if path_changed {
                 self.queue_draw(qh);
+            } else if self.wallpaper_info.animation_time != wallpaper_info.animation_time {
+                self.renderer
+                    .update_animation_time(self.wallpaper_info.animation_time);
             }
         }
     }

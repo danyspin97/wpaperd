@@ -22,6 +22,7 @@ use smithay_client_toolkit::reexports::calloop::ping::Ping;
 
 use crate::{
     image_picker::ImagePicker,
+    render::Renderer,
     wallpaper_info::{BackgroundMode, Sorting, WallpaperInfo},
 };
 
@@ -36,6 +37,7 @@ pub struct SerializedWallpaperInfo {
     pub sorting: Option<Sorting>,
     pub mode: Option<BackgroundMode>,
     pub drawn_images_queue_size: Option<usize>,
+    pub animation_time: Option<u32>,
 }
 
 impl SerializedWallpaperInfo {
@@ -123,6 +125,10 @@ impl SerializedWallpaperInfo {
             (Some(size), None) | (_, Some(size)) => *size,
             (None, None) => ImagePicker::DEFAULT_DRAWN_IMAGES_QUEUE_SIZE,
         };
+        let animation_time = match (&self.animation_time, &default.animation_time) {
+            (Some(animation_time), _) | (None, Some(animation_time)) => *animation_time,
+            (None, None) => Renderer::DEFAULT_ANIMATION_TIME,
+        };
 
         Ok(WallpaperInfo {
             path,
@@ -131,6 +137,7 @@ impl SerializedWallpaperInfo {
             sorting,
             mode,
             drawn_images_queue_size,
+            animation_time,
         })
     }
 }

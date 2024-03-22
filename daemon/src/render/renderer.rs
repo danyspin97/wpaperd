@@ -44,7 +44,13 @@ pub struct Renderer {
 }
 
 impl Renderer {
-    pub unsafe fn new(image: DynamicImage, display_info: Rc<RefCell<DisplayInfo>>) -> Result<Self> {
+    pub const DEFAULT_ANIMATION_TIME: u32 = 300;
+
+    pub unsafe fn new(
+        image: DynamicImage,
+        display_info: Rc<RefCell<DisplayInfo>>,
+        animation_time: u32,
+    ) -> Result<Self> {
         let gl = gl::Gl::load_with(|name| {
             egl.get_proc_address(name).unwrap() as *const std::ffi::c_void
         });
@@ -95,7 +101,7 @@ impl Renderer {
             vbo,
             eab,
             time_started: 0,
-            animation_time: 300,
+            animation_time,
             old_wallpaper,
             current_wallpaper,
             display_info,
@@ -275,6 +281,10 @@ impl Renderer {
 
     pub(crate) fn is_drawing_animation(&self, time: u32) -> bool {
         time < (self.time_started + self.animation_time)
+    }
+
+    pub fn update_animation_time(&mut self, animation_time: u32) {
+        self.animation_time = animation_time;
     }
 }
 

@@ -2,7 +2,7 @@ use std::{path::PathBuf, time::Duration};
 
 use serde::Deserialize;
 
-use crate::image_picker::ImagePicker;
+use crate::{image_picker::ImagePicker, render::Renderer};
 
 #[derive(PartialEq, Debug)]
 pub struct WallpaperInfo {
@@ -12,6 +12,7 @@ pub struct WallpaperInfo {
     pub sorting: Sorting,
     pub mode: BackgroundMode,
     pub drawn_images_queue_size: usize,
+    pub animation_time: u32,
 }
 
 impl Default for WallpaperInfo {
@@ -23,6 +24,7 @@ impl Default for WallpaperInfo {
             sorting: Sorting::default(),
             mode: BackgroundMode::default(),
             drawn_images_queue_size: ImagePicker::DEFAULT_DRAWN_IMAGES_QUEUE_SIZE,
+            animation_time: Renderer::DEFAULT_ANIMATION_TIME,
         }
     }
 }
