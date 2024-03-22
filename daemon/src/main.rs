@@ -150,16 +150,19 @@ fn run(opts: Opts, xdg_dirs: BaseDirectories) -> Result<()> {
             .as_ref()
             .unwrap()
             .load(Ordering::Acquire)
+            && wpaperd.wallpaper_config.update()
         {
-            // Read the config, update the paths in the surfaces
-            wpaperd.update_wallpaper_config(event_loop.handle(), &qh);
-
-            // Update the filelist cache as well, keep it up to date
+            // Update the filelist cache, keep it up to date
+            // We need to call this before because updating the surfaces
+            // will start loading the wallpapers in the background
             filelist_cache.borrow_mut().update_paths(
                 wpaperd.wallpaper_config.paths(),
                 &mut hotwatch,
                 ping.clone(),
             );
+
+            // Read the config, update the paths in the surfaces
+            wpaperd.update_surfaces(event_loop.handle(), &qh);
         }
 
         // Due to how LayerSurface works, we cannot attach the egl window right away.

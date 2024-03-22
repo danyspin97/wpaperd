@@ -92,12 +92,13 @@ impl FilelistCache {
         event_loop_ping: Ping,
     ) {
         self.cache.retain(|filelist| {
-            if paths.contains(&filelist.path) && filelist.path.exists() {
+            let path_exists = filelist.path.exists();
+            if paths.contains(&filelist.path) && path_exists {
                 true
             } else {
                 // Stop watching paths that have been removed
                 // Check that it exists before
-                if filelist.path.exists() {
+                if path_exists {
                     if let Err(err) = hotwatch.unwatch(&filelist.path).with_context(|| {
                         format!("hotwatch unwatch error on path {:?}", &filelist.path)
                     }) {
@@ -111,8 +112,8 @@ impl FilelistCache {
 
         for path in paths {
             if !self.cache.iter().any(|filelist| filelist.path == path) {
-                // Skip paths that don't exists
-                if !path.exists() {
+                // Skip paths that don't exists and files
+                if !path.exists() || !path.is_dir() {
                     continue;
                 }
                 let filelist = Filelist::new(&path);

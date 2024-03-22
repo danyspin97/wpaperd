@@ -65,23 +65,17 @@ impl Wpaperd {
         })
     }
 
-    pub fn update_wallpaper_config(
-        &mut self,
-        ev_handle: LoopHandle<Wpaperd>,
-        qh: &QueueHandle<Wpaperd>,
-    ) {
-        if self.wallpaper_config.try_update() {
-            for surface in &mut self.surfaces {
-                let res = self.wallpaper_config.get_output_by_name(&surface.name());
-                match res {
-                    Ok(wallpaper_info) => {
-                        surface.update_wallpaper_info(&ev_handle, qh, wallpaper_info);
-                    }
-                    Err(err) => warn!(
-                        "Configuration error for display {}: {err:?}",
-                        surface.name()
-                    ),
+    pub fn update_surfaces(&mut self, ev_handle: LoopHandle<Wpaperd>, qh: &QueueHandle<Wpaperd>) {
+        for surface in &mut self.surfaces {
+            let res = self.wallpaper_config.get_output_by_name(&surface.name());
+            match res {
+                Ok(wallpaper_info) => {
+                    surface.update_wallpaper_info(&ev_handle, qh, wallpaper_info);
                 }
+                Err(err) => warn!(
+                    "Configuration error for display {}: {err:?}",
+                    surface.name()
+                ),
             }
         }
     }

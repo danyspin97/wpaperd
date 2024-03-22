@@ -219,7 +219,7 @@ impl Config {
     }
 
     /// Return true if the struct changed
-    pub(crate) fn try_update(&mut self) -> bool {
+    pub fn update(&mut self) -> bool {
         // When the config file has been written into
         let new_config = Config::new_from_path(&self.path).with_context(|| {
             format!(
