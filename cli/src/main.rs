@@ -1,3 +1,5 @@
+mod opts;
+
 use std::{
     io::{Read, Write},
     os::unix::net::UnixStream,
@@ -8,31 +10,10 @@ use clap::Parser;
 use serde::Serialize;
 use wpaperd_ipc::{socket_path, IpcError, IpcMessage, IpcResponse};
 
-/// Simple program to greet a person
-#[derive(Parser)]
-#[command(author, version, about, long_about = None)]
-struct Args {
-    #[clap(subcommand)]
-    subcmd: SubCmd,
-}
-
-#[derive(clap::Subcommand)]
-enum SubCmd {
-    #[clap(visible_alias = "get")]
-    GetWallpaper { monitor: String },
-    #[clap(visible_alias = "get-all")]
-    AllWallpapers {
-        #[clap(short, long)]
-        json: bool,
-    },
-    #[clap(visible_alias = "next")]
-    NextWallpaper { monitors: Vec<String> },
-    #[clap(visible_alias = "previous")]
-    PreviousWallpaper { monitors: Vec<String> },
-}
+use crate::opts::{Opts, SubCmd};
 
 fn main() {
-    let args = Args::parse();
+    let args = Opts::parse();
 
     let mut json_resp = false;
 

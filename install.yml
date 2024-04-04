@@ -6,6 +6,7 @@ pkgs:
       - wpaperd
       - wpaperctl
     man:
+      - man/wpaperctl.1
       - man/wpaperd.1
       - man/wpaperd-output.5
     licenses:

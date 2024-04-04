@@ -1,6 +1,3 @@
-extern crate gl_generator;
-
-use gl_generator::{Api, Fallbacks, Profile, Registry, StructGenerator};
 use std::env;
 use std::fs::File;
 use std::path::Path;
@@ -17,7 +14,7 @@ fn build_shell_completion(outdir: &Path) -> Result<(), Error> {
     let shells = Shell::value_variants();
 
     for shell in shells {
-        generate_to(*shell, &mut app, "wpaperd", outdir)?;
+        generate_to(*shell, &mut app, "wpaperctl", outdir)?;
     }
 
     Ok(())
@@ -26,7 +23,7 @@ fn build_shell_completion(outdir: &Path) -> Result<(), Error> {
 fn build_manpages(outdir: &Path) -> Result<(), Error> {
     let app = Opts::command();
 
-    let file = Path::new(&outdir).join("wpaperd.1");
+    let file = Path::new(&outdir).join("wpaperctl.1");
     let mut file = File::create(file)?;
 
     Man::new(app).render(&mut file)?;
@@ -47,18 +44,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     build_shell_completion(&comp_path)?;
     build_manpages(&man_path)?;
-
-    let mut file = File::create(Path::new(&outdir).join("gl_bindings.rs")).unwrap();
-
-    Registry::new(
-        Api::Gles2,
-        (3, 2),
-        Profile::Core,
-        Fallbacks::All,
-        [],
-    )
-    .write_bindings(StructGenerator, &mut file)
-    .unwrap();
 
     Ok(())
 }
