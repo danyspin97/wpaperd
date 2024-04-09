@@ -23,7 +23,6 @@ image = "0.25.0"
 hotwatch = "0.5.0"
 humantime-serde = "1.1.1"
 log = "0.4.21"
-mime = "0.3.17"
 new_mime_guess = "4.0.1"
 nix = { version = "0.28.0", features = ["process"] }
 rand = "0.8.5"
@@ -35,8 +34,6 @@ walkdir = "2.5.0"
 dirs = "5.0.1"
 serde_json = "1.0.114"
 wayland-egl = "0.32.0"
-wayland-backend = { version = "0.3.3", features = ["client_system"] }
-gl_generator = "0.14.0"
 khronos-egl = { version = "6.0.0", features = [ "static" ] }
 
 [build-dependencies]
