@@ -52,7 +52,7 @@ fn main() {
     let res: Result<IpcResponse, IpcError> = serde_json::from_str(&buf).unwrap();
     match res {
         Ok(resp) => match resp {
-            IpcResponse::CurrentWallpaper { path } => println!("{path:?}"),
+            IpcResponse::CurrentWallpaper { path } => println!("{}", path.to_string_lossy()),
             IpcResponse::AllWallpapers { entries: paths } => {
                 if json_resp {
                     #[derive(Serialize)]
@@ -73,7 +73,7 @@ fn main() {
                     );
                 } else {
                     for (monitor, path) in paths {
-                        println!("{monitor}: {path:?}");
+                        println!("{monitor}: {}", path.to_string_lossy());
                     }
                 }
             }
