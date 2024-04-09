@@ -16,9 +16,13 @@ struct Args {
 
 #[derive(clap::Subcommand)]
 enum SubCmd {
+    #[clap(visible_alias = "get")]
     GetWallpaper { monitor: String },
+    #[clap(visible_alias = "get-all")]
     AllWallpapers,
+    #[clap(visible_alias = "next")]
     NextWallpaper { monitors: Vec<String> },
+    #[clap(visible_alias = "previous")]
     PreviousWallpaper { monitors: Vec<String> },
 }
 
