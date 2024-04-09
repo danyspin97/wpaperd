@@ -1,9 +1,11 @@
 use std::{
     io::{Read, Write},
     os::unix::net::UnixStream,
+    path::PathBuf,
 };
 
 use clap::Parser;
+use serde::Serialize;
 use wpaperd_ipc::{socket_path, IpcError, IpcMessage, IpcResponse};
 
 /// Simple program to greet a person
@@ -19,7 +21,10 @@ enum SubCmd {
     #[clap(visible_alias = "get")]
     GetWallpaper { monitor: String },
     #[clap(visible_alias = "get-all")]
-    AllWallpapers,
+    AllWallpapers {
+        #[clap(short, long)]
+        json: bool,
+    },
     #[clap(visible_alias = "next")]
     NextWallpaper { monitors: Vec<String> },
     #[clap(visible_alias = "previous")]
@@ -29,10 +34,15 @@ enum SubCmd {
 fn main() {
     let args = Args::parse();
 
+    let mut json_resp = false;
+
     let mut conn = UnixStream::connect(socket_path().unwrap()).unwrap();
     let msg = match args.subcmd {
         SubCmd::GetWallpaper { monitor } => IpcMessage::CurrentWallpaper { monitor },
-        SubCmd::AllWallpapers => IpcMessage::AllWallpapers,
+        SubCmd::AllWallpapers { json } => {
+            json_resp = json;
+            IpcMessage::AllWallpapers
+        }
         SubCmd::NextWallpaper { monitors } => IpcMessage::NextWallpaper { monitors },
         SubCmd::PreviousWallpaper { monitors } => IpcMessage::PreviousWallpaper { monitors },
     };
@@ -44,8 +54,27 @@ fn main() {
         Ok(resp) => match resp {
             IpcResponse::CurrentWallpaper { path } => println!("{path:?}"),
             IpcResponse::AllWallpapers { entries: paths } => {
-                for (monitor, path) in paths {
-                    println!("{monitor}: {path:?}");
+                if json_resp {
+                    #[derive(Serialize)]
+                    struct Item {
+                        display: String,
+                        path: PathBuf,
+                    }
+                    let val = paths
+                        .into_iter()
+                        .map(|(name, path)| Item {
+                            display: name,
+                            path,
+                        })
+                        .collect::<Vec<_>>();
+                    println!(
+                        "{}",
+                        serde_json::to_string(&val).expect("json encoding to work")
+                    );
+                } else {
+                    for (monitor, path) in paths {
+                        println!("{monitor}: {path:?}");
+                    }
                 }
             }
             IpcResponse::Ok => (),
