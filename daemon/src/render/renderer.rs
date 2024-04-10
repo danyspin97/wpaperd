@@ -114,6 +114,7 @@ impl Renderer {
         Ok(renderer)
     }
 
+    #[inline]
     pub fn check_error(&self, msg: &str) -> Result<()> {
         unsafe {
             gl_check!(self.gl, msg);
@@ -121,17 +122,18 @@ impl Renderer {
         Ok(())
     }
 
-    pub unsafe fn draw(&mut self, time: u32, mode: BackgroundMode) -> Result<()> {
+    pub unsafe fn draw(&mut self, time: u32, mode: BackgroundMode) -> Result<bool> {
         self.gl.Clear(gl::COLOR_BUFFER_BIT);
         self.check_error("clearing the screen")?;
 
-        let elapsed = time - self.time_started;
-        let mut progress = (elapsed as f32 / self.animation_time as f32).min(1.0);
+        let mut progress =
+            ((time - self.time_started) as f32 / self.animation_time as f32).min(1.0);
+        let animation_going = progress != 1.0;
 
         match mode {
             BackgroundMode::Stretch | BackgroundMode::Fill | BackgroundMode::Tile => {}
             BackgroundMode::Fit => {
-                if progress > 0.5 && !self.animation_fit_changed {
+                if !self.animation_fit_changed && progress > 0.5 {
                     self.gl.ActiveTexture(gl::TEXTURE0);
                     self.check_error("activating gl::TEXTURE0")?;
                     self.gl
@@ -144,7 +146,7 @@ impl Renderer {
                     // This will recalculate the vertices
                     self.set_mode(mode, true)?;
                 }
-                if progress < 1.0 {
+                if animation_going {
                     progress = (progress % 0.5) * 2.0;
                 }
             }
@@ -161,7 +163,7 @@ impl Renderer {
             .DrawElements(gl::TRIANGLES, 6, gl::UNSIGNED_INT, std::ptr::null());
         self.check_error("drawing the triangles")?;
 
-        Ok(())
+        Ok(animation_going)
     }
 
     pub fn load_wallpaper(&mut self, image: DynamicImage, mode: BackgroundMode) -> Result<()> {
@@ -251,11 +253,13 @@ impl Renderer {
         Ok(())
     }
 
+    #[inline]
     pub fn start_animation(&mut self, time: u32) {
         self.time_started = time;
         self.animation_fit_changed = false;
     }
 
+    #[inline]
     pub fn clear_after_draw(&self) -> Result<()> {
         unsafe {
             // Unbind the framebuffer and renderbuffer before deleting.
@@ -279,10 +283,7 @@ impl Renderer {
         }
     }
 
-    pub fn is_drawing_animation(&self, time: u32) -> bool {
-        time < (self.time_started + self.animation_time)
-    }
-
+    #[inline]
     pub fn update_animation_time(&mut self, animation_time: u32) {
         self.animation_time = animation_time;
     }

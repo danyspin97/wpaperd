@@ -66,6 +66,7 @@ impl EglContext {
         }
     }
 
+    #[inline]
     pub fn make_current(&self) -> Result<()> {
         egl.make_current(
             self.display,
@@ -77,6 +78,7 @@ impl EglContext {
     }
 
     // Swap the buffers of the surface
+    #[inline]
     pub fn swap_buffers(&self) -> Result<()> {
         egl.swap_buffers(self.display, self.surface)
             .with_context(|| "unable to post the surface content")

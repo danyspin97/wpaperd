@@ -108,11 +108,11 @@ impl Surface {
 
         let wallpaper_loaded = self.load_wallpaper(time)?;
 
-        unsafe { self.renderer.draw(time, self.wallpaper_info.mode)? };
+        let animation_going = unsafe { self.renderer.draw(time, self.wallpaper_info.mode)? };
 
         self.drawn = true;
 
-        if self.is_drawing_animation(time) || !wallpaper_loaded {
+        if animation_going || !wallpaper_loaded {
             self.queue_draw(qh);
         }
 
@@ -406,10 +406,7 @@ impl Surface {
         }
     }
 
-    pub fn is_drawing_animation(&self, time: u32) -> bool {
-        self.renderer.is_drawing_animation(time)
-    }
-
+    #[inline]
     pub fn queue_draw(&mut self, qh: &QueueHandle<Wpaperd>) {
         // Start loading the next image immediately
         if let Err(err) = self.load_wallpaper(0) {

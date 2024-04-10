@@ -25,14 +25,17 @@ impl DisplayInfo {
         }
     }
 
+    #[inline]
     pub fn scaled_width(&self) -> i32 {
         self.width * self.scale
     }
 
+    #[inline]
     pub fn scaled_height(&self) -> i32 {
         self.height * self.scale
     }
 
+    #[inline]
     pub fn adjusted_width(&self) -> i32 {
         match self.transform {
             Transform::Normal | Transform::_180 | Transform::Flipped | Transform::Flipped180 => {
@@ -45,6 +48,7 @@ impl DisplayInfo {
         }
     }
 
+    #[inline]
     pub fn adjusted_height(&self) -> i32 {
         match self.transform {
             Transform::Normal | Transform::_180 | Transform::Flipped | Transform::Flipped180 => {
