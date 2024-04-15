@@ -34,6 +34,7 @@ impl Filelist {
     fn populate(&mut self) {
         self.filelist = Arc::new(
             WalkDir::new(&self.path)
+                .follow_links(true)
                 .sort_by_file_name()
                 .into_iter()
                 .filter_map(|e| e.ok())
