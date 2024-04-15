@@ -12,7 +12,7 @@ pub struct WallpaperInfo {
     pub sorting: Sorting,
     pub mode: BackgroundMode,
     pub drawn_images_queue_size: usize,
-    pub animation_time: u32,
+    pub transition_time: u32,
 }
 
 impl Default for WallpaperInfo {
@@ -24,7 +24,7 @@ impl Default for WallpaperInfo {
             sorting: Sorting::default(),
             mode: BackgroundMode::default(),
             drawn_images_queue_size: ImagePicker::DEFAULT_DRAWN_IMAGES_QUEUE_SIZE,
-            animation_time: Renderer::DEFAULT_ANIMATION_TIME,
+            transition_time: Renderer::DEFAULT_TRANSITION_TIME,
         }
     }
 }

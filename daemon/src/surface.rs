@@ -67,7 +67,8 @@ impl Surface {
         let image = black_image();
         let info = Rc::new(RefCell::new(info));
         let renderer = unsafe {
-            Renderer::new(image.into(), info.clone(), wallpaper_info.animation_time).unwrap()
+            Renderer::new(image.into(), info.clone(), wallpaper_info.transition_time)
+                .expect("unable to create the renderer")
         };
 
         let mut surface = Self {
@@ -108,11 +109,11 @@ impl Surface {
 
         let wallpaper_loaded = self.load_wallpaper(time)?;
 
-        let animation_going = unsafe { self.renderer.draw(time, self.wallpaper_info.mode)? };
+        let transition_going = unsafe { self.renderer.draw(time, self.wallpaper_info.mode)? };
 
         self.drawn = true;
 
-        if animation_going || !wallpaper_loaded {
+        if transition_going || !wallpaper_loaded {
             self.queue_draw(qh);
         }
 
@@ -136,7 +137,7 @@ impl Surface {
     // Call surface::frame when this return false
     pub fn load_wallpaper(&mut self, time: u32) -> Result<bool> {
         Ok(loop {
-            // If we were already trying to load an image
+            // If we were not already trying to load an image
             if self.loading_image.is_none() {
                 if let Some(item) = self
                     .image_picker
@@ -161,7 +162,7 @@ impl Surface {
                     self.egl_context.make_current()?;
                     self.renderer
                         .load_wallpaper(data.into(), self.wallpaper_info.mode)?;
-                    self.renderer.start_animation(time);
+                    self.renderer.start_transition(time);
                     self.image_picker.update_current_image(image_path, index);
                     // Restart the counter
                     self.loading_image_tries = 0;
@@ -347,9 +348,9 @@ impl Surface {
                 self.image_picker
                     .update_queue_size(self.wallpaper_info.drawn_images_queue_size);
             }
-            if self.wallpaper_info.animation_time != wallpaper_info.animation_time {
+            if self.wallpaper_info.transition_time != wallpaper_info.transition_time {
                 self.renderer
-                    .update_animation_time(self.wallpaper_info.animation_time);
+                    .update_transition_time(self.wallpaper_info.transition_time);
             }
         }
     }

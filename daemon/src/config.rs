@@ -37,7 +37,7 @@ pub struct SerializedWallpaperInfo {
     pub sorting: Option<Sorting>,
     pub mode: Option<BackgroundMode>,
     pub drawn_images_queue_size: Option<usize>,
-    pub animation_time: Option<u32>,
+    pub transition_time: Option<u32>,
 }
 
 impl SerializedWallpaperInfo {
@@ -125,9 +125,9 @@ impl SerializedWallpaperInfo {
             (Some(size), _) | (None, Some(size)) => *size,
             (None, None) => ImagePicker::DEFAULT_DRAWN_IMAGES_QUEUE_SIZE,
         };
-        let animation_time = match (&self.animation_time, &default.animation_time) {
-            (Some(animation_time), _) | (None, Some(animation_time)) => *animation_time,
-            (None, None) => Renderer::DEFAULT_ANIMATION_TIME,
+        let transition_time = match (&self.transition_time, &default.transition_time) {
+            (Some(transition_time), _) | (None, Some(transition_time)) => *transition_time,
+            (None, None) => Renderer::DEFAULT_TRANSITION_TIME,
         };
 
         Ok(WallpaperInfo {
@@ -137,7 +137,7 @@ impl SerializedWallpaperInfo {
             sorting,
             mode,
             drawn_images_queue_size,
-            animation_time,
+            transition_time,
         })
     }
 }

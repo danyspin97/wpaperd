@@ -33,23 +33,23 @@ pub struct Renderer {
     vao: gl::types::GLuint,
     vbo: gl::types::GLuint,
     eab: gl::types::GLuint,
-    // milliseconds time for the animation
-    animation_time: u32,
+    // milliseconds time for the transition
+    transition_time: u32,
     pub time_started: u32,
     display_info: Rc<RefCell<DisplayInfo>>,
     old_wallpaper: Wallpaper,
     current_wallpaper: Wallpaper,
     transparent_texture: gl::types::GLuint,
-    animation_fit_changed: bool,
+    transition_fit_changed: bool,
 }
 
 impl Renderer {
-    pub const DEFAULT_ANIMATION_TIME: u32 = 300;
+    pub const DEFAULT_TRANSITION_TIME: u32 = 300;
 
     pub unsafe fn new(
         image: DynamicImage,
         display_info: Rc<RefCell<DisplayInfo>>,
-        animation_time: u32,
+        transition_time: u32,
     ) -> Result<Self> {
         let gl = gl::Gl::load_with(|name| {
             egl.get_proc_address(name).unwrap() as *const std::ffi::c_void
@@ -101,12 +101,12 @@ impl Renderer {
             vbo,
             eab,
             time_started: 0,
-            animation_time,
+            transition_time,
             old_wallpaper,
             current_wallpaper,
             display_info,
             transparent_texture,
-            animation_fit_changed: false,
+            transition_fit_changed: false,
         };
 
         renderer.load_wallpaper(image, BackgroundMode::Stretch)?;
@@ -127,13 +127,13 @@ impl Renderer {
         self.check_error("clearing the screen")?;
 
         let mut progress =
-            ((time - self.time_started) as f32 / self.animation_time as f32).min(1.0);
-        let animation_going = progress != 1.0;
+            ((time - self.time_started) as f32 / self.transition_time as f32).min(1.0);
+        let transition_going = progress != 1.0;
 
         match mode {
             BackgroundMode::Stretch | BackgroundMode::Fill | BackgroundMode::Tile => {}
             BackgroundMode::Fit => {
-                if !self.animation_fit_changed && progress > 0.5 {
+                if !self.transition_fit_changed && progress > 0.5 {
                     self.gl.ActiveTexture(gl::TEXTURE0);
                     self.check_error("activating gl::TEXTURE0")?;
                     self.gl
@@ -142,11 +142,11 @@ impl Renderer {
                     self.check_error("activating gl::TEXTURE0")?;
                     self.current_wallpaper.bind(&self.gl)?;
 
-                    self.animation_fit_changed = true;
+                    self.transition_fit_changed = true;
                     // This will recalculate the vertices
                     self.set_mode(mode, true)?;
                 }
-                if animation_going {
+                if transition_going {
                     progress = (progress % 0.5) * 2.0;
                 }
             }
@@ -163,7 +163,7 @@ impl Renderer {
             .DrawElements(gl::TRIANGLES, 6, gl::UNSIGNED_INT, std::ptr::null());
         self.check_error("drawing the triangles")?;
 
-        Ok(animation_going)
+        Ok(transition_going)
     }
 
     pub fn load_wallpaper(&mut self, image: DynamicImage, mode: BackgroundMode) -> Result<()> {
@@ -182,7 +182,7 @@ impl Renderer {
             },
             BackgroundMode::Fit => unsafe {
                 // We don't change the vertices, we still use the previous ones for the first half
-                // of the animation
+                // of the transition
                 self.gl.ActiveTexture(gl::TEXTURE0);
                 self.check_error("activating gl::TEXTURE0")?;
                 self.old_wallpaper.bind(&self.gl)?;
@@ -199,7 +199,7 @@ impl Renderer {
     pub fn set_mode(
         &mut self,
         mode: BackgroundMode,
-        half_animation_for_fit_mode: bool,
+        half_transition_for_fit_mode: bool,
     ) -> Result<()> {
         match mode {
             BackgroundMode::Stretch | BackgroundMode::Fill | BackgroundMode::Tile => {
@@ -223,7 +223,7 @@ impl Renderer {
                 }
             }
             BackgroundMode::Fit => {
-                let vec_coordinates = if half_animation_for_fit_mode {
+                let vec_coordinates = if half_transition_for_fit_mode {
                     self.current_wallpaper
                         .generate_vertices_coordinates_for_fit_mode()
                 } else {
@@ -254,9 +254,9 @@ impl Renderer {
     }
 
     #[inline]
-    pub fn start_animation(&mut self, time: u32) {
+    pub fn start_transition(&mut self, time: u32) {
         self.time_started = time;
-        self.animation_fit_changed = false;
+        self.transition_fit_changed = false;
     }
 
     #[inline]
@@ -284,8 +284,8 @@ impl Renderer {
     }
 
     #[inline]
-    pub fn update_animation_time(&mut self, animation_time: u32) {
-        self.animation_time = animation_time;
+    pub fn update_transition_time(&mut self, transition_time: u32) {
+        self.transition_time = transition_time;
     }
 }
 
