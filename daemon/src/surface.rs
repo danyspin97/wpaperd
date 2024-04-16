@@ -57,7 +57,9 @@ impl Surface {
         let surface = layer.wl_surface().clone();
         let egl_context = EglContext::new(egl_display, &surface);
         // Make the egl context as current to make the renderer creation work
-        egl_context.make_current().unwrap();
+        egl_context
+            .make_current()
+            .expect("EGL context switching to work");
 
         // Commit the surface
         surface.commit();
@@ -150,7 +152,11 @@ impl Surface {
                     break true;
                 }
             }
-            let (image_path, index) = self.loading_image.as_ref().unwrap().clone();
+            let (image_path, index) = self
+                .loading_image
+                .as_ref()
+                .expect("loading image to be set")
+                .clone();
             let res = self
                 .image_loader
                 .borrow_mut()
@@ -226,10 +232,27 @@ impl Surface {
         let width = info.adjusted_width();
         let height = info.adjusted_height();
         // self.layer.set_size(width as u32, height as u32);
-        self.egl_context.resize(&self.surface, width, height);
+        let display_name = self.name();
+        let res = self
+            .egl_context
+            .resize(&self.surface, width, height)
+            .with_context(|| {
+                format!("unable to switch resize EGL context for display {display_name}",)
+            })
+            .and_then(|_| {
+                self.egl_context.make_current().with_context(|| {
+                    format!("unable to switch the openGL context for display {display_name}")
+                })
+            })
+            .and_then(|_| {
+                self.renderer.resize().with_context(|| {
+                    format!("unable to resize the GL window for display {display_name}")
+                })
+            });
         // Resize the gl viewport
-        self.egl_context.make_current().unwrap();
-        self.renderer.resize().unwrap();
+        if let Err(err) = res {
+            error!("{err:?}");
+        }
         self.surface.frame(qh, self.surface.clone());
     }
 
@@ -374,10 +397,16 @@ impl Surface {
                 .insert_source(
                     timer,
                     move |_deadline, _: &mut (), wpaperd: &mut Wpaperd| {
-                        let surface = wpaperd
+                        let surface = match wpaperd
                             .surface_from_name(&name)
                             .with_context(|| format!("expecting surface {name} to be available"))
-                            .unwrap();
+                        {
+                            Ok(surface) => surface,
+                            Err(err) => {
+                                error!("{err:?}");
+                                return TimeoutAction::Drop;
+                            }
+                        };
                         if let Some(duration) = surface.wallpaper_info.duration {
                             // Check that the timer has expired
                             // if the daemon received a next or previous image command

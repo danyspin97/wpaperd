@@ -52,7 +52,8 @@ impl Renderer {
         transition_time: u32,
     ) -> Result<Self> {
         let gl = gl::Gl::load_with(|name| {
-            egl.get_proc_address(name).unwrap() as *const std::ffi::c_void
+            egl.get_proc_address(name)
+                .expect("egl.get_proc_address to work") as *const std::ffi::c_void
         });
         let vertex_shader = create_shader(&gl, gl::VERTEX_SHADER, VERTEX_SHADER_SOURCE)
             .expect("vertex shader creation succeed");

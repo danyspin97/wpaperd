@@ -219,14 +219,18 @@ impl OutputHandler for Wpaperd {
         output: wl_output::WlOutput,
     ) {
         // Find the destroyed output and remove it
-        self.surfaces.swap_remove(
-            self.surfaces
-                .iter()
-                .enumerate()
-                .find(|(_, surface)| surface.output == output)
-                .unwrap()
-                .0,
-        );
+
+        match self
+            .surfaces
+            .iter()
+            .enumerate()
+            .find(|(_, surface)| surface.output == output)
+        {
+            Some((index, _)) => {
+                self.surfaces.swap_remove(index);
+            }
+            None => error!("could not find display while handling output_destroyed"),
+        }
     }
 }
 
@@ -241,12 +245,14 @@ impl LayerShellHandler for Wpaperd {
         configure: LayerSurfaceConfigure,
         _serial: u32,
     ) {
-        self.surfaces
+        match self
+            .surfaces
             .iter_mut()
             .find(|surface| &surface.layer == layer)
-            // We always know the surface that it is being configured
-            .unwrap()
-            .change_size(configure, qh);
+        {
+            Some(surface) => surface.change_size(configure, qh),
+            None => error!("could not find display while handling configure in wayland"),
+        }
     }
 }
 

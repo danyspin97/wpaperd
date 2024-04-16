@@ -42,8 +42,11 @@ pub unsafe fn create_shader(
             log.as_mut_ptr() as _,
         );
         gl_check!(gl, "calling GetShaderInfoLog");
-        let log = String::from_utf8(log).unwrap();
-        Err(color_eyre::eyre::anyhow!(log))
+        let res = String::from_utf8(log);
+        match res {
+            Ok(log) => Err(color_eyre::eyre::anyhow!(log)),
+            Err(err) => Err(color_eyre::eyre::anyhow!(err)),
+        }
     } else {
         Ok(shader)
     }

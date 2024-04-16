@@ -86,9 +86,11 @@ impl EglContext {
 
     /// Resize the surface
     /// Resizing the surface means to destroy the previous one and then recreate it
-    pub fn resize(&mut self, wl_surface: &WlSurface, width: i32, height: i32) {
-        egl.destroy_surface(self.display, self.surface).unwrap();
-        let wl_egl_surface = WlEglSurface::new(wl_surface.id(), width, height).unwrap();
+    pub fn resize(&mut self, wl_surface: &WlSurface, width: i32, height: i32) -> Result<()> {
+        egl.destroy_surface(self.display, self.surface)
+            .context("unable to destroy EGL surface")?;
+        let wl_egl_surface = WlEglSurface::new(wl_surface.id(), width, height)
+            .context("unable to create a new WlEglSurface")?;
 
         let surface = unsafe {
             egl.create_window_surface(
@@ -97,10 +99,12 @@ impl EglContext {
                 wl_egl_surface.ptr() as egl::NativeWindowType,
                 None,
             )
-            .expect("unable to create an EGL surface")
+            .context("unable to create an EGL surface")?
         };
 
         self.surface = surface;
         self.wl_egl_surface = wl_egl_surface;
+
+        Ok(())
     }
 }

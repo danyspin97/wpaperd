@@ -17,7 +17,7 @@ impl DisplayInfo {
         // let width = info.logical_size.unwrap().0;
         // let height = info.logical_size.unwrap().1;
         Self {
-            name: info.name.unwrap(),
+            name: info.name.unwrap_or_default(),
             width: 0,
             height: 0,
             scale: info.scale_factor,
