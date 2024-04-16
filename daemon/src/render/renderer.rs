@@ -1,11 +1,12 @@
 use std::{cell::RefCell, ffi::CStr, ops::Deref, rc::Rc};
 
 use color_eyre::{
-    eyre::{bail, ensure},
+    eyre::{bail, ensure, Context},
     Result,
 };
 use egl::API as egl;
 use image::{DynamicImage, RgbaImage};
+use log::error;
 
 use crate::{
     display_info::DisplayInfo,
@@ -287,6 +288,18 @@ impl Renderer {
     #[inline]
     pub fn update_transition_time(&mut self, transition_time: u32) {
         self.transition_time = transition_time;
+    }
+
+    #[inline]
+    pub fn transition_finished(&mut self) {
+        // By loading a transparent pixel into the old wallpaper, we free space from GPU memory
+        if let Err(err) = self
+            .old_wallpaper
+            .load_image(&self.gl, transparent_image().into())
+            .context("unloading the previous wallpaper")
+        {
+            error!("{err:?}");
+        }
     }
 }
 

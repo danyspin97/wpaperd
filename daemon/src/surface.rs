@@ -106,32 +106,36 @@ impl Surface {
         // Drop the borrow to self
         drop(info);
 
-        // Use the correct context before loading the texture and drawing
-        self.egl_context.make_current()?;
+        // Only returns true when the wallpaper is loaded
+        if self.load_wallpaper(time)? {
+            // Use the correct context before loading the texture and drawing
+            self.egl_context.make_current()?;
 
-        let wallpaper_loaded = self.load_wallpaper(time)?;
+            let transition_going = unsafe { self.renderer.draw(time, self.wallpaper_info.mode)? };
+            if transition_going {
+                self.queue_draw(qh);
+            } else {
+                self.renderer.transition_finished();
+            }
 
-        let transition_going = unsafe { self.renderer.draw(time, self.wallpaper_info.mode)? };
+            self.drawn = true;
 
-        self.drawn = true;
+            self.renderer.clear_after_draw()?;
+            self.egl_context.swap_buffers()?;
 
-        if transition_going || !wallpaper_loaded {
+            // Reset the context
+            egl::API
+                .make_current(self.egl_context.display, None, None, None)
+                .context("Resetting the GL context")?;
+
+            // Mark the entire surface as damaged
+            self.surface.damage_buffer(0, 0, width, height);
+
+            // Finally, commit the surface
+            self.surface.commit();
+        } else {
             self.queue_draw(qh);
         }
-
-        self.renderer.clear_after_draw()?;
-        self.egl_context.swap_buffers()?;
-
-        // Reset the context
-        egl::API
-            .make_current(self.egl_context.display, None, None, None)
-            .context("Resetting the GL context")?;
-
-        // Mark the entire surface as damaged
-        self.surface.damage_buffer(0, 0, width, height);
-
-        // Finally, commit the surface
-        self.surface.commit();
 
         Ok(())
     }
