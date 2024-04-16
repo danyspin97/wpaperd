@@ -86,11 +86,12 @@ impl Wpaperd {
             .iter_mut()
             .find(|surface| surface.name() == name)
     }
+
     pub fn surface_from_wl_surface(&mut self, surface: &wl_surface::WlSurface) -> &mut Surface {
         self.surfaces
             .iter_mut()
             .find(|s| surface == &s.surface)
-            .unwrap()
+            .expect("surface to be registered in wpaperd")
     }
 }
 
@@ -146,14 +147,23 @@ impl OutputHandler for Wpaperd {
         qh: &QueueHandle<Self>,
         output: wl_output::WlOutput,
     ) {
-        // TODO: Error handling
         let surface = self.compositor_state.create_surface(qh);
 
-        let info = self.output_state.info(&output).unwrap();
+        let info = match self.output_state.info(&output) {
+            Some(info) => info,
+            None => {
+                error!("could not get info about output");
+                return;
+            }
+        };
         surface.set_buffer_scale(info.scale_factor);
         surface.set_buffer_transform(info.transform);
 
-        let name = info.name.as_ref().unwrap().to_string();
+        let name = info
+            .name
+            .as_ref()
+            .map(|name| name.to_string())
+            .unwrap_or_else(|| "unnamed".to_string());
         let display_info = DisplayInfo::new(info);
 
         let layer = self.layer_state.create_layer_surface(
@@ -170,16 +180,24 @@ impl OutputHandler for Wpaperd {
             display_info.adjusted_height() as u32,
         );
 
-        let empty_region = Region::new(&self.compositor_state).unwrap();
-        // Wayland clients are expected to render the cursor on their input region. By setting the
-        // input region to an empty region, the compositor renders the default cursor. Without
-        // this, and empty desktop won't render a cursor.
-        surface.set_input_region(Some(empty_region.wl_region()));
+        match Region::new(&self.compositor_state) {
+            Ok(region) => {
+                // Wayland clients are expected to render the cursor on their input region. By setting the
+                // input region to an empty region, the compositor renders the default cursor. Without
+                // this, and empty desktop won't render a cursor.
+                surface.set_input_region(Some(region.wl_region()));
 
-        // From `wl_surface::set_opaque_region`:
-        // > Setting the pending opaque region has copy semantics, and the
-        // > wl_region object can be destroyed immediately.
-        empty_region.wl_region().destroy();
+                // From `wl_surface::set_opaque_region`:
+                // > Setting the pending opaque region has copy semantics, and the
+                // > wl_region object can be destroyed immediately.
+                region.wl_region().destroy();
+            }
+
+            Err(_) => {
+                warn!("could not create region, cursor won't be shown for display {name}");
+                return;
+            }
+        };
 
         let wallpaper_info = match self.config.get_output_by_name(&name) {
             Ok(wallpaper_info) => wallpaper_info,

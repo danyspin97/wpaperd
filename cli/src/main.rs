@@ -31,7 +31,8 @@ fn main() {
     conn.write_all(&serde_json::to_vec(&msg).unwrap()).unwrap();
     let mut buf = String::new();
     conn.read_to_string(&mut buf).unwrap();
-    let res: Result<IpcResponse, IpcError> = serde_json::from_str(&buf).unwrap();
+    let res: Result<IpcResponse, IpcError> =
+        serde_json::from_str(&buf).expect("wpaperd to return a valid json");
     match res {
         Ok(resp) => match resp {
             IpcResponse::CurrentWallpaper { path } => println!("{}", path.to_string_lossy()),
