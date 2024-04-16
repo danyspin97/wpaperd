@@ -169,7 +169,11 @@ impl Surface {
                     self.renderer
                         .load_wallpaper(data.into(), self.wallpaper_info.mode)?;
                     self.renderer.start_transition(time);
-                    self.image_picker.update_current_image(image_path, index);
+                    if self.image_picker.is_reloading() {
+                        self.image_picker.reloaded();
+                    } else {
+                        self.image_picker.update_current_image(image_path, index);
+                    }
                     // Restart the counter
                     self.loading_image_tries = 0;
                     self.loading_image = None;

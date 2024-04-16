@@ -26,6 +26,7 @@ fn main() {
         }
         SubCmd::NextWallpaper { monitors } => IpcMessage::NextWallpaper { monitors },
         SubCmd::PreviousWallpaper { monitors } => IpcMessage::PreviousWallpaper { monitors },
+        SubCmd::ReloadWallpaper { monitors } => IpcMessage::ReloadWallpaper { monitors },
     };
     conn.write_all(&serde_json::to_vec(&msg).unwrap()).unwrap();
     let mut buf = String::new();

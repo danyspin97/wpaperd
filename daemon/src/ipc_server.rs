@@ -123,6 +123,14 @@ pub fn handle_message(
 
             IpcResponse::Ok
         }),
+        IpcMessage::ReloadWallpaper { monitors } => check_monitors(wpaperd, &monitors).map(|_| {
+            for surface in collect_surfaces(wpaperd, monitors) {
+                surface.image_picker.reload();
+                surface.queue_draw(&qh);
+            }
+
+            IpcResponse::Ok
+        }),
     };
 
     let mut stream = BufWriter::new(ustream);

@@ -20,4 +20,6 @@ pub enum SubCmd {
     NextWallpaper { monitors: Vec<String> },
     #[clap(visible_alias = "previous")]
     PreviousWallpaper { monitors: Vec<String> },
+    #[clap(visible_alias = "reload")]
+    ReloadWallpaper { monitors: Vec<String> },
 }

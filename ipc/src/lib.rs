@@ -9,6 +9,7 @@ pub enum IpcMessage {
     NextWallpaper { monitors: Vec<String> },
     PreviousWallpaper { monitors: Vec<String> },
     AllWallpapers,
+    ReloadWallpaper { monitors: Vec<String> },
 }
 
 #[derive(Serialize, Deserialize)]

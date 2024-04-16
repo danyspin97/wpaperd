@@ -136,6 +136,7 @@ pub struct ImagePicker {
     action: Option<ImagePickerAction>,
     sorting: ImagePickerSorting,
     filelist_cache: Rc<RefCell<FilelistCache>>,
+    reload: bool,
 }
 
 impl ImagePicker {
@@ -153,6 +154,7 @@ impl ImagePicker {
                 Sorting::Descending => ImagePickerSorting::Descending(usize::MAX),
             },
             filelist_cache,
+            reload: false,
         }
     }
 
@@ -274,7 +276,7 @@ impl ImagePicker {
                     Some((img_path, index))
                 }
             }
-        } else if path == self.current_img {
+        } else if path == self.current_img && !self.reload {
             None
         } else {
             // path is not a directory and it's not the current image
@@ -366,6 +368,21 @@ impl ImagePicker {
             }
             ImagePickerSorting::Ascending(_) | ImagePickerSorting::Descending(_) => {}
         }
+    }
+
+    #[inline]
+    pub fn reload(&mut self) {
+        self.reload = true;
+    }
+
+    #[inline]
+    pub fn reloaded(&mut self) {
+        self.reload = false;
+    }
+
+    #[inline]
+    pub fn is_reloading(&self) -> bool {
+        self.reload
     }
 }
 
