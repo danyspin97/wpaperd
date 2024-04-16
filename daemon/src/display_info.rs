@@ -14,8 +14,6 @@ pub struct DisplayInfo {
 
 impl DisplayInfo {
     pub fn new(info: OutputInfo) -> Self {
-        // let width = info.logical_size.unwrap().0;
-        // let height = info.logical_size.unwrap().1;
         Self {
             name: info.name.unwrap_or_default(),
             width: 0,

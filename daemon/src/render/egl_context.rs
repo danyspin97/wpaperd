@@ -11,8 +11,6 @@ pub struct EglContext {
     pub config: egl::Config,
     wl_egl_surface: WlEglSurface,
     surface: khronos_egl::Surface,
-    // pub surface: egl::Surface,
-    // pub wl_egl_surface: WlEglSurface,
 }
 
 impl EglContext {

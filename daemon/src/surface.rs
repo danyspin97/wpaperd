@@ -7,8 +7,7 @@ use std::{
 
 use color_eyre::eyre::{Context, ContextCompat};
 use color_eyre::Result;
-use image::imageops::FilterType;
-use image::{DynamicImage, ImageBuffer, Pixel, Rgba, RgbaImage};
+use image::RgbaImage;
 use log::{error, warn};
 use smithay_client_toolkit::reexports::calloop::{LoopHandle, RegistrationToken};
 use smithay_client_toolkit::reexports::client::protocol::wl_output::{Transform, WlOutput};
@@ -199,35 +198,6 @@ impl Surface {
                 break true;
             }
         })
-    }
-
-    fn _apply_shadow(&self, image: &mut ImageBuffer<Rgba<u8>, Vec<u8>>, width: u32) {
-        if self.wallpaper_info.apply_shadow {
-            const GRADIENT_HEIGHT: u32 = 11;
-            type RgbaImage = image::ImageBuffer<image::Rgba<u8>, Vec<u8>>;
-            let gradient = DynamicImage::ImageRgba8(
-                RgbaImage::from_raw(
-                    1,
-                    GRADIENT_HEIGHT,
-                    vec![
-                        0, 0, 0, 225, 0, 0, 0, 202, 0, 0, 0, 178, 0, 0, 0, 154, 0, 0, 0, 130, 0, 0,
-                        0, 107, 0, 0, 0, 83, 0, 0, 0, 59, 0, 0, 0, 36, 0, 0, 0, 12, 0, 0, 0, 0,
-                    ],
-                )
-                .unwrap(),
-            )
-            .resize_exact(
-                width,
-                GRADIENT_HEIGHT * 4 * self.info.borrow().scale as u32,
-                FilterType::Triangle,
-            )
-            .into_rgba8();
-
-            image
-                .pixels_mut()
-                .zip(gradient.pixels())
-                .for_each(|(p, g)| p.blend(g));
-        }
     }
 
     pub fn name(&self) -> String {

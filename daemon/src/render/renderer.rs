@@ -179,7 +179,7 @@ impl Renderer {
                 self.check_error("activating gl::TEXTURE0")?;
                 self.old_wallpaper.bind(&self.gl)?;
                 self.gl.ActiveTexture(gl::TEXTURE1);
-                self.check_error("activating gl::TEXTURE0")?;
+                self.check_error("activating gl::TEXTURE1")?;
                 self.current_wallpaper.bind(&self.gl)?;
             },
             BackgroundMode::Fit => unsafe {
@@ -189,7 +189,7 @@ impl Renderer {
                 self.check_error("activating gl::TEXTURE0")?;
                 self.old_wallpaper.bind(&self.gl)?;
                 self.gl.ActiveTexture(gl::TEXTURE1);
-                self.check_error("activating gl::TEXTURE0")?;
+                self.check_error("activating gl::TEXTURE1")?;
                 self.gl
                     .BindTexture(gl::TEXTURE_2D, self.transparent_texture);
             },
