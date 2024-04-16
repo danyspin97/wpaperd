@@ -3,8 +3,8 @@ extern crate gl_generator;
 use gl_generator::{Api, Fallbacks, Profile, Registry, StructGenerator};
 use std::env;
 use std::fs::File;
-use std::path::Path;
 use std::io::Error;
+use std::path::Path;
 
 use clap::{CommandFactory, ValueEnum};
 use clap_complete::{generate_to, Shell};
@@ -50,16 +50,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut file = File::create(Path::new(&outdir).join("gl_bindings.rs")).unwrap();
 
-    Registry::new(
-        Api::Gles2,
-        (3, 2),
-        Profile::Core,
-        Fallbacks::All,
-        [],
-    )
-    .write_bindings(StructGenerator, &mut file)
-    .unwrap();
+    Registry::new(Api::Gles2, (3, 2), Profile::Core, Fallbacks::All, [])
+        .write_bindings(StructGenerator, &mut file)
+        .unwrap();
 
     Ok(())
 }
-

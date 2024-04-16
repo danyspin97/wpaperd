@@ -1,7 +1,7 @@
 use std::env;
 use std::fs::File;
-use std::path::Path;
 use std::io::Error;
+use std::path::Path;
 
 use clap::{CommandFactory, ValueEnum};
 use clap_complete::{generate_to, Shell};
@@ -47,4 +47,3 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     Ok(())
 }
-
