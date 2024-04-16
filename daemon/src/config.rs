@@ -36,7 +36,7 @@ pub struct SerializedWallpaperInfo {
     pub apply_shadow: Option<bool>,
     pub sorting: Option<Sorting>,
     pub mode: Option<BackgroundMode>,
-    pub drawn_images_queue_size: Option<usize>,
+    pub queue_size: Option<usize>,
     pub transition_time: Option<u32>,
 }
 
@@ -118,10 +118,7 @@ impl SerializedWallpaperInfo {
             (Some(mode), _) | (None, Some(mode)) => *mode,
             (None, None) => BackgroundMode::default(),
         };
-        let drawn_images_queue_size = match (
-            &self.drawn_images_queue_size,
-            &default.drawn_images_queue_size,
-        ) {
+        let drawn_images_queue_size = match (&self.queue_size, &default.queue_size) {
             (Some(size), _) | (None, Some(size)) => *size,
             (None, None) => ImagePicker::DEFAULT_DRAWN_IMAGES_QUEUE_SIZE,
         };
