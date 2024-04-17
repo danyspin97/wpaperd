@@ -13,7 +13,7 @@ categories = ["command-line-utilities", "multimedia"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-wpaperd-ipc = { path = "../ipc" }
+wpaperd-ipc = { path = "../ipc", version = "1.0.0" }
 clap = { version = "4.5.3", features = ["derive", "wrap_help"] }
 serde = { version = "1.0.197", features = ["derive"] }
 serde_json = "1.0.114"

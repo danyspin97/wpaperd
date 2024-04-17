@@ -15,7 +15,7 @@ rust-version = "1.61.0"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-wpaperd-ipc = { path = "../ipc" }
+wpaperd-ipc = { path = "../ipc", version = "1.0.0" }
 clap = { version = "4.5.3", features = ["derive", "wrap_help"] }
 color-eyre = { version = "0.6.3", default-features = false }
 flexi_logger = { version = "0.28.0", default-features = false, features = ["colors"] }
