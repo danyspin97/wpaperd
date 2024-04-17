@@ -43,7 +43,7 @@ pub enum Sorting {
 pub enum BackgroundMode {
     Stretch,
     #[default]
-    Fill,
+    Center,
     Fit,
     Tile,
 }

@@ -64,10 +64,10 @@ impl Wallpaper {
         match mode {
             BackgroundMode::Stretch => Coordinates::default_texture_coordinates(),
             BackgroundMode::Fit => Coordinates::default_texture_coordinates(),
-            BackgroundMode::Fill if display_ratio == image_ratio => {
+            BackgroundMode::Center if display_ratio == image_ratio => {
                 Coordinates::default_texture_coordinates()
             }
-            BackgroundMode::Fill if display_ratio > image_ratio => {
+            BackgroundMode::Center if display_ratio > image_ratio => {
                 // Same as width calculation below , but with inverted parameters
                 // This is the expanded expression
                 // adjusted_height = image_width as f32 / display_ratio;
@@ -81,7 +81,7 @@ impl Wallpaper {
                     Coordinates::TEX_Y_TOP - y,
                 )
             }
-            BackgroundMode::Fill => {
+            BackgroundMode::Center => {
                 // Calculte the adjusted width, i.e. the width that the image should have to
                 // have the same ratio as the display
                 // adjusted_width = image_height as f32 * display_ratio;

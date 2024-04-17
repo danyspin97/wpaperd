@@ -133,7 +133,7 @@ impl Renderer {
         let transition_going = progress != 1.0;
 
         match mode {
-            BackgroundMode::Stretch | BackgroundMode::Fill | BackgroundMode::Tile => {}
+            BackgroundMode::Stretch | BackgroundMode::Center | BackgroundMode::Tile => {}
             BackgroundMode::Fit => {
                 if !self.transition_fit_changed && progress > 0.5 {
                     self.gl.ActiveTexture(gl::TEXTURE0);
@@ -173,7 +173,7 @@ impl Renderer {
         self.current_wallpaper.load_image(&self.gl, image)?;
 
         match mode {
-            BackgroundMode::Stretch | BackgroundMode::Fill | BackgroundMode::Tile => unsafe {
+            BackgroundMode::Stretch | BackgroundMode::Center | BackgroundMode::Tile => unsafe {
                 self.set_mode(mode, false)?;
                 self.gl.ActiveTexture(gl::TEXTURE0);
                 self.check_error("activating gl::TEXTURE0")?;
@@ -204,7 +204,7 @@ impl Renderer {
         half_transition_for_fit_mode: bool,
     ) -> Result<()> {
         match mode {
-            BackgroundMode::Stretch | BackgroundMode::Fill | BackgroundMode::Tile => {
+            BackgroundMode::Stretch | BackgroundMode::Center | BackgroundMode::Tile => {
                 // The vertex data will be the default in this case
                 let vec_coordinates = Coordinates::default_vec_coordinates();
                 let current_tex_coord = &self.current_wallpaper.generate_texture_coordinates(mode);
