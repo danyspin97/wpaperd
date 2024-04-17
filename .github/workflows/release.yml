@@ -1,7 +1,7 @@
-on:
-  push:
-    tags:
-      - '*.*.*'
+#on:
+#  push:
+#    tags:
+#      - '*.*.*'
 
 name: Release
 
@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        target:  [x86_64-unknown-linux-musl]
+        target:  [x86_64-unknown-linux-gnu]
     steps:
       - uses: actions/checkout@v2
       - name: Install dependencies
@@ -38,7 +38,6 @@ jobs:
             strip target/${{ matrix.target }}/release/wpaperctl
       - name: Create tarball
         run: |
-            touch .tarball
             cp target/${{ matrix.target }}/release/wpaperd wpaperd
             cp target/${{ matrix.target }}/release/wpaperctl wpaperctl
             tar -cvf wpaperd-${{ matrix.target }}.tar.zst \
@@ -47,8 +46,7 @@ jobs:
                 man/wpaperd-output.5 \
                 README.md \
                 LICENSE.md \
-                install.yml \
-                .tarball
+                install.yml
       - name: Upload release tarball
         uses: softprops/action-gh-release@v1
         with:
