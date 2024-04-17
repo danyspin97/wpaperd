@@ -1,4 +1,4 @@
-rinstall: 0.1.0
+rinstall: 0.2.0
 pkgs:
   wpaperd:
     type: rust
@@ -16,7 +16,13 @@ pkgs:
     completions:
       bash:
         - completions/wpaperd.bash
+        - completions/wpaperctl.bash
+      elvish:
+        - completions/wpaperd.elv
+        - completions/wpaperctl.elv
       fish:
         - completions/wpaperd.fish
+        - completions/wpaperctl.fish
       zsh:
         - completions/_wpaperd
+        - completions/_wpaperctl
