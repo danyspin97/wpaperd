@@ -103,7 +103,7 @@ as intended.
 
 The configuration file for *wpaperd* is located in `XDG_CONFIG_HOME/wpaperd/config.toml`
 (which defaults to `~/.config/wpaperd/config.toml`). Each section
-represents a different output and can contain the following keys:
+represents a different display and can contain the following keys:
 
 - `path`, path to the image to use as wallpaper or to a directory to pick the wallpaper from
 - `duration`, how much time the image should be displayed until it is changed with a new one.
