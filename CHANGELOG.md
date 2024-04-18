@@ -7,8 +7,10 @@
 wpaperd is polished enough to call it 1.0.0
 
 ## Breaking Changes
-Version 0.3.0 had 2 different configuration files, one for wpaperd and one for the wallpapers.
-Remove the former and move the latter (`wallpaper.toml`) to `config.toml`.
+- Version 0.3.0 had 2 different configuration files, one for wpaperd and one for the wallpapers.
+  Remove the former and move the latter (`wallpaper.toml`) to `config.toml`
+- wpaperd `--no-daemon` behavior is now the default, `--daemon`/`-d` option have been
+  added to fork and live in the background
 
 ## Other Changes
 
