@@ -106,7 +106,7 @@ impl Surface {
         drop(info);
 
         // Only returns true when the wallpaper is loaded
-        if self.load_wallpaper(time)? {
+        if self.load_wallpaper(time)? || !self.drawn {
             // Use the correct context before loading the texture and drawing
             self.egl_context.make_current()?;
 

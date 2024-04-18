@@ -1,3 +1,7 @@
+# 1.0.1
+
+- Fix drawing at start time
+
 # 1.0.0
 
 wpaperd is polished enough to call it 1.0.0
