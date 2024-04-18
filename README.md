@@ -8,7 +8,8 @@
 either after a certain amount of time or via a command-line interface. It uses OpenGL ES to render
 the images and have beautiful hardware-accelerated transitions, while being easy on resources.
 
-*Notice*: wpaperd uses wayland protocols available on all wlroots based compositors (sway,
+*Notice*: wpaperd uses [wlr_layer_shell](https://wayland.app/protocols/wlr-layer-shell-unstable-v1)
+wayland protocol, which is available on all wlroots based compositors (sway,
 hyprland, ...) and on KDE. **Therefore it won't work on GNOME.**
 
 ## Features
