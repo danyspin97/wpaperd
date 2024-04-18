@@ -167,6 +167,17 @@ On Hyprland you can run:
 $ hyprctl monitors
 ```
 
+## FAQ
+
+- The wallpapers are **slow to load**:
+  wpaperd uses the `image` crate to load and decode the image. However, when built in `debug` mode
+  the loading and decoding time takes from half a second to a couple, even on modern hardware.
+  Try building wpaperd in release mode:
+
+```bash
+$ cargo build --release
+```
+
 ## License
 
 **wpaperd** is licensed under the [GPL-3.0+](/LICENSE.md) license.
