@@ -1,5 +1,6 @@
 use std::{
     cell::RefCell,
+    collections::VecDeque,
     path::{Path, PathBuf},
     rc::Rc,
     time::Instant,
@@ -12,8 +13,9 @@ use crate::{
     wallpaper_info::{Sorting, WallpaperInfo},
 };
 
+#[derive(Debug)]
 struct Queue {
-    buffer: Vec<PathBuf>,
+    buffer: VecDeque<PathBuf>,
     current: usize,
     tail: usize,
     size: usize,
@@ -22,7 +24,7 @@ struct Queue {
 impl Queue {
     fn with_capacity(size: usize) -> Self {
         Self {
-            buffer: Vec::with_capacity(size),
+            buffer: VecDeque::with_capacity(size),
             current: 0,
             tail: size - 1,
             size,
@@ -34,28 +36,28 @@ impl Queue {
         &self.buffer[self.current]
     }
 
-    fn next(&mut self) -> Option<&Path> {
+    fn next(&mut self) -> Option<(&Path, usize)> {
         let next_index = (self.current + 1) % self.size;
         if !self.is_full() {
             if next_index < self.buffer.len() {
                 self.current = next_index;
-                Some(&self.buffer[next_index])
+                Some((&self.buffer[next_index], next_index))
             } else {
                 None
             }
         } else if self.current != self.tail {
             self.current = next_index;
-            Some(&self.buffer[next_index])
+            Some((&self.buffer[next_index], next_index))
         } else {
             None
         }
     }
 
-    fn previous(&mut self) -> Option<&Path> {
+    fn previous(&mut self) -> Option<(&Path, usize)> {
         let prev_index = (self.current + self.size - 1) % self.size;
         if prev_index != self.tail {
             self.current = prev_index;
-            Some(&self.buffer[prev_index])
+            Some((&self.buffer[prev_index], prev_index))
         } else {
             None
         }
@@ -76,15 +78,16 @@ impl Queue {
     }
 
     fn push(&mut self, p: PathBuf) {
+        // Avoid duplicates
+        if self.buffer.contains(&p) {
+            return;
+        };
+
         if self.is_full() {
-            if self.current == self.tail {
-                let next_index = (self.current + 1) % self.size;
-                self.buffer[next_index] = p;
-                self.current = next_index;
-                self.tail = next_index;
-            }
+            self.buffer.pop_front();
+            self.buffer.push_back(p);
         } else {
-            self.buffer.push(p);
+            self.buffer.push_back(p);
             self.current = self.buffer.len() - 1;
         }
     }
@@ -101,9 +104,9 @@ impl Queue {
             let relative_current = (self.current + self.size - self.tail) % self.size;
             self.current = (self.tail + self.size - new_size % self.size) % self.size;
             let relative_current = (relative_current + self.size - self.current - 1) % new_size;
-            let mut new_buf = Vec::new();
-            while let Some(prev) = self.next() {
-                new_buf.push(prev.to_path_buf());
+            let mut new_buf = VecDeque::new();
+            while let Some((prev, _)) = self.next() {
+                new_buf.push_back(prev.to_path_buf());
             }
             self.current = relative_current;
             self.tail = new_size - 1;
@@ -164,9 +167,9 @@ impl ImagePicker {
             (None, _) if self.current_img.exists() => unreachable!(),
             (None | Some(ImagePickerAction::Next), ImagePickerSorting::Random(queue)) => {
                 // Use the next images in the queue, if any
-                while let Some(next) = queue.next() {
+                while let Some((next, index)) = queue.next() {
                     if next.exists() {
-                        return (usize::MAX, next.to_path_buf());
+                        return (index, next.to_path_buf());
                     }
                 }
                 let mut tries = 5;
@@ -183,9 +186,9 @@ impl ImagePicker {
                 }
             }
             (Some(ImagePickerAction::Previous), ImagePickerSorting::Random(queue)) => {
-                while let Some(prev) = queue.previous() {
+                while let Some((prev, index)) = queue.previous() {
                     if prev.exists() {
-                        return (usize::MAX, prev.to_path_buf());
+                        return (index, prev.to_path_buf());
                     }
                 }
 
@@ -286,12 +289,11 @@ impl ImagePicker {
 
     pub fn update_current_image(&mut self, img_path: PathBuf, index: usize) {
         match (self.action.take(), &mut self.sorting) {
-            (Some(ImagePickerAction::Next), ImagePickerSorting::Random(queue))
-                if queue.has_reached_end() =>
-            {
-                queue.push(img_path.clone());
+            (Some(ImagePickerAction::Next), ImagePickerSorting::Random(queue)) => {
+                if queue.has_reached_end() || queue.buffer.get(index).is_none() {
+                    queue.push(img_path.clone());
+                }
             }
-            (Some(ImagePickerAction::Next), ImagePickerSorting::Random { .. }) => {}
             (None | Some(ImagePickerAction::Previous), ImagePickerSorting::Random { .. }) => {}
             (
                 _,
@@ -397,16 +399,9 @@ mod tests {
         queue.push(PathBuf::from("mypath"));
         queue.push(PathBuf::from("mypath2"));
         assert_eq!(Path::new("mypath2"), queue.current());
-        assert_eq!(Some(Path::new("mypath")), queue.previous());
+        assert_eq!(Some((Path::new("mypath"), 0)), queue.previous());
         assert_eq!(Path::new("mypath"), queue.current());
 
-        assert_eq!(None, queue.previous());
-
-        // Check that the buffer is circular
-        queue.next();
-        queue.push(PathBuf::from("mypath3"));
-        assert_eq!(Path::new("mypath3"), queue.current());
-        assert_eq!(Some(Path::new("mypath2")), queue.previous());
         assert_eq!(None, queue.previous());
     }
 
@@ -418,14 +413,15 @@ mod tests {
         queue.push(PathBuf::from("mypath3"));
         queue.push(PathBuf::from("mypath4"));
         queue.push(PathBuf::from("mypath5"));
+        assert_eq!(queue.buffer.len(), 5);
         assert_eq!(Path::new("mypath5"), queue.current());
-        assert_eq!(Some(Path::new("mypath4")), queue.previous());
+        assert_eq!(Some((Path::new("mypath4"), 3)), queue.previous());
 
         // Test that the current index works when it's inside the resizing range
         queue.resize(2);
         assert_eq!(Path::new("mypath4"), queue.current());
         assert_eq!(None, queue.previous());
-        assert_eq!(Some(Path::new("mypath5")), queue.next());
+        assert_eq!(Some((Path::new("mypath5"), 1)), queue.next());
     }
 
     #[test]
@@ -439,15 +435,16 @@ mod tests {
         queue.push(PathBuf::from("mypath6"));
         queue.push(PathBuf::from("mypath7"));
         queue.push(PathBuf::from("mypath8"));
+        assert_eq!(queue.buffer.len(), 5);
         assert_eq!(Path::new("mypath8"), queue.current());
-        assert_eq!(Some(Path::new("mypath7")), queue.previous());
-        assert_eq!(Some(Path::new("mypath6")), queue.previous());
-        assert_eq!(Some(Path::new("mypath5")), queue.previous());
+        assert_eq!(Some((Path::new("mypath7"), 3)), queue.previous());
+        assert_eq!(Some((Path::new("mypath6"), 2)), queue.previous());
+        assert_eq!(Some((Path::new("mypath5"), 1)), queue.previous());
 
         // Test that the current item point to the first item available
         queue.resize(2);
         assert_eq!(Path::new("mypath7"), queue.current());
-        assert_eq!(Some(Path::new("mypath8")), queue.next());
+        assert_eq!(Some((Path::new("mypath8"), 1)), queue.next());
         assert_eq!(None, queue.next());
     }
 }
