@@ -38,6 +38,13 @@ pub struct SerializedWallpaperInfo {
     pub mode: Option<BackgroundMode>,
     pub queue_size: Option<usize>,
     pub transition_time: Option<u32>,
+    
+    /// Determines if we should show the transition between black and first 
+    /// wallpaper. `Some(false)` means we instantly cut to the first wallpaper,
+    /// `Some(true)` means we fade from black to the first wallpaper.
+    ///
+    /// See [crate::wallpaper_info::WallpaperInfo]
+    pub initial_transition: Option<bool>,
 }
 
 impl SerializedWallpaperInfo {
@@ -126,6 +133,10 @@ impl SerializedWallpaperInfo {
             (Some(transition_time), _) | (None, Some(transition_time)) => *transition_time,
             (None, None) => Renderer::DEFAULT_TRANSITION_TIME,
         };
+        let initial_transition = match (&self.initial_transition, &default.initial_transition) {
+            (Some(initial_transition), _) | (None, Some(initial_transition)) => *initial_transition,
+            (None, None) => true,
+        };
 
         Ok(WallpaperInfo {
             path,
@@ -135,6 +146,7 @@ impl SerializedWallpaperInfo {
             mode,
             drawn_images_queue_size,
             transition_time,
+            initial_transition
         })
     }
 }

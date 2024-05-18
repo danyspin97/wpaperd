@@ -256,8 +256,9 @@ impl Renderer {
     }
 
     #[inline]
-    pub fn start_transition(&mut self, time: u32) {
+    pub fn start_transition(&mut self, time: u32, new_transition_time: u32) {
         self.time_started = time;
+        self.transition_time = new_transition_time;
         self.transition_fit_changed = false;
     }
 

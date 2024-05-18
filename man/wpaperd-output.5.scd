@@ -50,6 +50,8 @@ represents a different display and can contain the following keys:
 - `transition_time`, how many milliseconds should the transition run. (_Optional_, `300` by default).
 - `queue_size`, decide how big the queue should be when `path` is set a directory and `sorting` is
    set to `random`. (_Optional_, `10` by default)
+- `initial_transition`, whether or not to transition from the initial black screen (_Optional_, `true` by default)
+  
 
 ## DEFAULT SECTION
 
