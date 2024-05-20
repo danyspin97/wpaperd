@@ -41,6 +41,11 @@ pub struct Surface {
     drawn: bool,
     loading_image: Option<(PathBuf, usize)>,
     loading_image_tries: u8,
+    /// Determines whether we should skip the next transition. Used to skip
+    /// the first transition when starting up.
+    ///
+    /// See [crate::wallpaper_info::WallpaperInfo]'s `initial_transition` field
+    skip_next_transition: bool,
 }
 
 impl Surface {
@@ -67,11 +72,13 @@ impl Surface {
 
         let image = black_image();
         let info = Rc::new(RefCell::new(info));
+
         let renderer = unsafe {
-            Renderer::new(image.into(), info.clone(), wallpaper_info.transition_time)
+            Renderer::new(image.into(), info.clone(), 0)
                 .expect("unable to create the renderer")
         };
 
+        let first_transition = !wallpaper_info.initial_transition;
         let mut surface = Self {
             output,
             layer,
@@ -86,6 +93,7 @@ impl Surface {
             image_loader,
             loading_image: None,
             loading_image_tries: 0,
+            skip_next_transition: first_transition,
         };
 
         // Start loading the wallpaper as soon as possible (i.e. surface creation)
@@ -171,7 +179,12 @@ impl Surface {
                     self.egl_context.make_current()?;
                     self.renderer
                         .load_wallpaper(data.into(), self.wallpaper_info.mode)?;
-                    self.renderer.start_transition(time);
+
+                    let transition_time = if self.skip_next_transition { 0 } else { self.wallpaper_info.transition_time };
+                    self.skip_next_transition = false;
+
+                    self.renderer.start_transition(time, transition_time);
+
                     if self.image_picker.is_reloading() {
                         self.image_picker.reloaded();
                     } else {
