@@ -34,7 +34,8 @@ hyprland, ...) and on KDE. **Therefore it won't work on GNOME.**
 - `mesa`
 - `wayland-client`
 - `wayland-egl`
-- `rinstall` (optional for installing `wpaperd`)
+- `rinstall` (optional, for installing `wpaperd`)
+- `libdav1d` (optional, for loading `avif` images)
 
 ### Build
 
@@ -81,9 +82,12 @@ exec-once=~/.local/bin/wpaperd -d
 
 ## Image formats support
 
-loading and dislaying images. Have a look on its
+wpaperd uses the [image] create to load and display images. Have a look on its
 [documentation](https://github.com/image-rs/image/blob/main/README.md#supported-image-formats)
 for the supported formats.
+
+*Note*: To enable `avif` format, build wpaperd with `avif` feature (requires `libdav1d` to be
+installed.
 
 ## Cycling images
 

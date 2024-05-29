@@ -1,3 +1,7 @@
+# 1.1
+
+- Add `avif` feature to load `avif` images (requires `dav1d` library)
+
 # 1.0.1
 
 - Fix drawing at start time
