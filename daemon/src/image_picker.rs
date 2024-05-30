@@ -172,14 +172,33 @@ impl ImagePicker {
                         return (index, next.to_path_buf());
                     }
                 }
+                // If there is only one image just return it
+                if files.len() == 1 {
+                    return (0, files[0].to_path_buf());
+                }
+
+                // Otherwise pick a new random image that has not been drawn before
+                // Try 5 times, then get a random image. We do this because it might appen
+                // that the queue is bigger than the amount of available wallpapers
                 let mut tries = 5;
-                // Otherwise pick a new random image
                 loop {
                     let index = rand::random::<usize>() % files.len();
                     // search for an image that has not been drawn yet
                     // fail after 5 tries
-                    if tries == 0 || !queue.contains(&files[index]) {
+                    if !queue.contains(&files[index]) {
                         break (index, files[index].to_path_buf());
+                    }
+
+                    // We have already tried a bunch of times
+                    // We still need a new image, get the first one that is different than
+                    // the current one. We also know that there is more than one image
+                    if tries == 0 {
+                        break loop {
+                            let index = rand::random::<usize>() % files.len();
+                            if files[index] != self.current_img {
+                                break (index, files[index].to_path_buf());
+                            }
+                        };
                     }
 
                     tries -= 1;
