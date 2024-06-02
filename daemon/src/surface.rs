@@ -74,8 +74,7 @@ impl Surface {
         let info = Rc::new(RefCell::new(info));
 
         let renderer = unsafe {
-            Renderer::new(image.into(), info.clone(), 0)
-                .expect("unable to create the renderer")
+            Renderer::new(image.into(), info.clone(), 0).expect("unable to create the renderer")
         };
 
         let first_transition = !wallpaper_info.initial_transition;
