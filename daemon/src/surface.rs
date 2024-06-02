@@ -46,6 +46,10 @@ pub struct Surface {
     ///
     /// See [crate::wallpaper_info::WallpaperInfo]'s `initial_transition` field
     skip_next_transition: bool,
+    /// Pause state of the automatic wallpaper sequence.
+    /// Setting this to true will mean only an explicit next/previous wallpaper command will change
+    /// the wallpaper.
+    paused: bool,
 }
 
 impl Surface {
@@ -89,6 +93,7 @@ impl Surface {
             event_source: None,
             wallpaper_info,
             drawn: false,
+            paused: false,
             image_loader,
             loading_image: None,
             loading_image_tries: 0,
@@ -179,7 +184,11 @@ impl Surface {
                     self.renderer
                         .load_wallpaper(data.into(), self.wallpaper_info.mode)?;
 
-                    let transition_time = if self.skip_next_transition { 0 } else { self.wallpaper_info.transition_time };
+                    let transition_time = if self.skip_next_transition {
+                        0
+                    } else {
+                        self.wallpaper_info.transition_time
+                    };
                     self.skip_next_transition = false;
 
                     self.renderer.start_transition(time, transition_time);
@@ -397,7 +406,13 @@ impl Surface {
                                 return TimeoutAction::Drop;
                             }
                         };
+
                         if let Some(duration) = surface.wallpaper_info.duration {
+                            // Reset the timer if automatic sequence is (still) paused
+                            if surface.is_paused() {
+                                return TimeoutAction::ToDuration(duration);
+                            };
+
                             // Check that the timer has expired
                             // if the daemon received a next or previous image command
                             // the timer will be reset and we need to account that here
@@ -434,6 +449,19 @@ impl Surface {
         }
         self.surface.frame(qh, self.surface.clone());
         self.surface.commit();
+    }
+
+    #[inline]
+    pub fn pause(&mut self) {
+        self.paused = true;
+    }
+    #[inline]
+    pub fn resume(&mut self) {
+        self.paused = false;
+    }
+    #[inline]
+    pub fn is_paused(&self) -> bool {
+        self.paused
     }
 }
 

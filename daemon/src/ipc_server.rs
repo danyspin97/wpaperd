@@ -123,12 +123,27 @@ pub fn handle_message(
 
             IpcResponse::Ok
         }),
+
         IpcMessage::ReloadWallpaper { monitors } => check_monitors(wpaperd, &monitors).map(|_| {
             for surface in collect_surfaces(wpaperd, monitors) {
                 surface.image_picker.reload();
                 surface.queue_draw(&qh);
             }
 
+            IpcResponse::Ok
+        }),
+
+        IpcMessage::PauseWallpaper { monitors } => check_monitors(wpaperd, &monitors).map(|_| {
+            for surface in collect_surfaces(wpaperd, monitors) {
+                surface.pause();
+            }
+            IpcResponse::Ok
+        }),
+
+        IpcMessage::ResumeWallpaper { monitors } => check_monitors(wpaperd, &monitors).map(|_| {
+            for surface in collect_surfaces(wpaperd, monitors) {
+                surface.resume();
+            }
             IpcResponse::Ok
         }),
     };
