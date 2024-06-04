@@ -1,5 +1,5 @@
 //! IPC socket server.
-//! Based on https://github.com/catacombing/catacomb/blob/master/src/ipc_server.rs
+//! Based on <https://github.com/catacombing/catacomb/blob/master/src/ipc_server.rs>
 
 use std::collections::HashSet;
 use std::fs;
