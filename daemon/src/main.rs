@@ -172,12 +172,21 @@ fn run(opts: Opts, xdg_dirs: BaseDirectories) -> Result<()> {
         // We cannot use WlSurface::frame() because it only works for windows that are
         // already visible, hence we need to draw for the first time and then commit.
         wpaperd.surfaces.iter_mut().for_each(|surface| {
-            if surface.is_configured() && !surface.drawn() {
+            if !surface.is_configured() {
+                return;
+            };
+
+            if !surface.drawn() {
                 surface.add_timer(None, &event_loop.handle(), qh.clone());
                 if let Err(err) = surface.draw(&qh, 0) {
                     error!("{err:?}");
-                }
+                };
             }
+            // If the surface has already been drawn for the first time, then handle pausing/resuming
+            // the automatic wallpaper sequence.
+            else {
+                surface.handle_pause_state(&event_loop.handle(), qh.clone())
+            };
         });
 
         event_loop

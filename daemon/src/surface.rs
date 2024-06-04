@@ -27,6 +27,14 @@ use crate::{
 };
 use crate::{image_loader::ImageLoader, image_picker::ImagePicker};
 
+#[derive(Debug)]
+pub enum EventSource {
+    NotSet,
+    Running(RegistrationToken),
+    // The contained value is the duration that was left on the previous timer, used for starting the next timer.
+    Paused(Duration),
+}
+
 pub struct Surface {
     pub surface: wl_surface::WlSurface,
     pub output: WlOutput,
@@ -34,7 +42,7 @@ pub struct Surface {
     egl_context: EglContext,
     renderer: Renderer,
     pub image_picker: ImagePicker,
-    pub event_source: Option<RegistrationToken>,
+    pub event_source: EventSource,
     wallpaper_info: WallpaperInfo,
     info: Rc<RefCell<DisplayInfo>>,
     image_loader: Rc<RefCell<ImageLoader>>,
@@ -49,7 +57,7 @@ pub struct Surface {
     /// Pause state of the automatic wallpaper sequence.
     /// Setting this to true will mean only an explicit next/previous wallpaper command will change
     /// the wallpaper.
-    paused: bool,
+    should_pause: bool,
 }
 
 impl Surface {
@@ -90,10 +98,10 @@ impl Surface {
             egl_context,
             renderer,
             image_picker,
-            event_source: None,
+            event_source: EventSource::NotSet,
             wallpaper_info,
             drawn: false,
-            paused: false,
+            should_pause: false,
             image_loader,
             loading_image: None,
             loading_image_tries: 0,
@@ -299,81 +307,80 @@ impl Surface {
         qh: &QueueHandle<Wpaperd>,
         mut wallpaper_info: WallpaperInfo,
     ) {
-        if self.wallpaper_info != wallpaper_info {
-            // Put the new value in place
-            std::mem::swap(&mut self.wallpaper_info, &mut wallpaper_info);
-            let path_changed = self.wallpaper_info.path != wallpaper_info.path;
-            self.image_picker.update_sorting(
-                self.wallpaper_info.sorting,
-                path_changed,
-                wallpaper_info.drawn_images_queue_size,
-            );
-            if path_changed {
-                // ask the image_picker to pick a new a image
-                self.image_picker.next_image();
-                self.queue_draw(qh);
-            }
-            if self.wallpaper_info.duration != wallpaper_info.duration {
-                match (self.wallpaper_info.duration, wallpaper_info.duration) {
-                    (None, None) => {
-                        unreachable!()
-                    }
-                    // There was a duration before but now it has been removed
-                    (None, Some(_)) => {
-                        if let Some(registration_token) = self.event_source.take() {
-                            handle.remove(registration_token);
-                        }
-                    }
-                    // There wasn't a duration before but now it has been added or it has changed
-                    (Some(new_duration), None) | (Some(new_duration), Some(_)) => {
-                        if let Some(registration_token) = self.event_source.take() {
-                            handle.remove(registration_token);
-                        }
+        if self.wallpaper_info == wallpaper_info {
+            return;
+        }
 
-                        // if the path has not changed or the duration has changed
-                        // and the remaining time is great than 0
-                        let timer = if let (false, Some(remaining_time)) = (
-                            path_changed,
-                            remaining_duration(
-                                new_duration,
-                                self.image_picker.image_changed_instant,
-                            ),
-                        ) {
-                            Some(Timer::from_duration(remaining_time))
-                        } else {
-                            // otherwise draw the image immediately, the next timer
-                            // will be set to the new duration
-                            Some(Timer::immediate())
-                        };
+        // Put the new value in place
+        std::mem::swap(&mut self.wallpaper_info, &mut wallpaper_info);
+        let path_changed = self.wallpaper_info.path != wallpaper_info.path;
+        self.image_picker.update_sorting(
+            self.wallpaper_info.sorting,
+            path_changed,
+            wallpaper_info.drawn_images_queue_size,
+        );
+        if path_changed {
+            // ask the image_picker to pick a new a image
+            self.image_picker.next_image();
+            self.queue_draw(qh);
+        }
+        if self.wallpaper_info.duration != wallpaper_info.duration {
+            match (self.wallpaper_info.duration, wallpaper_info.duration) {
+                (None, None) => {
+                    unreachable!()
+                }
+                // There was a duration before but now it has been removed
+                (None, Some(_)) => {
+                    if let EventSource::Running(registration_token) = self.event_source {
+                        handle.remove(registration_token);
+                    }
+                }
+                // There wasn't a duration before but now it has been added or it has changed
+                (Some(new_duration), None) | (Some(new_duration), Some(_)) => {
+                    if let EventSource::Running(registration_token) = self.event_source {
+                        handle.remove(registration_token);
+                    }
 
-                        self.add_timer(timer, handle, qh.clone());
-                    }
+                    // if the path has not changed or the duration has changed
+                    // and the remaining time is great than 0
+                    let timer = if let (false, Some(remaining_time)) = (
+                        path_changed,
+                        remaining_duration(new_duration, self.image_picker.image_changed_instant),
+                    ) {
+                        Some(Timer::from_duration(remaining_time))
+                    } else {
+                        // otherwise draw the image immediately, the next timer
+                        // will be set to the new duration
+                        Some(Timer::immediate())
+                    };
+
+                    self.add_timer(timer, handle, qh.clone());
                 }
             }
-            if self.wallpaper_info.mode != wallpaper_info.mode {
-                if let Err(err) = self
-                    .egl_context
-                    .make_current()
-                    .and_then(|_| self.renderer.set_mode(self.wallpaper_info.mode, false))
-                {
-                    error!("{err:?}");
-                }
-                if !path_changed {
-                    // We should draw immediately
-                    if let Err(err) = self.draw(qh, 0) {
-                        warn!("{err:?}");
-                    }
-                }
-            }
-            if self.wallpaper_info.drawn_images_queue_size != wallpaper_info.drawn_images_queue_size
+        }
+
+        if self.wallpaper_info.mode != wallpaper_info.mode {
+            if let Err(err) = self
+                .egl_context
+                .make_current()
+                .and_then(|_| self.renderer.set_mode(self.wallpaper_info.mode, false))
             {
-                self.image_picker
-                    .update_queue_size(self.wallpaper_info.drawn_images_queue_size);
+                error!("{err:?}");
             }
-            if self.wallpaper_info.transition_time != wallpaper_info.transition_time {
-                self.renderer
-                    .update_transition_time(self.wallpaper_info.transition_time);
+            if !path_changed {
+                // We should draw immediately
+                if let Err(err) = self.draw(qh, 0) {
+                    warn!("{err:?}");
+                }
             }
+        }
+        if self.wallpaper_info.drawn_images_queue_size != wallpaper_info.drawn_images_queue_size {
+            self.image_picker
+                .update_queue_size(self.wallpaper_info.drawn_images_queue_size);
+        }
+        if self.wallpaper_info.transition_time != wallpaper_info.transition_time {
+            self.renderer
+                .update_transition_time(self.wallpaper_info.transition_time);
         }
     }
 
@@ -385,59 +392,76 @@ impl Surface {
         handle: &LoopHandle<Wpaperd>,
         qh: QueueHandle<Wpaperd>,
     ) {
-        if let Some(duration) = self.wallpaper_info.duration {
-            let timer = timer.unwrap_or(Timer::from_duration(duration));
-            if self.event_source.is_some() {
-                return;
-            }
+        if matches!(self.event_source, EventSource::Running(_)) {
+            return;
+        }
+        let Some(duration) = self.wallpaper_info.duration else {
+            return;
+        };
 
-            let name = self.name().clone();
-            let registration_token = handle
-                .insert_source(
-                    timer,
-                    move |_deadline, _: &mut (), wpaperd: &mut Wpaperd| {
-                        let surface = match wpaperd
-                            .surface_from_name(&name)
-                            .with_context(|| format!("expecting surface {name} to be available"))
-                        {
-                            Ok(surface) => surface,
-                            Err(err) => {
-                                error!("{err:?}");
-                                return TimeoutAction::Drop;
-                            }
-                        };
+        let timer = timer.unwrap_or(Timer::from_duration(duration));
 
-                        if let Some(duration) = surface.wallpaper_info.duration {
-                            // Reset the timer if automatic sequence is (still) paused
-                            if surface.is_paused() {
-                                return TimeoutAction::ToDuration(duration);
-                            };
-
-                            // Check that the timer has expired
-                            // if the daemon received a next or previous image command
-                            // the timer will be reset and we need to account that here
-                            // i.e. there is a timer of 1 minute. The user changes the image
-                            // with a previous wallpaper command at 50 seconds.
-                            // The timer will be reset to 1 minute and the image will be changed
-                            if let Some(remaining_time) = remaining_duration(
-                                duration,
-                                surface.image_picker.image_changed_instant,
-                            ) {
-                                TimeoutAction::ToDuration(remaining_time)
-                            } else {
-                                // Change the drawn image
-                                surface.image_picker.next_image();
-                                surface.queue_draw(&qh);
-                                TimeoutAction::ToDuration(duration)
-                            }
-                        } else {
-                            TimeoutAction::Drop
+        let name = self.name().clone();
+        let registration_token = handle
+            .insert_source(
+                timer,
+                move |_deadline, _: &mut (), wpaperd: &mut Wpaperd| {
+                    let surface = match wpaperd
+                        .surface_from_name(&name)
+                        .with_context(|| format!("expecting surface {name} to be available"))
+                    {
+                        Ok(surface) => surface,
+                        Err(err) => {
+                            error!("{err:?}");
+                            return TimeoutAction::Drop;
                         }
-                    },
-                )
-                .expect("Failed to insert event source!");
+                    };
 
-            self.event_source = Some(registration_token);
+                    if let Some(duration) = surface.wallpaper_info.duration {
+                        // Check that the timer has expired
+                        // if the daemon received a next or previous image command
+                        // the timer will be reset and we need to account that here
+                        // i.e. there is a timer of 1 minute. The user changes the image
+                        // with a previous wallpaper command at 50 seconds.
+                        // The timer will be reset to 1 minute and the image will be changed
+                        if let Some(remaining_time) =
+                            remaining_duration(duration, surface.image_picker.image_changed_instant)
+                        {
+                            TimeoutAction::ToDuration(remaining_time)
+                        } else {
+                            // Change the drawn image
+                            surface.image_picker.next_image();
+                            surface.queue_draw(&qh);
+                            TimeoutAction::ToDuration(duration)
+                        }
+                    } else {
+                        TimeoutAction::Drop
+                    }
+                },
+            )
+            .expect("Failed to insert event source!");
+
+        self.event_source = EventSource::Running(registration_token);
+    }
+
+    /// Handle updating the timer based on the pause state of the automatic wallpaper sequence.
+    /// Remove the timer if pausing, and add a new timer with the remaining duration of the old
+    /// timer when resuming.
+    pub fn handle_pause_state(&mut self, handle: &LoopHandle<Wpaperd>, qh: QueueHandle<Wpaperd>) {
+        match (self.should_pause, &self.event_source) {
+            // Should pause, but timer is still currently running
+            (true, EventSource::Running(registration_token)) => {
+                let remaining_duration = self.get_remaining_duration().unwrap_or_default();
+
+                handle.remove(*registration_token);
+                self.event_source = EventSource::Paused(remaining_duration);
+            }
+            // Should resume, but timer is not currently running
+            (false, EventSource::Paused(duration)) => {
+                self.add_timer(Some(Timer::from_duration(*duration)), handle, qh.clone());
+            }
+            // Otherwise no update is necessary
+            (_, _) => {}
         }
     }
 
@@ -452,16 +476,24 @@ impl Surface {
     }
 
     #[inline]
-    pub fn pause(&mut self) {
-        self.paused = true;
+    fn get_remaining_duration(&self) -> Option<Duration> {
+        let duration = self.wallpaper_info.duration?;
+        remaining_duration(duration, self.image_picker.image_changed_instant)
     }
+
+    /// Indicate to the main event loop that the automatic wallpaper sequence for this [`Surface`]
+    /// should be paused.
+    /// The actual pausing/resuming is handled in [`Surface::handle_pause_state`]
+    #[inline]
+    pub fn pause(&mut self) {
+        self.should_pause = true;
+    }
+    /// Indicate to the main event loop that the automatic wallpaper sequence for this [`Surface`]
+    /// should be resumed.
+    /// The actual pausing/resuming is handled in [`Surface::handle_pause_state`]
     #[inline]
     pub fn resume(&mut self) {
-        self.paused = false;
-    }
-    #[inline]
-    pub fn is_paused(&self) -> bool {
-        self.paused
+        self.should_pause = false;
     }
 }
 
