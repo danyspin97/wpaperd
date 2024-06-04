@@ -354,6 +354,7 @@ impl Surface {
                         Some(Timer::immediate())
                     };
 
+                    self.event_source = EventSource::NotSet;
                     self.add_timer(timer, handle, qh.clone());
                 }
             }
