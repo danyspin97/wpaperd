@@ -22,7 +22,7 @@ use smithay_client_toolkit::reexports::calloop::ping::Ping;
 
 use crate::{
     image_picker::ImagePicker,
-    render::Renderer,
+    render::Transition,
     wallpaper_info::{BackgroundMode, Sorting, WallpaperInfo},
 };
 
@@ -45,6 +45,8 @@ pub struct SerializedWallpaperInfo {
     ///
     /// See [crate::wallpaper_info::WallpaperInfo]
     pub initial_transition: Option<bool>,
+    #[serde(flatten)]
+    pub transition: Option<Transition>,
 }
 
 impl SerializedWallpaperInfo {
@@ -129,13 +131,19 @@ impl SerializedWallpaperInfo {
             (Some(size), _) | (None, Some(size)) => *size,
             (None, None) => ImagePicker::DEFAULT_DRAWN_IMAGES_QUEUE_SIZE,
         };
-        let transition_time = match (&self.transition_time, &default.transition_time) {
-            (Some(transition_time), _) | (None, Some(transition_time)) => *transition_time,
-            (None, None) => Renderer::DEFAULT_TRANSITION_TIME,
-        };
         let initial_transition = match (&self.initial_transition, &default.initial_transition) {
             (Some(initial_transition), _) | (None, Some(initial_transition)) => *initial_transition,
             (None, None) => true,
+        };
+
+        let transition = match (&self.transition, &default.transition) {
+            (Some(transition), _) | (None, Some(transition)) => transition.clone(),
+            (None, None) => Transition::Fade {},
+        };
+
+        let transition_time = match (&self.transition_time, &default.transition_time) {
+            (Some(transition_time), _) | (None, Some(transition_time)) => *transition_time,
+            (None, None) => transition.default_transition_time(),
         };
 
         Ok(WallpaperInfo {
@@ -147,6 +155,7 @@ impl SerializedWallpaperInfo {
             drawn_images_queue_size,
             transition_time,
             initial_transition,
+            transition,
         })
     }
 }

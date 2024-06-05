@@ -22,6 +22,7 @@ use super::{
     coordinates::{get_opengl_point_coordinates, Coordinates},
     gl,
     wallpaper::Wallpaper,
+    Transition,
 };
 
 fn transparent_image() -> RgbaImage {
@@ -45,51 +46,21 @@ pub struct Renderer {
 }
 
 impl Renderer {
-    pub const DEFAULT_TRANSITION_TIME: u32 = 300;
-
     pub unsafe fn new(
         image: DynamicImage,
         display_info: Rc<RefCell<DisplayInfo>>,
         transition_time: u32,
+        transition: Transition,
     ) -> Result<Self> {
         let gl = gl::Gl::load_with(|name| {
             egl.get_proc_address(name)
                 .expect("egl.get_proc_address to work") as *const std::ffi::c_void
         });
-        let vertex_shader = create_shader(&gl, gl::VERTEX_SHADER, VERTEX_SHADER_SOURCE)
-            .expect("vertex shader creation succeed");
-        let fragment_shader = create_shader(&gl, gl::FRAGMENT_SHADER, FRAGMENT_SHADER_SOURCE)
-            .expect("fragment_shader");
 
-        let program = gl.CreateProgram();
-        gl_check!(gl, "calling CreateProgram");
-        gl.AttachShader(program, vertex_shader);
-        gl_check!(gl, "attach vertex shader");
-        gl.AttachShader(program, fragment_shader);
-        gl_check!(gl, "attach fragment shader");
-        gl.LinkProgram(program);
-        gl_check!(gl, "linking the program");
-        gl.UseProgram(program);
-        {
-            // This shouldn't be needed, gl_check already checks the status of LinkProgram
-            let mut status: i32 = 0;
-            gl.GetProgramiv(program, gl::LINK_STATUS, &mut status as *mut _);
-            ensure!(status == 1, "Program was not linked correctly");
-        }
-        gl_check!(gl, "calling UseProgram");
-        gl.DeleteShader(vertex_shader);
-        gl_check!(gl, "deleting the vertex shader");
-        gl.DeleteShader(fragment_shader);
-        gl_check!(gl, "deleting the fragment shader");
-        gl.UseProgram(program);
-        gl_check!(gl, "calling UseProgram");
+        let program = create_program(&gl, transition)
+            .context("unable to create program during openGL ES initialization")?;
 
         let (vao, vbo, eab) = initialize_objects(&gl)?;
-
-        gl.Uniform1i(0, 0);
-        gl_check!(gl, "calling Uniform1i");
-        gl.Uniform1i(1, 1);
-        gl_check!(gl, "calling Uniform1i");
 
         let old_wallpaper = Wallpaper::new(display_info.clone());
         let current_wallpaper = Wallpaper::new(display_info.clone());
@@ -128,8 +99,9 @@ impl Renderer {
         self.gl.Clear(gl::COLOR_BUFFER_BIT);
         self.check_error("clearing the screen")?;
 
-        let mut progress =
-            ((time - self.time_started) as f32 / self.transition_time as f32).min(1.0);
+        let mut progress = ((time.saturating_sub(self.time_started)) as f32
+            / self.transition_time as f32)
+            .min(1.0);
         let transition_going = progress != 1.0;
 
         match mode {
@@ -141,12 +113,13 @@ impl Renderer {
                     self.gl
                         .BindTexture(gl::TEXTURE_2D, self.transparent_texture);
                     self.gl.ActiveTexture(gl::TEXTURE1);
-                    self.check_error("activating gl::TEXTURE0")?;
+                    self.check_error("activating gl::TEXTURE1")?;
                     self.current_wallpaper.bind(&self.gl)?;
 
                     self.transition_fit_changed = true;
                     // This will recalculate the vertices
                     self.set_mode(mode, true)?;
+                    return Ok(transition_going);
                 }
                 if transition_going {
                     progress = (progress % 0.5) * 2.0;
@@ -156,7 +129,7 @@ impl Renderer {
 
         let loc = self
             .gl
-            .GetUniformLocation(self.program, b"u_progress\0".as_ptr() as *const _);
+            .GetUniformLocation(self.program, b"progress\0".as_ptr() as *const _);
         self.check_error("getting the uniform location")?;
         self.gl.Uniform1f(loc, progress);
         self.check_error("calling Uniform1i")?;
@@ -172,6 +145,12 @@ impl Renderer {
         std::mem::swap(&mut self.old_wallpaper, &mut self.current_wallpaper);
         self.current_wallpaper.load_image(&self.gl, image)?;
 
+        self.bind_wallpapers(mode)?;
+
+        Ok(())
+    }
+
+    fn bind_wallpapers(&mut self, mode: BackgroundMode) -> Result<()> {
         match mode {
             BackgroundMode::Stretch | BackgroundMode::Center | BackgroundMode::Tile => unsafe {
                 self.set_mode(mode, false)?;
@@ -193,7 +172,7 @@ impl Renderer {
                 self.gl
                     .BindTexture(gl::TEXTURE_2D, self.transparent_texture);
             },
-        }
+        };
 
         Ok(())
     }
@@ -201,57 +180,94 @@ impl Renderer {
     pub fn set_mode(
         &mut self,
         mode: BackgroundMode,
-        half_transition_for_fit_mode: bool,
+        current_vertices_for_fit_mode: bool,
     ) -> Result<()> {
-        match mode {
+        let (vertices, texture_scale, prev_texture_scale) = match mode {
             BackgroundMode::Stretch | BackgroundMode::Center | BackgroundMode::Tile => {
-                // The vertex data will be the default in this case
-                let vec_coordinates = Coordinates::default_vec_coordinates();
-                let current_tex_coord = &self.current_wallpaper.generate_texture_coordinates(mode);
-                let old_tex_coord = &self.old_wallpaper.generate_texture_coordinates(mode);
+                let ratio = self.display_info.borrow().ratio();
+                let current_image_ratio = self.current_wallpaper.image_height as f32
+                    / self.current_wallpaper.image_width as f32;
+                let aspect = current_image_ratio / ratio;
+                let texture_scale = Box::new(match mode {
+                    BackgroundMode::Stretch => [1.0, 1.0],
+                    BackgroundMode::Center => [1.0, 1.0 / aspect],
+                    BackgroundMode::Fit => unreachable!(),
+                    BackgroundMode::Tile => [aspect, 1.0],
+                });
+                let prev_image_ratio =
+                    self.old_wallpaper.image_height as f32 / self.old_wallpaper.image_width as f32;
+                let aspect = prev_image_ratio / ratio;
+                let prev_texture_scale = Box::new(match mode {
+                    BackgroundMode::Stretch => [1.0, 1.0],
+                    BackgroundMode::Center => [1.0, 1.0 / aspect],
+                    BackgroundMode::Fit => unreachable!(),
+                    BackgroundMode::Tile => [aspect, 1.0],
+                });
 
-                let vertex_data =
-                    get_opengl_point_coordinates(vec_coordinates, current_tex_coord, old_tex_coord);
-
-                unsafe {
-                    // Update the vertex buffer
-                    self.gl.BufferSubData(
-                        gl::ARRAY_BUFFER,
-                        0,
-                        (vertex_data.len() * std::mem::size_of::<f32>()) as gl::types::GLsizeiptr,
-                        vertex_data.as_ptr() as *const _,
-                    );
-                    self.check_error("buffering the data")?;
-                }
+                (
+                    Coordinates::default_vec_coordinates(),
+                    texture_scale,
+                    prev_texture_scale,
+                )
             }
             BackgroundMode::Fit => {
-                let vec_coordinates = if half_transition_for_fit_mode {
+                let vec_coordinates = if current_vertices_for_fit_mode {
                     self.current_wallpaper
                         .generate_vertices_coordinates_for_fit_mode()
                 } else {
-                    self.old_wallpaper.generate_texture_coordinates(mode)
+                    self.old_wallpaper
+                        .generate_vertices_coordinates_for_fit_mode()
                 };
 
-                let old_tex_coord = &self.old_wallpaper.generate_texture_coordinates(mode);
+                let texture_scale = Box::new([1.0, 1.0]);
 
-                let vertex_data = get_opengl_point_coordinates(
-                    vec_coordinates,
-                    &Coordinates::default_texture_coordinates(),
-                    old_tex_coord,
-                );
-
-                unsafe {
-                    // Update the vertex buffer
-                    self.gl.BufferSubData(
-                        gl::ARRAY_BUFFER,
-                        0,
-                        (vertex_data.len() * std::mem::size_of::<f32>()) as gl::types::GLsizeiptr,
-                        vertex_data.as_ptr() as *const _,
-                    );
-                    self.check_error("buffering the data")?;
-                }
+                (vec_coordinates, texture_scale.clone(), texture_scale)
             }
         };
+
+        let vertex_data =
+            get_opengl_point_coordinates(vertices, Coordinates::default_texture_coordinates());
+
+        unsafe {
+            // Update the vertex buffer
+            self.gl.BufferSubData(
+                gl::ARRAY_BUFFER,
+                0,
+                (vertex_data.len() * std::mem::size_of::<f32>()) as gl::types::GLsizeiptr,
+                vertex_data.as_ptr() as *const _,
+            );
+            self.check_error("buffering the data")?;
+
+            let loc = self
+                .gl
+                .GetUniformLocation(self.program, b"textureScale\0".as_ptr() as *const _);
+            self.check_error("getting the uniform location")?;
+            ensure!(loc > 0, "textureScale not found");
+            self.gl
+                .Uniform2fv(loc, 1, texture_scale.as_ptr() as *const _);
+            self.check_error("calling Uniform2fv on textureScale")?;
+
+            let loc = self
+                .gl
+                .GetUniformLocation(self.program, b"prevTextureScale\0".as_ptr() as *const _);
+            self.check_error("getting the uniform location")?;
+            ensure!(loc > 0, "prevTextureScale not found");
+            self.gl
+                .Uniform2fv(loc, 1, prev_texture_scale.as_ptr() as *const _);
+            self.check_error("calling Uniform2fv on prevTextureScale")?;
+
+            let display_info = self.display_info.borrow();
+            let ratio =
+                display_info.adjusted_width() as f32 / display_info.adjusted_height() as f32;
+
+            let loc = self
+                .gl
+                .GetUniformLocation(self.program, b"ratio\0".as_ptr() as *const _);
+            self.check_error("getting the uniform location")?;
+            self.gl.Uniform1f(loc, ratio);
+            self.check_error("calling Uniform1f")?;
+        }
+
         Ok(())
     }
 
@@ -301,6 +317,74 @@ impl Renderer {
         {
             error!("{err:?}");
         }
+    }
+
+    #[inline]
+    pub fn update_transition(&mut self, transition: Transition) {
+        match create_program(&self.gl, transition) {
+            Ok(program) => {
+                unsafe {
+                    self.gl.DeleteProgram(self.program);
+                }
+                self.program = program;
+            }
+            Err(err) => error!("{err:?}"),
+        }
+    }
+}
+
+fn create_program(gl: &gl::Gl, transition: Transition) -> Result<gl::types::GLuint> {
+    unsafe {
+        let program = gl.CreateProgram();
+        gl_check!(gl, "calling CreateProgram");
+
+        let vertex_shader = create_shader(gl, gl::VERTEX_SHADER, &[VERTEX_SHADER_SOURCE.as_ptr()])
+            .expect("vertex shader creation succeed");
+        let (uniform_callback, shader) = transition.clone().shader();
+        let fragment_shader = create_shader(
+            gl,
+            gl::FRAGMENT_SHADER,
+            &[FRAGMENT_SHADER_SOURCE.as_ptr(), shader.as_ptr()],
+        )
+        .with_context(|| {
+            format!("unable to create fragment_shader with transisition {transition:?}")
+        })?;
+
+        gl.AttachShader(program, vertex_shader);
+        gl_check!(gl, "attach vertex shader");
+        gl.AttachShader(program, fragment_shader);
+        gl_check!(gl, "attach fragment shader");
+        gl.LinkProgram(program);
+        gl_check!(gl, "linking the program");
+        {
+            // This shouldn't be needed, gl_check already checks the status of LinkProgram
+            let mut status: i32 = 0;
+            gl.GetProgramiv(program, gl::LINK_STATUS, &mut status as *mut _);
+            ensure!(status == 1, "Program was not linked correctly");
+        }
+        gl_check!(gl, "calling UseProgram");
+        gl.DeleteShader(vertex_shader);
+        gl_check!(gl, "deleting the vertex shader");
+        gl.DeleteShader(fragment_shader);
+        gl_check!(gl, "deleting the fragment shader");
+        gl.UseProgram(program);
+        gl_check!(gl, "calling UseProgram");
+
+        // We need to setup the uniform each time we create a program
+        let loc = gl.GetUniformLocation(program, b"u_prev_texture\0".as_ptr() as *const _);
+        gl_check!(gl, "getting the uniform location for u_prev_texture");
+        ensure!(loc > 0, "u_prev_texture not found");
+        gl.Uniform1i(loc, 0);
+        gl_check!(gl, "calling Uniform1i");
+        let loc = gl.GetUniformLocation(program, b"u_texture\0".as_ptr() as *const _);
+        gl_check!(gl, "getting the uniform location for u_texture");
+        ensure!(loc > 0, "u_texture not found");
+        gl.Uniform1i(loc, 1);
+        gl_check!(gl, "calling Uniform1i");
+
+        uniform_callback(gl, program)?;
+
+        Ok(program)
     }
 }
 

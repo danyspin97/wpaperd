@@ -12,14 +12,14 @@ use super::gl;
 pub unsafe fn create_shader(
     gl: &gl::Gl,
     shader: gl::types::GLenum,
-    source: &[u8],
+    sources: &[*const i8],
 ) -> Result<gl::types::GLuint> {
     let shader = gl.CreateShader(shader);
     gl_check!(gl, "calling CreateShader");
     gl.ShaderSource(
         shader,
-        1,
-        [source.as_ptr().cast()].as_ptr(),
+        sources.len() as i32,
+        sources.as_ptr().cast(),
         std::ptr::null(),
     );
     gl_check!(gl, "calling Shadersource");
@@ -52,38 +52,47 @@ pub unsafe fn create_shader(
     }
 }
 
-pub const VERTEX_SHADER_SOURCE: &[u8] = b"
+pub const VERTEX_SHADER_SOURCE: &CStr = c"
 #version 320 es
 precision mediump float;
 
 layout (location = 0) in vec2 aPosition;
-layout (location = 1) in vec2 aCurrentTexCoord;
-layout (location = 2) in vec2 aOldTexCoord;
+layout (location = 1) in vec2 aTexCoord;
 
-out vec2 v_old_texcoord;
-out vec2 v_current_texcoord;
+out vec2 v_texcoord;
 
 void main() {
     gl_Position = vec4(aPosition, 1.0, 1.0);
-    v_current_texcoord = aCurrentTexCoord;
-    v_old_texcoord = aOldTexCoord;
-}
-\0";
+    v_texcoord = aTexCoord;
+}";
 
-pub const FRAGMENT_SHADER_SOURCE: &[u8] = b"
+pub const FRAGMENT_SHADER_SOURCE: &CStr = c"
 #version 320 es
 precision mediump float;
 out vec4 FragColor;
 
-in vec2 v_old_texcoord;
-in vec2 v_current_texcoord;
+in vec2 v_texcoord;
 
-layout(location = 0) uniform sampler2D u_old_texture;
-layout(location = 1) uniform sampler2D u_current_texture;
+layout (location = 2) uniform vec2 textureScale;
+layout (location = 3) uniform vec2 prevTextureScale;
+layout (location = 4) uniform sampler2D u_prev_texture;
+layout (location = 5) uniform sampler2D u_texture;
 
-layout(location = 2) uniform float u_progress;
+uniform float progress;
+uniform float ratio;
+
+vec4 transition(vec2);
+
+vec4 getFromColor(vec2 uv) {
+    uv = (uv - 0.5) * prevTextureScale + (0.5 * prevTextureScale);
+    return texture(u_prev_texture, uv);
+}
+
+vec4 getToColor(vec2 uv) {
+    uv = (uv - 0.5) * textureScale + (0.5 * textureScale);
+    return texture(u_texture, uv);
+}
 
 void main() {
-    FragColor = mix(texture(u_old_texture, v_old_texcoord), texture(u_current_texture, v_current_texcoord), u_progress);
-}
-\0";
+    FragColor = transition(v_texcoord);
+}";

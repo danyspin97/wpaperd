@@ -6,14 +6,14 @@ use color_eyre::{
 };
 use image::DynamicImage;
 
-use crate::{display_info::DisplayInfo, gl_check, render::gl, wallpaper_info::BackgroundMode};
+use crate::{display_info::DisplayInfo, gl_check, render::gl};
 
 use super::{coordinates::Coordinates, load_texture};
 
 pub struct Wallpaper {
     pub texture: gl::types::GLuint,
-    image_width: u32,
-    image_height: u32,
+    pub image_width: u32,
+    pub image_height: u32,
     display_info: Rc<RefCell<DisplayInfo>>, // transparent_texture: gl::types::GLuint,
 }
 
@@ -49,60 +49,6 @@ impl Wallpaper {
         self.texture = texture;
 
         Ok(())
-    }
-
-    pub fn generate_texture_coordinates(&self, mode: BackgroundMode) -> Coordinates {
-        // adjusted_width and adjusted_height returns the rotated sizes in case
-        // the display is rotated. However, openGL is drawing in the same orientation
-        // as our display (i.e. we don't apply any transform here)
-        // We still need the scale
-        let display_width = self.display_info.borrow().scaled_width();
-        let display_height = self.display_info.borrow().scaled_height();
-        let display_ratio = display_width as f32 / display_height as f32;
-        let image_ratio = self.image_width as f32 / self.image_height as f32;
-
-        match mode {
-            BackgroundMode::Stretch => Coordinates::default_texture_coordinates(),
-            BackgroundMode::Fit => Coordinates::default_texture_coordinates(),
-            BackgroundMode::Center if display_ratio == image_ratio => {
-                Coordinates::default_texture_coordinates()
-            }
-            BackgroundMode::Center if display_ratio > image_ratio => {
-                // Same as width calculation below , but with inverted parameters
-                // This is the expanded expression
-                // adjusted_height = image_width as f32 / display_ratio;
-                // y = (1.0 - image_height as f32 / adjusted_height) / 2.0;
-                // We can simplify by just doing display_ration / image_ratio
-                let y = (1.0 - image_ratio / display_ratio) / 2.0;
-                Coordinates::new(
-                    Coordinates::TEX_X_LEFT,
-                    Coordinates::TEX_X_RIGHT,
-                    Coordinates::TEX_Y_BOTTOM + y,
-                    Coordinates::TEX_Y_TOP - y,
-                )
-            }
-            BackgroundMode::Center => {
-                // Calculte the adjusted width, i.e. the width that the image should have to
-                // have the same ratio as the display
-                // adjusted_width = image_height as f32 * display_ratio;
-                // Calculate the ratio between the adjusted_width and the image_width
-                // x = (1.0 - adjusted_width / image_width as f32) / 2.0;
-                // Simplify the expression and do the same as above
-                let x = (1.0 - display_ratio / image_ratio) / 2.0;
-                Coordinates::new(
-                    Coordinates::TEX_X_LEFT + x,
-                    Coordinates::TEX_X_RIGHT - x,
-                    Coordinates::TEX_Y_BOTTOM,
-                    Coordinates::TEX_Y_TOP,
-                )
-            }
-            BackgroundMode::Tile => {
-                // Tile using the original image size
-                let x = display_width as f32 / self.image_width as f32;
-                let y = display_height as f32 / self.image_height as f32;
-                Coordinates::new(Coordinates::TEX_X_LEFT, x, Coordinates::TEX_Y_BOTTOM, y)
-            }
-        }
     }
 
     pub fn generate_vertices_coordinates_for_fit_mode(&self) -> Coordinates {

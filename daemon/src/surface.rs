@@ -86,7 +86,13 @@ impl Surface {
         let info = Rc::new(RefCell::new(info));
 
         let renderer = unsafe {
-            Renderer::new(image.into(), info.clone(), 0).expect("unable to create the renderer")
+            Renderer::new(
+                image.into(),
+                info.clone(),
+                0,
+                wallpaper_info.transition.clone(),
+            )
+            .expect("unable to create the renderer")
         };
 
         let first_transition = !wallpaper_info.initial_transition;
@@ -372,6 +378,17 @@ impl Surface {
                 // We should draw immediately
                 if let Err(err) = self.draw(qh, 0) {
                     warn!("{err:?}");
+                }
+            }
+            if self.wallpaper_info.transition != wallpaper_info.transition {
+                match self.egl_context.make_current() {
+                    Ok(_) => {
+                        self.renderer
+                            .update_transition(self.wallpaper_info.transition.clone());
+                    }
+                    Err(err) => {
+                        error!("{err:?}");
+                    }
                 }
             }
         }

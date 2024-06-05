@@ -16,7 +16,7 @@ impl Coordinates {
     pub const TEX_Y_BOTTOM: f32 = 0.0;
     pub const TEX_Y_TOP: f32 = 1.0;
 
-    pub const fn new(x_left: f32, x_right: f32, y_bottom: f32, y_top: f32) -> Self {
+    pub fn new(x_left: f32, x_right: f32, y_bottom: f32, y_top: f32) -> Self {
         Self {
             x_left,
             x_right,
@@ -46,33 +46,24 @@ impl Coordinates {
 
 pub fn get_opengl_point_coordinates(
     vec_coordinates: Coordinates,
-    current_tex_coord: &Coordinates,
-    old_tex_coord: &Coordinates,
-) -> [f32; 24] {
+    tex_coordinates: Coordinates,
+) -> [f32; 16] {
     [
         vec_coordinates.x_left, // top left start
         vec_coordinates.y_top,
-        current_tex_coord.x_left,
-        current_tex_coord.y_top,
-        old_tex_coord.x_left,
-        old_tex_coord.y_top,    // top left stop
+        tex_coordinates.x_left,
+        tex_coordinates.y_top,  // top left stop
         vec_coordinates.x_left, // bottom left start
         vec_coordinates.y_bottom,
-        current_tex_coord.x_left,
-        current_tex_coord.y_bottom,
-        old_tex_coord.x_left,
-        old_tex_coord.y_bottom,  // bottom left stop
-        vec_coordinates.x_right, // bottom right start
+        tex_coordinates.x_left,
+        tex_coordinates.y_bottom, // bottom left stop
+        vec_coordinates.x_right,  // bottom right start
         vec_coordinates.y_bottom,
-        current_tex_coord.x_right,
-        current_tex_coord.y_bottom,
-        old_tex_coord.x_right,
-        old_tex_coord.y_bottom,  // bottom right stop
-        vec_coordinates.x_right, // top right start
+        tex_coordinates.x_right,
+        tex_coordinates.y_bottom, // bottom right stop
+        vec_coordinates.x_right,  // top right start
         vec_coordinates.y_top,
-        current_tex_coord.x_right,
-        current_tex_coord.y_top,
-        old_tex_coord.x_right,
-        old_tex_coord.y_top, // top right // stop
+        tex_coordinates.x_right,
+        tex_coordinates.y_top, // top right // stop
     ]
 }

@@ -2,7 +2,7 @@ use std::{path::PathBuf, time::Duration};
 
 use serde::Deserialize;
 
-use crate::{image_picker::ImagePicker, render::Renderer};
+use crate::{image_picker::ImagePicker, render::Transition};
 
 #[derive(PartialEq, Debug)]
 pub struct WallpaperInfo {
@@ -18,6 +18,7 @@ pub struct WallpaperInfo {
     /// wallpaper. `false` means we instantly cut to the first wallpaper,
     /// `true` means we fade from black to the first wallpaper.
     pub initial_transition: bool,
+    pub transition: Transition,
 }
 
 impl Default for WallpaperInfo {
@@ -29,8 +30,9 @@ impl Default for WallpaperInfo {
             sorting: Sorting::default(),
             mode: BackgroundMode::default(),
             drawn_images_queue_size: ImagePicker::DEFAULT_DRAWN_IMAGES_QUEUE_SIZE,
-            transition_time: Renderer::DEFAULT_TRANSITION_TIME,
+            transition_time: Transition::Fade {}.default_transition_time(),
             initial_transition: true,
+            transition: Transition::Fade {},
         }
     }
 }

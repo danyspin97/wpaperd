@@ -2,6 +2,7 @@ mod coordinates;
 mod egl_context;
 mod renderer;
 mod shader;
+mod transition;
 mod wallpaper;
 
 use std::ffi::{c_void, CStr};
@@ -14,6 +15,7 @@ use image::DynamicImage;
 
 pub use egl_context::EglContext;
 pub use renderer::Renderer;
+pub use transition::Transition;
 
 pub mod gl {
     #![allow(clippy::all)]
@@ -25,7 +27,7 @@ pub mod gl {
 // Macro that check the error code of the last OpenGL call and returns a Result.
 #[macro_export]
 macro_rules! gl_check {
-    ($gl:expr, $desc:tt) => {{
+    ($gl:expr, $desc:expr) => {{
         let error = $gl.GetError();
         if error != gl::NO_ERROR {
             let error_string = $gl.GetString(error);
@@ -84,13 +86,12 @@ fn initialize_objects(
 
         const POS_ATTRIB: i32 = 0;
         const TEX_ATTRIB: i32 = 1;
-        const TEX2_ATTRIB: i32 = 2;
         gl.VertexAttribPointer(
             POS_ATTRIB as gl::types::GLuint,
             2,
             gl::FLOAT,
             0,
-            6 * std::mem::size_of::<f32>() as gl::types::GLsizei,
+            4 * std::mem::size_of::<f32>() as gl::types::GLsizei,
             std::ptr::null(),
         );
         gl_check!(gl, "setting the position attribute for the vertex");
@@ -101,22 +102,11 @@ fn initialize_objects(
             2,
             gl::FLOAT,
             0,
-            6 * std::mem::size_of::<f32>() as gl::types::GLsizei,
+            4 * std::mem::size_of::<f32>() as gl::types::GLsizei,
             (2 * std::mem::size_of::<f32>()) as *const () as *const _,
         );
         gl_check!(gl, "setting the texture attribute for the vertex");
         gl.EnableVertexAttribArray(TEX_ATTRIB as gl::types::GLuint);
-        gl_check!(gl, "enabling the texture attribute for the vertex");
-        gl.VertexAttribPointer(
-            TEX2_ATTRIB as gl::types::GLuint,
-            2,
-            gl::FLOAT,
-            0,
-            6 * std::mem::size_of::<f32>() as gl::types::GLsizei,
-            (4 * std::mem::size_of::<f32>()) as *const () as *const _,
-        );
-        gl_check!(gl, "setting the texture attribute for the vertex");
-        gl.EnableVertexAttribArray(TEX2_ATTRIB as gl::types::GLuint);
         gl_check!(gl, "enabling the texture attribute for the vertex");
 
         Ok((vao, vbo, eab))
