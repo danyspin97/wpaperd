@@ -8,6 +8,8 @@ pub enum IpcMessage {
     CurrentWallpaper { monitor: String },
     NextWallpaper { monitors: Vec<String> },
     PreviousWallpaper { monitors: Vec<String> },
+    PauseWallpaper { monitors: Vec<String> },
+    ResumeWallpaper { monitors: Vec<String> },
     AllWallpapers,
     ReloadWallpaper { monitors: Vec<String> },
 }

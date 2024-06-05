@@ -38,8 +38,8 @@ pub struct SerializedWallpaperInfo {
     pub mode: Option<BackgroundMode>,
     pub queue_size: Option<usize>,
     pub transition_time: Option<u32>,
-    
-    /// Determines if we should show the transition between black and first 
+
+    /// Determines if we should show the transition between black and first
     /// wallpaper. `Some(false)` means we instantly cut to the first wallpaper,
     /// `Some(true)` means we fade from black to the first wallpaper.
     ///
@@ -146,7 +146,7 @@ impl SerializedWallpaperInfo {
             mode,
             drawn_images_queue_size,
             transition_time,
-            initial_transition
+            initial_transition,
         })
     }
 }

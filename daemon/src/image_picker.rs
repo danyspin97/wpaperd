@@ -178,7 +178,7 @@ impl ImagePicker {
                 }
 
                 // Otherwise pick a new random image that has not been drawn before
-                // Try 5 times, then get a random image. We do this because it might appen
+                // Try 5 times, then get a random image. We do this because it might happen
                 // that the queue is bigger than the amount of available wallpapers
                 let mut tries = 5;
                 loop {

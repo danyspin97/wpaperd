@@ -18,7 +18,7 @@ rust-version = "1.61.0"
 wpaperd-ipc = { path = "../ipc", version = "1.0.0" }
 clap = { version = "4.5.4", features = ["derive", "wrap_help"] }
 color-eyre = { version = "0.6.3", default-features = false }
-flexi_logger = { version = "0.28.0", default-features = false, features = ["colors"] }
+flexi_logger = { version = "0.28.1", default-features = false, features = ["colors"] }
 image = "0.25.1"
 hotwatch = "0.5.0"
 humantime-serde = "1.1.1"
@@ -26,14 +26,14 @@ log = "0.4.21"
 new_mime_guess = "4.0.1"
 nix = { version = "0.28.0", features = ["process"] }
 rand = "0.8.5"
-serde = { version = "1.0.198", features = ["derive", "rc"] }
+serde = { version = "1.0.203", features = ["derive", "rc"] }
 smithay-client-toolkit = { version = "0.18.1", default-features = false, features = [ "calloop" ] }
-toml = "0.8.12"
+toml = "0.8.13"
 xdg = "2.5.2"
 walkdir = "2.5.0"
 dirs = "5.0.1"
-serde_json = "1.0.116"
-wayland-egl = "0.32.0"
+serde_json = "1.0.117"
+wayland-egl = "0.32.1"
 khronos-egl = { version = "6.0.0", features = [ "static" ] }
 
 [build-dependencies]

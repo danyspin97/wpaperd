@@ -1,7 +1,7 @@
 //! Calloop socket event source.
 //!
 //! This module provides a Calloop event source for Unix domain sockets.
-//! https://github.com/catacombing/catacomb/blob/master/src/socket.rs
+//! <https://github.com/catacombing/catacomb/blob/master/src/socket.rs>
 
 use std::io::{self, ErrorKind};
 use std::os::unix::net::{UnixListener, UnixStream};

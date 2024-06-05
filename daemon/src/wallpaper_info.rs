@@ -14,7 +14,7 @@ pub struct WallpaperInfo {
     pub drawn_images_queue_size: usize,
     pub transition_time: u32,
 
-    /// Determines if we should show the transition between black and first 
+    /// Determines if we should show the transition between black and first
     /// wallpaper. `false` means we instantly cut to the first wallpaper,
     /// `true` means we fade from black to the first wallpaper.
     pub initial_transition: bool,
