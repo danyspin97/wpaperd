@@ -29,7 +29,7 @@ pub fn listen_on_ipc_socket(socket_path: &Path) -> Result<SocketSource> {
     Ok(socket)
 }
 
-fn check_monitors(wpaperd: &Wpaperd, monitors: &Vec<String>) -> Result<(), IpcError> {
+fn check_monitors(wpaperd: &Wpaperd, monitors: &[String]) -> Result<(), IpcError> {
     for monitor in monitors {
         if !wpaperd
             .surfaces
@@ -146,6 +146,18 @@ pub fn handle_message(
             }
             IpcResponse::Ok
         }),
+
+        IpcMessage::SetWallpaper { monitor, wallpaper } => {
+            dbg!("SetWallpaper");
+            let monitors = vec![monitor];
+            check_monitors(wpaperd, &monitors).map(|_| {
+                for surf in collect_surfaces(wpaperd, monitors).iter_mut() {
+                    surf.set_new_wallpaper_path(wallpaper.as_path());
+                    surf.draw(&qh, 1_000).unwrap(); //TODO: should draw take an Option<'time'>?
+                }
+                IpcResponse::Ok
+            })
+        }
     };
 
     let mut stream = BufWriter::new(ustream);

@@ -29,6 +29,9 @@ fn main() {
         SubCmd::ReloadWallpaper { monitors } => IpcMessage::ReloadWallpaper { monitors },
         SubCmd::PauseWallpaper { monitors } => IpcMessage::PauseWallpaper { monitors },
         SubCmd::ResumeWallpaper { monitors } => IpcMessage::ResumeWallpaper { monitors },
+        SubCmd::SetWallaper { monitor, wallpaper } => {
+            IpcMessage::SetWallpaper { monitor, wallpaper }
+        }
     };
     conn.write_all(&serde_json::to_vec(&msg).unwrap()).unwrap();
     let mut buf = String::new();
@@ -37,7 +40,7 @@ fn main() {
         serde_json::from_str(&buf).expect("wpaperd to return a valid json");
     match res {
         Ok(resp) => match resp {
-            IpcResponse::CurrentWallpaper { path } => println!("{}", path.to_string_lossy()),
+            IpcResponse::CurrentWallpaper { path } => println!("{}", path.display()),
             IpcResponse::AllWallpapers { entries: paths } => {
                 if json_resp {
                     #[derive(Serialize)]

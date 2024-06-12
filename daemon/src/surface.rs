@@ -1,6 +1,6 @@
 use std::{
     cell::RefCell,
-    path::PathBuf,
+    path::{Path, PathBuf},
     rc::Rc,
     time::{Duration, Instant},
 };
@@ -400,6 +400,10 @@ impl Surface {
             self.renderer
                 .update_transition_time(self.wallpaper_info.transition_time);
         }
+    }
+
+    pub fn set_new_wallpaper_path(&mut self, new_path: &Path) {
+        self.wallpaper_info.path = new_path.to_path_buf();
     }
 
     /// Add a new timer in the event_loop for the current duration

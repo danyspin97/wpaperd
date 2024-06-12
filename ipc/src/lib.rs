@@ -12,6 +12,7 @@ pub enum IpcMessage {
     ResumeWallpaper { monitors: Vec<String> },
     AllWallpapers,
     ReloadWallpaper { monitors: Vec<String> },
+    SetWallpaper { monitor: String, wallpaper: PathBuf },
 }
 
 #[derive(Serialize, Deserialize)]

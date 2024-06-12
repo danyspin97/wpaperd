@@ -26,4 +26,10 @@ pub enum SubCmd {
     PauseWallpaper { monitors: Vec<String> },
     #[clap(visible_alias = "resume")]
     ResumeWallpaper { monitors: Vec<String> },
+
+    #[clap(visible_alias = "set")]
+    SetWallaper {
+        monitor: String,
+        wallpaper: std::path::PathBuf,
+    },
 }
