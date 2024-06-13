@@ -34,7 +34,7 @@ impl EglContext {
             egl::CONTEXT_MAJOR_VERSION,
             3,
             egl::CONTEXT_MINOR_VERSION,
-            2,
+            0,
             egl::NONE,
         ];
 

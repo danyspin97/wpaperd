@@ -84,12 +84,12 @@ uniform float ratio;
 vec4 transition(vec2);
 
 vec4 getFromColor(vec2 uv) {
-    uv = (uv - 0.5) * prevTextureScale + (0.5 * prevTextureScale);
+    uv = (uv - 0.5) * prevTextureScale + (0.5);
     return texture(u_prev_texture, uv);
 }
 
 vec4 getToColor(vec2 uv) {
-    uv = (uv - 0.5) * textureScale + (0.5 * textureScale);
+    uv = (uv - 0.5) * textureScale + (0.5);
     return texture(u_texture, uv);
 }
 
