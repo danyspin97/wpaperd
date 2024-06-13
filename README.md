@@ -99,10 +99,18 @@ $ wpaperctl next
 $ wpaperctl previous
 ```
 
-When `sorting` is set to `asceding` and `desceding`, _wpaperd_ will use the wallpaper name to
+When `sorting` is set to `ascending` and `descending`, _wpaperd_ will use the wallpaper name to
 calculate the next wallpaper accordingly. When `sorting` is set to `random`, it will store
 all the wallpapers shown in a queue, so that the commands `next` and `previous` can work
 as intended.
+
+The cycling of images can also be paused/resumed by running the `pause` and `resume` commands, or just `toggle-pause`, using _wpaperctl_:
+
+```bash
+$ wpaperctl pause
+$ wpaperctl resume
+$ wpaperctl toggle-pause
+```
 
 ## Wallpaper Configuration
 
