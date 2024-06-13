@@ -513,6 +513,13 @@ impl Surface {
     pub fn resume(&mut self) {
         self.should_pause = false;
     }
+
+    /// Returns a boolean representing whether this [`Surface`] is set to indicate to the main event
+    /// loop that its automatic wallpaper sequence should be paused.
+    #[inline]
+    pub fn should_pause(&self) -> bool {
+        self.should_pause
+    }
 }
 
 fn black_image() -> RgbaImage {

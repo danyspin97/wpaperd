@@ -146,6 +146,24 @@ pub fn handle_message(
             }
             IpcResponse::Ok
         }),
+
+        IpcMessage::TogglePauseWallpaper { monitors } => {
+            check_monitors(wpaperd, &monitors).map(|_| {
+                let surfaces = collect_surfaces(wpaperd, monitors);
+                if surfaces.is_empty() {
+                    return IpcResponse::Ok;
+                }
+
+                // Ensure synced pause state for the provided surfaces
+                if surfaces[0].should_pause() {
+                    surfaces.into_iter().for_each(|s| s.resume());
+                } else {
+                    surfaces.into_iter().for_each(|s| s.pause());
+                };
+
+                IpcResponse::Ok
+            })
+        }
     };
 
     let mut stream = BufWriter::new(ustream);
