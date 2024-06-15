@@ -29,7 +29,7 @@ pub fn listen_on_ipc_socket(socket_path: &Path) -> Result<SocketSource> {
     Ok(socket)
 }
 
-fn check_monitors(wpaperd: &Wpaperd, monitors: &Vec<String>) -> Result<(), IpcError> {
+fn check_monitors(wpaperd: &Wpaperd, monitors: &[String]) -> Result<(), IpcError> {
     for monitor in monitors {
         if !wpaperd
             .surfaces
@@ -143,6 +143,17 @@ pub fn handle_message(
         IpcMessage::ResumeWallpaper { monitors } => check_monitors(wpaperd, &monitors).map(|_| {
             for surface in collect_surfaces(wpaperd, monitors) {
                 surface.resume();
+            }
+            IpcResponse::Ok
+        }),
+
+        IpcMessage::SetWallpaper {
+            wallpaper,
+            monitors,
+        } => check_monitors(wpaperd, &monitors).map(|_| {
+            for surf in collect_surfaces(wpaperd, monitors).iter_mut() {
+                surf.set_new_wallpaper_path(wallpaper.as_path());
+                surf.queue_draw(&qh);
             }
             IpcResponse::Ok
         }),

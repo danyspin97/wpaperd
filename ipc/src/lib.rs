@@ -3,15 +3,31 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 use xdg::{BaseDirectories, BaseDirectoriesError};
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub enum IpcMessage {
-    CurrentWallpaper { monitor: String },
-    NextWallpaper { monitors: Vec<String> },
-    PreviousWallpaper { monitors: Vec<String> },
-    PauseWallpaper { monitors: Vec<String> },
-    ResumeWallpaper { monitors: Vec<String> },
+    CurrentWallpaper {
+        monitor: String,
+    },
+    NextWallpaper {
+        monitors: Vec<String>,
+    },
+    PreviousWallpaper {
+        monitors: Vec<String>,
+    },
+    PauseWallpaper {
+        monitors: Vec<String>,
+    },
+    ResumeWallpaper {
+        monitors: Vec<String>,
+    },
     AllWallpapers,
-    ReloadWallpaper { monitors: Vec<String> },
+    ReloadWallpaper {
+        monitors: Vec<String>,
+    },
+    SetWallpaper {
+        wallpaper: PathBuf,
+        monitors: Vec<String>,
+    },
 }
 
 #[derive(Serialize, Deserialize)]
