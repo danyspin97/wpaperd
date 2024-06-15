@@ -178,16 +178,16 @@ impl Config {
     pub fn new_from_path(path: &Path) -> Result<Self> {
         ensure!(path.exists(), "File {path:?} does not exists");
         let mut config: Self = toml::from_str(&fs::read_to_string(path)?)?;
-        config.default = config
+        config
             .data
             .get("default")
             .unwrap_or(&SerializedWallpaperInfo::default())
-            .to_owned();
-        config.any = config
+            .clone_into(&mut config.default);
+        config
             .data
             .get("any")
             .unwrap_or(&SerializedWallpaperInfo::default())
-            .to_owned();
+            .clone_into(&mut config.any);
         config.data.retain(|name, info| {
             // The default configuration does not follow these rules
             // We still need the default configuration here because the path needs to be cached

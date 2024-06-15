@@ -61,6 +61,11 @@ impl DisplayInfo {
 
     #[inline]
     pub fn ratio(&self) -> f32 {
+        self.adjusted_width() as f32 / self.adjusted_height() as f32
+    }
+
+    #[inline]
+    pub fn aspect(&self) -> f32 {
         // adjusted_width and adjusted_height returns the rotated sizes in case
         // the display is rotated. However, openGL is drawing in the same orientation
         // as our display (i.e. we don't apply any transform here)

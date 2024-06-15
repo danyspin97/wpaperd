@@ -50,9 +50,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut file = File::create(Path::new(&outdir).join("gl_bindings.rs")).unwrap();
 
-    Registry::new(Api::Gles2, (3, 2), Profile::Core, Fallbacks::All, [])
-        .write_bindings(StructGenerator, &mut file)
-        .unwrap();
+    Registry::new(
+        Api::Gles2,
+        (3, 0),
+        Profile::Core,
+        Fallbacks::All,
+        ["GL_EXT_texture_border_clamp"],
+    )
+    .write_bindings(StructGenerator, &mut file)
+    .unwrap();
 
     Ok(())
 }
