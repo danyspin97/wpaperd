@@ -18,7 +18,7 @@ fn main() {
     let mut json_resp = false;
 
     let mut conn = UnixStream::connect(socket_path().unwrap()).unwrap();
-    let msg = match args.subcmd {
+    let msg: IpcMessage = match args.subcmd {
         SubCmd::GetWallpaper { monitor } => IpcMessage::CurrentWallpaper { monitor },
         SubCmd::AllWallpapers { json } => {
             json_resp = json;
@@ -29,15 +29,21 @@ fn main() {
         SubCmd::ReloadWallpaper { monitors } => IpcMessage::ReloadWallpaper { monitors },
         SubCmd::PauseWallpaper { monitors } => IpcMessage::PauseWallpaper { monitors },
         SubCmd::ResumeWallpaper { monitors } => IpcMessage::ResumeWallpaper { monitors },
-        SubCmd::SetWallaper { monitor, wallpaper } => {
-            IpcMessage::SetWallpaper { monitor, wallpaper }
-        }
+        SubCmd::SetWallaper {
+            wallpaper,
+            monitors,
+        } => IpcMessage::SetWallpaper {
+            wallpaper,
+            monitors,
+        },
     };
+
+    dbg!(&msg);
     conn.write_all(&serde_json::to_vec(&msg).unwrap()).unwrap();
     let mut buf = String::new();
     conn.read_to_string(&mut buf).unwrap();
     let res: Result<IpcResponse, IpcError> =
-        serde_json::from_str(&buf).expect("wpaperd to return a valid json");
+        serde_json::from_str(&buf).expect(&format!("wpaperd to return a valid json {}", &buf));
     match res {
         Ok(resp) => match resp {
             IpcResponse::CurrentWallpaper { path } => println!("{}", path.display()),

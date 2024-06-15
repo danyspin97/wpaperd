@@ -29,7 +29,7 @@ pub enum SubCmd {
 
     #[clap(visible_alias = "set")]
     SetWallaper {
-        monitor: String,
         wallpaper: std::path::PathBuf,
+        monitors: Vec<String>,
     },
 }

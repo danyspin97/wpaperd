@@ -37,12 +37,22 @@
           packages = [
             pkg-config
             wayland
+            egl-wayland
             glew-egl
+            mesa
           ];
+
+          shellHook = ''
+            # Set LD_LIBRARY_PATH to include paths to Mesa libraries
+            export LD_LIBRARY_PATH="${lib.makeLibraryPath [ wayland glew-egl egl-wayland mesa ]}:$LD_LIBRARY_PATH"
+          '';
         };
       });
 
     formatter = eachSystem (system: pkgsFor.${system}.alejandra);
     homeManagerModules.default = import ./nix/hm-module.nix self;
   };
+
+
+  
 }

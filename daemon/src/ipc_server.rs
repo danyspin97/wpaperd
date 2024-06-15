@@ -147,17 +147,16 @@ pub fn handle_message(
             IpcResponse::Ok
         }),
 
-        IpcMessage::SetWallpaper { monitor, wallpaper } => {
-            dbg!("SetWallpaper");
-            let monitors = vec![monitor];
-            check_monitors(wpaperd, &monitors).map(|_| {
-                for surf in collect_surfaces(wpaperd, monitors).iter_mut() {
-                    surf.set_new_wallpaper_path(wallpaper.as_path());
-                    surf.draw(&qh, 1_000).unwrap(); //TODO: should draw take an Option<'time'>?
-                }
-                IpcResponse::Ok
-            })
-        }
+        IpcMessage::SetWallpaper {
+            wallpaper,
+            monitors,
+        } => check_monitors(wpaperd, &monitors).map(|_| {
+            for surf in collect_surfaces(wpaperd, monitors).iter_mut() {
+                surf.set_new_wallpaper_path(wallpaper.as_path());
+                surf.queue_draw(&qh);
+            }
+            IpcResponse::Ok
+        }),
     };
 
     let mut stream = BufWriter::new(ustream);
