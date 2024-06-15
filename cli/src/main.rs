@@ -38,12 +38,12 @@ fn main() {
         },
     };
 
-    dbg!(&msg);
     conn.write_all(&serde_json::to_vec(&msg).unwrap()).unwrap();
     let mut buf = String::new();
     conn.read_to_string(&mut buf).unwrap();
-    let res: Result<IpcResponse, IpcError> =
-        serde_json::from_str(&buf).expect(&format!("wpaperd to return a valid json {}", &buf));
+    let res: Result<IpcResponse, IpcError> = serde_json::from_str(&buf)
+        .unwrap_or_else(|_| panic!("wpaperd to should valid json {}", &buf));
+
     match res {
         Ok(resp) => match resp {
             IpcResponse::CurrentWallpaper { path } => println!("{}", path.display()),
@@ -67,7 +67,7 @@ fn main() {
                     );
                 } else {
                     for (monitor, path) in paths {
-                        println!("{monitor}: {}", path.to_string_lossy());
+                        println!("{monitor}: {}", path.display());
                     }
                 }
             }
