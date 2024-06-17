@@ -149,17 +149,9 @@ pub fn handle_message(
 
         IpcMessage::TogglePauseWallpaper { monitors } => {
             check_monitors(wpaperd, &monitors).map(|_| {
-                let surfaces = collect_surfaces(wpaperd, monitors);
-                if surfaces.is_empty() {
-                    return IpcResponse::Ok;
+                for surface in collect_surfaces(wpaperd, monitors) {
+                    surface.toggle_pause();
                 }
-
-                // Ensure synced pause state for the provided surfaces
-                if surfaces[0].should_pause() {
-                    surfaces.into_iter().for_each(|s| s.resume());
-                } else {
-                    surfaces.into_iter().for_each(|s| s.pause());
-                };
 
                 IpcResponse::Ok
             })
