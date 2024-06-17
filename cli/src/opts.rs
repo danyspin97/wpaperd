@@ -26,4 +26,6 @@ pub enum SubCmd {
     PauseWallpaper { monitors: Vec<String> },
     #[clap(visible_alias = "resume")]
     ResumeWallpaper { monitors: Vec<String> },
+    #[clap(visible_alias = "toggle-pause")]
+    TogglePauseWallpaper { monitors: Vec<String> },
 }

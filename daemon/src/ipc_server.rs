@@ -146,6 +146,16 @@ pub fn handle_message(
             }
             IpcResponse::Ok
         }),
+
+        IpcMessage::TogglePauseWallpaper { monitors } => {
+            check_monitors(wpaperd, &monitors).map(|_| {
+                for surface in collect_surfaces(wpaperd, monitors) {
+                    surface.toggle_pause();
+                }
+
+                IpcResponse::Ok
+            })
+        }
     };
 
     let mut stream = BufWriter::new(ustream);

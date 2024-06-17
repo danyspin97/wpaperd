@@ -513,6 +513,25 @@ impl Surface {
     pub fn resume(&mut self) {
         self.should_pause = false;
     }
+
+    /// Toggle the pause state for this [`Surface`], which is responsible for indicating to the main
+    /// event loop that the automatic wallpaper sequence should be paused.
+    /// The actual pausing/resuming is handled in [`Surface::handle_pause_state`]
+    #[inline]
+    pub fn toggle_pause(&mut self) {
+        if self.should_pause() {
+            self.resume();
+        } else {
+            self.pause();
+        };
+    }
+
+    /// Returns a boolean representing whether this [`Surface`] is set to indicate to the main event
+    /// loop that its automatic wallpaper sequence should be paused.
+    #[inline]
+    pub fn should_pause(&self) -> bool {
+        self.should_pause
+    }
 }
 
 fn black_image() -> RgbaImage {
