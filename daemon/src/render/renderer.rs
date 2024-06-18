@@ -262,7 +262,6 @@ impl Renderer {
                 (None, BackgroundMode::Tile) => 0.0,
                 (Some(offset), _) => offset,
             };
-            println!("{offset}");
 
             let loc = self
                 .gl

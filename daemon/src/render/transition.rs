@@ -43,7 +43,6 @@ impl UniformSetter for bool {
 impl UniformSetter for i32 {
     unsafe fn set_uniform(&self, gl: &gl::Gl, loc: gl::types::GLint) {
         unsafe {
-            println!("{}", self);
             gl.Uniform1i(loc, *self);
         }
     }
