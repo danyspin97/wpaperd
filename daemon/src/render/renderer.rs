@@ -39,7 +39,7 @@ pub struct Renderer {
     transition_time: u32,
     pub time_started: u32,
     display_info: Rc<RefCell<DisplayInfo>>,
-    old_wallpaper: Wallpaper,
+    prev_wallpaper: Option<Wallpaper>,
     current_wallpaper: Wallpaper,
     transparent_texture: gl::types::GLuint,
 }
@@ -61,7 +61,6 @@ impl Renderer {
 
         let (vao, vbo, eab) = initialize_objects(&gl)?;
 
-        let old_wallpaper = Wallpaper::new();
         let current_wallpaper = Wallpaper::new();
 
         let transparent_texture = load_texture(&gl, transparent_image().into())?;
@@ -74,7 +73,7 @@ impl Renderer {
             eab,
             time_started: 0,
             transition_time,
-            old_wallpaper,
+            prev_wallpaper: None,
             current_wallpaper,
             display_info,
             transparent_texture,
@@ -117,7 +116,7 @@ impl Renderer {
     }
 
     pub fn load_wallpaper(&mut self, image: DynamicImage, mode: BackgroundMode) -> Result<()> {
-        std::mem::swap(&mut self.old_wallpaper, &mut self.current_wallpaper);
+        self.prev_wallpaper = Some(std::mem::take(&mut self.current_wallpaper));
         self.current_wallpaper.load_image(&self.gl, image)?;
 
         self.bind_wallpapers(mode)?;
@@ -131,7 +130,10 @@ impl Renderer {
         unsafe {
             self.gl.ActiveTexture(gl::TEXTURE0);
             self.check_error("activating gl::TEXTURE0")?;
-            self.old_wallpaper.bind(&self.gl)?;
+            self.prev_wallpaper
+                .as_ref()
+                .expect("previous wallpaper to be set")
+                .bind(&self.gl)?;
 
             self.gl.ActiveTexture(gl::TEXTURE1);
             self.check_error("activating gl::TEXTURE1")?;
@@ -197,12 +199,13 @@ impl Renderer {
             self.current_wallpaper.image_width as f32,
             self.current_wallpaper.image_height as f32,
         );
-        //println!("{texture_scale:?}");
-        let prev_texture_scale = gen_texture_scale(
-            self.old_wallpaper.image_width as f32,
-            self.old_wallpaper.image_height as f32,
-        );
+        let (prev_image_width, prev_image_height) = if let Some(prev_wp) = &self.prev_wallpaper {
+            (prev_wp.image_width as f32, prev_wp.image_height as f32)
+        } else {
+            (1.0, 1.0)
+        };
 
+        let prev_texture_scale = gen_texture_scale(prev_image_width, prev_image_height);
         let vertex_data = get_opengl_point_coordinates(
             Coordinates::default_vec_coordinates(),
             Coordinates::default_texture_coordinates(),
@@ -309,13 +312,14 @@ impl Renderer {
 
     #[inline]
     pub fn transition_finished(&mut self) {
-        // By loading a transparent pixel into the old wallpaper, we free space from GPU memory
-        if let Err(err) = self
-            .old_wallpaper
-            .load_image(&self.gl, transparent_image().into())
-            .context("unloading the previous wallpaper")
-        {
-            error!("{err:?}");
+        // By binding transparent pixel into the old wallpaper, we can delete the texture,
+        // freeing space from the GPU
+        unsafe {
+            // The previous wallpaper is always binding in TEXTURE0
+            self.gl.ActiveTexture(gl::TEXTURE0);
+            self.gl
+                .BindTexture(gl::TEXTURE_2D, self.transparent_texture);
+            self.prev_wallpaper.take();
         }
     }
 
@@ -400,7 +404,9 @@ impl Drop for Renderer {
     fn drop(&mut self) {
         unsafe {
             self.gl.DeleteTextures(1, &self.current_wallpaper.texture);
-            self.gl.DeleteTextures(1, &self.old_wallpaper.texture);
+            if let Some(wp) = &self.prev_wallpaper {
+                self.gl.DeleteTextures(1, &wp.texture);
+            }
             self.gl.DeleteBuffers(1, &self.eab);
             self.gl.DeleteBuffers(1, &self.vbo);
             self.gl.DeleteBuffers(1, &self.vao);

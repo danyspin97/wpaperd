@@ -10,6 +10,7 @@ use crate::{gl_check, render::gl};
 
 use super::load_texture;
 
+#[derive(Default)]
 pub struct Wallpaper {
     pub texture: gl::types::GLuint,
     pub image_width: u32,
