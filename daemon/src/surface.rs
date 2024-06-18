@@ -388,15 +388,15 @@ impl Surface {
                     warn!("{err:?}");
                 }
             }
-            if self.wallpaper_info.transition != wallpaper_info.transition {
-                match self.egl_context.make_current() {
-                    Ok(_) => {
-                        self.renderer
-                            .update_transition(self.wallpaper_info.transition.clone());
-                    }
-                    Err(err) => {
-                        error!("{err:?}");
-                    }
+        }
+        if self.wallpaper_info.transition != wallpaper_info.transition {
+            match self.egl_context.make_current() {
+                Ok(_) => {
+                    self.renderer
+                        .update_transition(self.wallpaper_info.transition.clone());
+                }
+                Err(err) => {
+                    error!("{err:?}");
                 }
             }
         }
