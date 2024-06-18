@@ -1,8 +1,13 @@
 # 1.1
 
+## Breaking changes
+- Rename `transition_time` and `queue_size` to kebab case (`transition-time and `queue-size`).
+
+## New features
 - Add `avif` feature to load `avif` images (requires `dav1d` library)
-- Add `offset` configuration
+- Add `offset` configuration to move the wallpaper from its center
 - Add `fit-border-color` background mode
+- Add `initial-transition` configuration to disable the startup transition if needed
 
 # 1.0.1
 

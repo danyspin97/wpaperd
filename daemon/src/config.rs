@@ -36,7 +36,9 @@ pub struct SerializedWallpaperInfo {
     pub apply_shadow: Option<bool>,
     pub sorting: Option<Sorting>,
     pub mode: Option<BackgroundMode>,
+    #[serde(rename = "queue-size")]
     pub queue_size: Option<usize>,
+    #[serde(rename = "transition-time")]
     pub transition_time: Option<u32>,
 
     /// Determines if we should show the transition between black and first
@@ -44,8 +46,8 @@ pub struct SerializedWallpaperInfo {
     /// `Some(true)` means we fade from black to the first wallpaper.
     ///
     /// See [crate::wallpaper_info::WallpaperInfo]
+    #[serde(rename = "initial-transition")]
     pub initial_transition: Option<bool>,
-    #[serde(flatten)]
     pub transition: Option<Transition>,
 
     /// Determine the offset for the wallpaper to be drawn into the screen

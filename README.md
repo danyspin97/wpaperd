@@ -134,11 +134,12 @@ represents a different display and can contain the following keys:
   - `stretch` shows the entire image stretching it to fit the entire screen without leaving any
     black corner, changing the aspect ratio
   - `tile` shows the image multiple times horizontally and vertically to fill the screen
-- `transition_time`, how many milliseconds should the transition run. (_Optional_, `300` by default).
+- `transition-time`, how many milliseconds should the transition run. (_Optional_, `300` by default).
 - `offset`, offset the image on the screen, with a value from `0.0` to `1.0`. (_Optional_, `0.0` by
   default for `tile` mode and `0.5` for all the other modes)
-- `queue_size`, decide how big the queue should be when `path` is set a directory and `sorting` is
+- `queue-size`, decide how big the queue should be when `path` is set a directory and `sorting` is
    set to `random`. (_Optional_, `10` by default)
+- `initial-transition`, enable the initial transition at wpaperd startup. (_Optional_, true by default)
 
 The section `default` will be used as base for the all the display configuration; the section
 `any` will be used for all the displays that are not explictly listed. This allows to have a
