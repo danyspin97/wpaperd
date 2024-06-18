@@ -19,6 +19,10 @@ pub struct WallpaperInfo {
     /// `true` means we fade from black to the first wallpaper.
     pub initial_transition: bool,
     pub transition: Transition,
+
+    /// Determine the offset for the wallpaper to be drawn into the screen
+    /// Must be from 0.0 to 1.0, by default is 0.0 in tile mode and 0.5 in all the others
+    pub offset: Option<f32>,
 }
 
 impl Default for WallpaperInfo {
@@ -33,6 +37,7 @@ impl Default for WallpaperInfo {
             transition_time: Transition::Fade {}.default_transition_time(),
             initial_transition: true,
             transition: Transition::Fade {},
+            offset: None,
         }
     }
 }

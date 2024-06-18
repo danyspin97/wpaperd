@@ -1,6 +1,7 @@
 # 1.1
 
 - Add `avif` feature to load `avif` images (requires `dav1d` library)
+- Add `offset` configuration
 
 # 1.0.1
 

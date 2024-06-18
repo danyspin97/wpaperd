@@ -79,7 +79,7 @@ impl Renderer {
             transparent_texture,
         };
 
-        renderer.load_wallpaper(image, BackgroundMode::Stretch)?;
+        renderer.load_wallpaper(image, BackgroundMode::Stretch, None)?;
 
         Ok(renderer)
     }
@@ -115,17 +115,22 @@ impl Renderer {
         Ok(transition_going)
     }
 
-    pub fn load_wallpaper(&mut self, image: DynamicImage, mode: BackgroundMode) -> Result<()> {
+    pub fn load_wallpaper(
+        &mut self,
+        image: DynamicImage,
+        mode: BackgroundMode,
+        offset: Option<f32>,
+    ) -> Result<()> {
         self.prev_wallpaper = Some(std::mem::take(&mut self.current_wallpaper));
         self.current_wallpaper.load_image(&self.gl, image)?;
 
-        self.bind_wallpapers(mode)?;
+        self.bind_wallpapers(mode, offset)?;
 
         Ok(())
     }
 
-    fn bind_wallpapers(&mut self, mode: BackgroundMode) -> Result<()> {
-        self.set_mode(mode)?;
+    fn bind_wallpapers(&mut self, mode: BackgroundMode, offset: Option<f32>) -> Result<()> {
+        self.set_mode(mode, offset)?;
 
         unsafe {
             self.gl.ActiveTexture(gl::TEXTURE0);
@@ -143,7 +148,7 @@ impl Renderer {
         Ok(())
     }
 
-    pub fn set_mode(&mut self, mode: BackgroundMode) -> Result<()> {
+    pub fn set_mode(&mut self, mode: BackgroundMode, offset: Option<f32>) -> Result<()> {
         let display_info = (*self.display_info).borrow();
         let display_width = display_info.adjusted_width() as f32;
         let display_height = display_info.adjusted_height() as f32;
@@ -244,6 +249,22 @@ impl Renderer {
                 .GetUniformLocation(self.program, b"ratio\0".as_ptr() as *const _);
             self.check_error("getting the uniform location")?;
             self.gl.Uniform1f(loc, display_ratio);
+            self.check_error("calling Uniform1f")?;
+
+            let offset = match (offset, mode) {
+                (None, BackgroundMode::Stretch | BackgroundMode::Center | BackgroundMode::Fit) => {
+                    0.5
+                }
+                (None, BackgroundMode::Tile) => 0.0,
+                (Some(offset), _) => offset,
+            };
+            println!("{offset}");
+
+            let loc = self
+                .gl
+                .GetUniformLocation(self.program, b"texture_offset\0".as_ptr() as *const _);
+            self.check_error("getting the uniform location")?;
+            self.gl.Uniform1f(loc, offset);
             self.check_error("calling Uniform1f")?;
 
             let texture_wrap = match mode {

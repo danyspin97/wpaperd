@@ -80,16 +80,17 @@ layout (location = 5) uniform sampler2D u_texture;
 
 uniform float progress;
 uniform float ratio;
+uniform float texture_offset;
 
 vec4 transition(vec2);
 
 vec4 getFromColor(vec2 uv) {
-    uv = (uv - 0.5) * prevTextureScale + (0.5);
+    uv = (uv - texture_offset) * prevTextureScale + (texture_offset);
     return texture(u_prev_texture, uv);
 }
 
 vec4 getToColor(vec2 uv) {
-    uv = (uv - 0.5) * textureScale + (0.5);
+    uv = (uv - texture_offset) * textureScale + (texture_offset);
     return texture(u_texture, uv);
 }
 

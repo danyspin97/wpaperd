@@ -196,8 +196,11 @@ impl Surface {
                     // Renderer::load_wallpaper load the wallpaper in a openGL texture
                     // Set the correct opengl context
                     self.egl_context.make_current()?;
-                    self.renderer
-                        .load_wallpaper(data.into(), self.wallpaper_info.mode)?;
+                    self.renderer.load_wallpaper(
+                        data.into(),
+                        self.wallpaper_info.mode,
+                        self.wallpaper_info.offset,
+                    )?;
 
                     let transition_time = if self.skip_next_transition {
                         0
@@ -370,12 +373,13 @@ impl Surface {
             }
         }
 
-        if self.wallpaper_info.mode != wallpaper_info.mode {
-            if let Err(err) = self
-                .egl_context
-                .make_current()
-                .and_then(|_| self.renderer.set_mode(self.wallpaper_info.mode))
-            {
+        if self.wallpaper_info.mode != wallpaper_info.mode
+            || self.wallpaper_info.offset != wallpaper_info.offset
+        {
+            if let Err(err) = self.egl_context.make_current().and_then(|_| {
+                self.renderer
+                    .set_mode(self.wallpaper_info.mode, self.wallpaper_info.offset)
+            }) {
                 error!("{err:?}");
             }
             if !path_changed {

@@ -133,6 +133,8 @@ represents a different display and can contain the following keys:
     black corner, changing the aspect ratio
   - `tile` shows the image multiple times horizontally and vertically to fill the screen
 - `transition_time`, how many milliseconds should the transition run. (_Optional_, `300` by default).
+- `offset`, offset the image on the screen, with a value from `0.0` to `1.0`. (_Optional_, `0.0` by
+  default for `tile` mode and `0.5` for all the other modes)
 - `queue_size`, decide how big the queue should be when `path` is set a directory and `sorting` is
    set to `random`. (_Optional_, `10` by default)
 

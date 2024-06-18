@@ -47,6 +47,12 @@ pub struct SerializedWallpaperInfo {
     pub initial_transition: Option<bool>,
     #[serde(flatten)]
     pub transition: Option<Transition>,
+
+    /// Determine the offset for the wallpaper to be drawn into the screen
+    /// Must be from 0.0 to 1.0, by default is 0.0 in tile mode and 0.5 in all the others
+    ///
+    /// See [crate::wallpaper_info::WallpaperInfo]
+    pub offset: Option<f32>,
 }
 
 impl SerializedWallpaperInfo {
@@ -146,6 +152,11 @@ impl SerializedWallpaperInfo {
             (None, None) => transition.default_transition_time(),
         };
 
+        let offset = match (&self.offset, &default.offset) {
+            (Some(offset), _) | (None, Some(offset)) => Some(*offset),
+            (None, None) => None,
+        };
+
         Ok(WallpaperInfo {
             path,
             duration,
@@ -156,6 +167,7 @@ impl SerializedWallpaperInfo {
             transition_time,
             initial_transition,
             transition,
+            offset,
         })
     }
 }
