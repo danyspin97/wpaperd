@@ -175,27 +175,26 @@ impl Renderer {
                     ]
                 }
                 BackgroundMode::Tile => {
+                    let width_proportion = display_width / image_width * display_ratio;
+                    let height_proportion = display_height / image_height * display_ratio;
                     if display_ratio > image_ratio {
                         // Portrait mode
-                        let height =
-                            (display_height / image_height / (display_height / display_width))
-                                .max(1.0);
-                        if height == 1.0 {
+                        if height_proportion.max(1.0) == 1.0 {
                             // Same as Fit
                             let width = display_height * image_ratio;
                             [display_width / width, 1.0]
                         } else {
-                            [
-                                (display_width / image_width / (display_height / display_width)),
-                                height,
-                            ]
+                            [width_proportion, height_proportion]
                         }
                     } else {
                         // Landscape mode
-                        [
-                            (display_width / image_width).max(1.0),
-                            (display_height / image_height),
-                        ]
+                        if width_proportion.max(1.0) == 1.0 {
+                            // Same as Fit
+                            let height = display_width / image_ratio;
+                            [1.0, display_height / height]
+                        } else {
+                            [width_proportion, height_proportion]
+                        }
                     }
                 }
             })
