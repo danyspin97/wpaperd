@@ -159,17 +159,17 @@ impl Renderer {
                     (image_ratio / display_ratio).min(1.0),
                 ],
                 BackgroundMode::Fit => {
-                    if display_ratio > image_ratio {
-                        [
-                            (display_width / image_width),
-                            (display_height / image_height).max(1.0),
-                        ]
-                    } else {
-                        [
-                            (display_width / image_width).max(1.0),
-                            (display_height / image_height),
-                        ]
-                    }
+                    // Portrait mode
+                    // In this case we calculate the width relative to the height of the
+                    // screen with the ratio of the image
+                    let width = display_height * image_ratio;
+                    // Same thing as above, just with the width
+                    let height = display_width / image_ratio;
+                    // Then we calculate the proportions
+                    [
+                        (display_width / width).max(1.0),
+                        (display_height / height).max(1.0),
+                    ]
                 }
                 BackgroundMode::Tile => {
                     if display_ratio > image_ratio {
@@ -178,8 +178,9 @@ impl Renderer {
                             (display_height / image_height / (display_height / display_width))
                                 .max(1.0);
                         if height == 1.0 {
-                            // TODO
-                            [1.0, 1.0]
+                            // Same as Fit
+                            let width = display_height * image_ratio;
+                            [display_width / width, 1.0]
                         } else {
                             [
                                 (display_width / image_width / (display_height / display_width)),
