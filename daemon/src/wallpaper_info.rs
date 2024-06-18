@@ -52,11 +52,12 @@ pub enum Sorting {
 }
 
 #[derive(Debug, Copy, Clone, Default, Eq, PartialEq, Deserialize)]
-#[serde(rename_all = "lowercase")]
+#[serde(rename_all = "kebab-case")]
 pub enum BackgroundMode {
     Stretch,
     #[default]
     Center,
     Fit,
     Tile,
+    FitBorderColor,
 }

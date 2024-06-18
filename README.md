@@ -128,6 +128,8 @@ represents a different display and can contain the following keys:
 - `mode`, choose how to display the wallpaper when the size is different than the display
   resolution:
   - `fit` shows the entire image with black corners covering the empty space left
+  - `fit-border-color` works like `fit`, but fill the empty space with the color of the border
+    of the image; suggested for images that have a solid color in their border
   - `center` centers the image on the screen, leaving out the corners of the image that couldn't fit
   - `stretch` shows the entire image stretching it to fit the entire screen without leaving any
     black corner, changing the aspect ratio

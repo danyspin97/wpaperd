@@ -2,6 +2,7 @@
 
 - Add `avif` feature to load `avif` images (requires `dav1d` library)
 - Add `offset` configuration
+- Add `fit-border-color` background mode
 
 # 1.0.1
 

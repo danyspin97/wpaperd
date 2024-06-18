@@ -161,7 +161,7 @@ impl Renderer {
                     (display_ratio / image_ratio).min(1.0),
                     (image_ratio / display_ratio).min(1.0),
                 ],
-                BackgroundMode::Fit => {
+                BackgroundMode::Fit | BackgroundMode::FitBorderColor => {
                     // Portrait mode
                     // In this case we calculate the width relative to the height of the
                     // screen with the ratio of the image
@@ -252,9 +252,13 @@ impl Renderer {
             self.check_error("calling Uniform1f")?;
 
             let offset = match (offset, mode) {
-                (None, BackgroundMode::Stretch | BackgroundMode::Center | BackgroundMode::Fit) => {
-                    0.5
-                }
+                (
+                    None,
+                    BackgroundMode::Stretch
+                    | BackgroundMode::Center
+                    | BackgroundMode::Fit
+                    | BackgroundMode::FitBorderColor,
+                ) => 0.5,
                 (None, BackgroundMode::Tile) => 0.0,
                 (Some(offset), _) => offset,
             };
@@ -272,6 +276,7 @@ impl Renderer {
                     gl::CLAMP_TO_BORDER_EXT
                 }
                 BackgroundMode::Tile => gl::REPEAT,
+                BackgroundMode::FitBorderColor => gl::CLAMP_TO_EDGE,
             } as i32;
 
             self.gl.ActiveTexture(gl::TEXTURE0);
