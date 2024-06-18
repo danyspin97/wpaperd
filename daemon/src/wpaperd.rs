@@ -116,7 +116,7 @@ impl CompositorHandler for Wpaperd {
     ) {
         let surface = self.surface_from_wl_surface(surface);
 
-        match surface.draw(qh, time) {
+        match surface.draw(qh, Some(time)) {
             Ok(_) => {}
             Err(err) => {
                 error!("Error drawing surface: {err:?}");

@@ -178,7 +178,7 @@ fn run(opts: Opts, xdg_dirs: BaseDirectories) -> Result<()> {
 
             if !surface.drawn() {
                 surface.add_timer(None, &event_loop.handle(), qh.clone());
-                if let Err(err) = surface.draw(&qh, 0) {
+                if let Err(err) = surface.draw(&qh, None) {
                     error!("{err:?}");
                 };
             }

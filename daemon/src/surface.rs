@@ -116,7 +116,7 @@ impl Surface {
 
         // Start loading the wallpaper as soon as possible (i.e. surface creation)
         // It will still be loaded as a texture when we have an openGL context
-        if let Err(err) = surface.load_wallpaper(0) {
+        if let Err(err) = surface.load_wallpaper(None) {
             warn!("{err:?}");
         }
 
@@ -124,7 +124,7 @@ impl Surface {
     }
 
     /// Returns true if something has been drawn to the surface
-    pub fn draw(&mut self, qh: &QueueHandle<Wpaperd>, time: u32) -> Result<()> {
+    pub fn draw(&mut self, qh: &QueueHandle<Wpaperd>, time: Option<u32>) -> Result<()> {
         let info = self.info.borrow();
         let width = info.adjusted_width();
         let height = info.adjusted_height();
@@ -136,7 +136,8 @@ impl Surface {
             // Use the correct context before loading the texture and drawing
             self.egl_context.make_current()?;
 
-            let transition_going = unsafe { self.renderer.draw(time)? };
+            // If we don't have any time passed, just consider the transition to be ended
+            let transition_going = unsafe { self.renderer.draw(time.unwrap_or(u32::MAX))? };
             if transition_going {
                 self.queue_draw(qh);
             } else {
@@ -166,7 +167,7 @@ impl Surface {
     }
 
     // Call surface::frame when this return false
-    pub fn load_wallpaper(&mut self, time: u32) -> Result<bool> {
+    pub fn load_wallpaper(&mut self, time: Option<u32>) -> Result<bool> {
         Ok(loop {
             // If we were not already trying to load an image
             if self.loading_image.is_none() {
@@ -205,7 +206,10 @@ impl Surface {
                     };
                     self.skip_next_transition = false;
 
-                    self.renderer.start_transition(time, transition_time);
+                    self.renderer.start_transition(
+                        time.expect("time to be set when starting transition"),
+                        transition_time,
+                    );
 
                     if self.image_picker.is_reloading() {
                         self.image_picker.reloaded();
@@ -376,7 +380,7 @@ impl Surface {
             }
             if !path_changed {
                 // We should draw immediately
-                if let Err(err) = self.draw(qh, 0) {
+                if let Err(err) = self.draw(qh, None) {
                     warn!("{err:?}");
                 }
             }
@@ -486,7 +490,7 @@ impl Surface {
     #[inline]
     pub fn queue_draw(&mut self, qh: &QueueHandle<Wpaperd>) {
         // Start loading the next image immediately
-        if let Err(err) = self.load_wallpaper(0) {
+        if let Err(err) = self.load_wallpaper(None) {
             warn!("{err:?}");
         }
         self.surface.frame(qh, self.surface.clone());
