@@ -27,6 +27,7 @@ use crate::{
 };
 
 #[derive(Default, Deserialize, PartialEq, Debug, Clone)]
+#[serde(deny_unknown_fields)]
 pub struct SerializedWallpaperInfo {
     #[serde(default, deserialize_with = "tilde_expansion_deserialize")]
     pub path: Option<PathBuf>,

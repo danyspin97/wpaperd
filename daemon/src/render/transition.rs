@@ -97,7 +97,7 @@ impl UniformSetter for [f32; 4] {
 macro_rules! transition_shader {
     ($enum:ident { $($variant:ident { $($field_name:ident: $field_ty:ty = ($glsl_name:literal, $default_value:expr)),* } => $default_time:expr),* }) => {
         #[derive(Deserialize, Clone, Debug, PartialEq)]
-        #[serde(rename_all = "kebab-case", tag = "transition")]
+        #[serde(rename_all = "kebab-case", rename_all_fields = "kebab-case", deny_unknown_fields)]
         pub enum $enum {
             $($variant { $($field_name: Option<$field_ty>),* }),*
         }
