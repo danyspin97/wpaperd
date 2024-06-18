@@ -136,7 +136,7 @@ impl Surface {
             // Use the correct context before loading the texture and drawing
             self.egl_context.make_current()?;
 
-            let transition_going = unsafe { self.renderer.draw(time, self.wallpaper_info.mode)? };
+            let transition_going = unsafe { self.renderer.draw(time)? };
             if transition_going {
                 self.queue_draw(qh);
             } else {
@@ -370,7 +370,7 @@ impl Surface {
             if let Err(err) = self
                 .egl_context
                 .make_current()
-                .and_then(|_| self.renderer.set_mode(self.wallpaper_info.mode, false))
+                .and_then(|_| self.renderer.set_mode(self.wallpaper_info.mode))
             {
                 error!("{err:?}");
             }

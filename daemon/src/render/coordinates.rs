@@ -16,6 +16,7 @@ impl Coordinates {
     pub const TEX_Y_BOTTOM: f32 = 0.0;
     pub const TEX_Y_TOP: f32 = 1.0;
 
+    #[allow(unused)]
     pub fn new(x_left: f32, x_right: f32, y_bottom: f32, y_top: f32) -> Self {
         Self {
             x_left,

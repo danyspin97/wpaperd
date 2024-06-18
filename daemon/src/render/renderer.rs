@@ -61,8 +61,8 @@ impl Renderer {
 
         let (vao, vbo, eab) = initialize_objects(&gl)?;
 
-        let old_wallpaper = Wallpaper::new(display_info.clone());
-        let current_wallpaper = Wallpaper::new(display_info.clone());
+        let old_wallpaper = Wallpaper::new();
+        let current_wallpaper = Wallpaper::new();
 
         let transparent_texture = load_texture(&gl, transparent_image().into())?;
 
@@ -93,7 +93,7 @@ impl Renderer {
         Ok(())
     }
 
-    pub unsafe fn draw(&mut self, time: u32, mode: BackgroundMode) -> Result<bool> {
+    pub unsafe fn draw(&mut self, time: u32) -> Result<bool> {
         self.gl.Clear(gl::COLOR_BUFFER_BIT);
         self.check_error("clearing the screen")?;
 
@@ -126,7 +126,7 @@ impl Renderer {
     }
 
     fn bind_wallpapers(&mut self, mode: BackgroundMode) -> Result<()> {
-        self.set_mode(mode, false)?;
+        self.set_mode(mode)?;
 
         unsafe {
             self.gl.ActiveTexture(gl::TEXTURE0);
@@ -141,11 +141,7 @@ impl Renderer {
         Ok(())
     }
 
-    pub fn set_mode(
-        &mut self,
-        mode: BackgroundMode,
-        current_vertices_for_fit_mode: bool,
-    ) -> Result<()> {
+    pub fn set_mode(&mut self, mode: BackgroundMode) -> Result<()> {
         let display_info = (*self.display_info).borrow();
         let display_width = display_info.adjusted_width() as f32;
         let display_height = display_info.adjusted_height() as f32;
