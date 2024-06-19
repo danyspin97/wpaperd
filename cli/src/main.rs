@@ -8,9 +8,18 @@ use std::{
 
 use clap::Parser;
 use serde::Serialize;
+use serde_json::to_string;
 use wpaperd_ipc::{socket_path, IpcError, IpcMessage, IpcResponse};
 
 use crate::opts::{Opts, SubCmd};
+
+fn unquote(s: String) -> String {
+    if s.starts_with('"') && s.ends_with('"') {
+        s.trim_start_matches('"').trim_end_matches('"').to_string()
+    } else {
+        s
+    }
+}
 
 fn main() {
     let args = Opts::parse();
@@ -19,17 +28,31 @@ fn main() {
 
     let mut conn = UnixStream::connect(socket_path().unwrap()).unwrap();
     let msg = match args.subcmd {
-        SubCmd::GetWallpaper { monitor } => IpcMessage::CurrentWallpaper { monitor },
+        SubCmd::GetWallpaper { monitor } => IpcMessage::CurrentWallpaper {
+            monitor: unquote(monitor),
+        },
         SubCmd::AllWallpapers { json } => {
             json_resp = json;
             IpcMessage::AllWallpapers
         }
-        SubCmd::NextWallpaper { monitors } => IpcMessage::NextWallpaper { monitors },
-        SubCmd::PreviousWallpaper { monitors } => IpcMessage::PreviousWallpaper { monitors },
-        SubCmd::ReloadWallpaper { monitors } => IpcMessage::ReloadWallpaper { monitors },
-        SubCmd::PauseWallpaper { monitors } => IpcMessage::PauseWallpaper { monitors },
-        SubCmd::ResumeWallpaper { monitors } => IpcMessage::ResumeWallpaper { monitors },
-        SubCmd::TogglePauseWallpaper { monitors } => IpcMessage::TogglePauseWallpaper { monitors },
+        SubCmd::NextWallpaper { monitors } => IpcMessage::NextWallpaper {
+            monitors: monitors.into_iter().map(unquote).collect(),
+        },
+        SubCmd::PreviousWallpaper { monitors } => IpcMessage::PreviousWallpaper {
+            monitors: monitors.into_iter().map(unquote).collect(),
+        },
+        SubCmd::ReloadWallpaper { monitors } => IpcMessage::ReloadWallpaper {
+            monitors: monitors.into_iter().map(unquote).collect(),
+        },
+        SubCmd::PauseWallpaper { monitors } => IpcMessage::PauseWallpaper {
+            monitors: monitors.into_iter().map(unquote).collect(),
+        },
+        SubCmd::ResumeWallpaper { monitors } => IpcMessage::ResumeWallpaper {
+            monitors: monitors.into_iter().map(unquote).collect(),
+        },
+        SubCmd::TogglePauseWallpaper { monitors } => IpcMessage::TogglePauseWallpaper {
+            monitors: monitors.into_iter().map(unquote).collect(),
+        },
     };
     conn.write_all(&serde_json::to_vec(&msg).unwrap()).unwrap();
     let mut buf = String::new();
