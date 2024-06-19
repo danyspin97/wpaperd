@@ -247,40 +247,42 @@ impl Surface {
     }
 
     /// Resize the surface
-    pub fn resize(&mut self, qh: &QueueHandle<Wpaperd>) {
+    pub fn resize(&mut self, qh: &QueueHandle<Wpaperd>) -> Result<()> {
         let info = self.info.borrow();
         let width = info.adjusted_width();
         let height = info.adjusted_height();
+        // Drop the borrow to self
+        drop(info);
         // self.layer.set_size(width as u32, height as u32);
         let display_name = self.name();
-        let res = self
-            .egl_context
+        self.egl_context
             .resize(&self.surface, width, height)
             .with_context(|| {
                 format!("unable to switch resize EGL context for display {display_name}",)
-            })
-            .and_then(|_| {
-                self.egl_context.make_current().with_context(|| {
-                    format!("unable to switch the openGL context for display {display_name}")
-                })
-            })
-            .and_then(|_| {
-                self.renderer.resize().with_context(|| {
-                    format!("unable to resize the GL window for display {display_name}")
-                })
-            });
-        // Resize the gl viewport
-        if let Err(err) = res {
-            error!("{err:?}");
-        }
-        self.surface.frame(qh, self.surface.clone());
+            })?;
+        self.egl_context.make_current().with_context(|| {
+            format!("unable to switch the openGL context for display {display_name}")
+        })?;
+        self.renderer.resize().with_context(|| {
+            format!("unable to resize the GL window for display {display_name}")
+        })?;
+        // If we resize, stop immediately any lingering transition
+        self.renderer.force_transition_end();
+
+        // Queue drawing for the next frame. We can directly draw here, but we would still
+        // need to queue the draw for the next frame, otherwise wpaperd doesn't work at startup
+        self.queue_draw(qh);
+
+        Ok(())
     }
 
     pub fn change_size(&mut self, configure: LayerSurfaceConfigure, qh: &QueueHandle<Wpaperd>) {
         let mut info = self.info.borrow_mut();
         if info.change_size(configure) {
             drop(info);
-            self.resize(qh);
+            if let Err(err) = self.resize(qh) {
+                error!("{err:?}");
+            }
         }
     }
 
@@ -289,7 +291,9 @@ impl Surface {
         if info.change_transform(transform) {
             drop(info);
             self.surface.set_buffer_transform(transform);
-            self.resize(qh);
+            if let Err(err) = self.resize(qh) {
+                error!("{err:?}");
+            }
         }
     }
 
@@ -298,7 +302,10 @@ impl Surface {
         if info.change_scale_factor(scale_factor) {
             drop(info);
             self.surface.set_buffer_scale(scale_factor);
-            self.resize(qh);
+            // Resize the gl viewport
+            if let Err(err) = self.resize(qh) {
+                error!("{err:?}");
+            }
         }
     }
 

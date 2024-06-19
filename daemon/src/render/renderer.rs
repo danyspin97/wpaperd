@@ -348,6 +348,12 @@ impl Renderer {
     }
 
     #[inline]
+    pub fn force_transition_end(&mut self) {
+        // Force the transition to end
+        self.time_started = 0;
+    }
+
+    #[inline]
     pub fn update_transition(&mut self, transition: Transition) {
         match create_program(&self.gl, transition) {
             Ok(program) => {
