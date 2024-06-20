@@ -138,7 +138,7 @@ impl Surface {
 
         if self.renderer.transition_running() {
             // Recalculate the current progress, the transition might end now
-            let transition_running = self.renderer.update_transition_status(time.unwrap());
+            let transition_running = self.renderer.update_transition_status(time.unwrap_or(0));
             // If we don't have any time passed, just consider the transition to be ended
             if transition_running {
                 self.queue_draw(qh);
