@@ -37,7 +37,7 @@ pub struct Wpaperd {
     pub config: Config,
     egl_display: egl::Display,
     pub filelist_cache: Rc<RefCell<FilelistCache>>,
-    image_loader: Rc<RefCell<ImageLoader>>,
+    pub image_loader: Rc<RefCell<ImageLoader>>,
 }
 
 impl Wpaperd {

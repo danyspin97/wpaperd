@@ -1,4 +1,8 @@
-use std::{collections::HashMap, path::PathBuf, thread::JoinHandle};
+use std::{
+    collections::HashMap,
+    path::{Path, PathBuf},
+    thread::JoinHandle,
+};
 
 use image::{open, RgbaImage};
 use log::warn;
@@ -75,6 +79,7 @@ impl ImageLoader {
                 ImageLoaderStatus::Waiting
             }
         } else {
+            // Start loading a new image
             let path_clone = path.clone();
             let handle = std::thread::spawn(|| match open(path_clone) {
                 Ok(image) => Some(image.into_rgba8()),

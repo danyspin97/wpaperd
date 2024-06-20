@@ -116,7 +116,7 @@ impl Surface {
 
         // Start loading the wallpaper as soon as possible (i.e. surface creation)
         // It will still be loaded as a texture when we have an openGL context
-        if let Err(err) = surface.load_wallpaper(None) {
+        if let Err(err) = surface.load_wallpaper() {
             warn!("{err:?}");
         }
 
@@ -131,43 +131,50 @@ impl Surface {
         // Drop the borrow to self
         drop(info);
 
-        // Only returns true when the wallpaper is loaded
-        if self.load_wallpaper(time)? || !self.drawn {
-            // Use the correct context before loading the texture and drawing
-            self.egl_context.make_current()?;
+        // Use the correct context before loading the texture and drawing
+        self.egl_context.make_current()?;
 
+        let wallpaper_loaded = self.load_wallpaper()?;
+
+        if self.renderer.transition_running() {
+            // Recalculate the current progress, the transition might end now
+            let transition_running = self.renderer.update_transition_status(time.unwrap());
             // If we don't have any time passed, just consider the transition to be ended
-            let transition_going = unsafe { self.renderer.draw(time.unwrap_or(u32::MAX))? };
-            if transition_going {
+            if transition_running {
                 self.queue_draw(qh);
             } else {
                 self.renderer.transition_finished();
             }
-
-            self.drawn = true;
-
-            self.renderer.clear_after_draw()?;
-            self.egl_context.swap_buffers()?;
-
-            // Reset the context
-            egl::API
-                .make_current(self.egl_context.display, None, None, None)
-                .context("Resetting the GL context")?;
-
-            // Mark the entire surface as damaged
-            self.surface.damage_buffer(0, 0, width, height);
-
-            // Finally, commit the surface
-            self.surface.commit();
-        } else {
+        } else if !wallpaper_loaded {
             self.queue_draw(qh);
+            if self.drawn {
+                //return Ok(());
+            }
         }
+
+        unsafe { self.renderer.draw()? }
+
+        self.drawn = true;
+
+        self.renderer.clear_after_draw()?;
+        self.egl_context.swap_buffers()?;
+
+        // Reset the context
+        egl::API
+            .make_current(self.egl_context.display, None, None, None)
+            .context("Resetting the GL context")?;
+
+        // Mark the entire surface as damaged
+        self.surface.damage_buffer(0, 0, width, height);
+
+        // Finally, commit the surface
+        self.surface.commit();
 
         Ok(())
     }
 
     // Call surface::frame when this return false
-    pub fn load_wallpaper(&mut self, time: Option<u32>) -> Result<bool> {
+    pub fn load_wallpaper(&mut self) -> Result<bool> {
         Ok(loop {
             // If we were not already trying to load an image
             if self.loading_image.is_none() {
@@ -187,6 +194,13 @@ impl Surface {
                 .as_ref()
                 .expect("loading image to be set")
                 .clone();
+
+            if self.image_loader.borrow().is_image_loaded(&image_path)
+                && self.renderer.transition_running()
+            {
+                break true;
+            }
+
             let res = self
                 .image_loader
                 .borrow_mut()
@@ -209,10 +223,7 @@ impl Surface {
                     };
                     self.skip_next_transition = false;
 
-                    self.renderer.start_transition(
-                        time.expect("time to be set when starting transition"),
-                        transition_time,
-                    );
+                    self.renderer.start_transition(transition_time);
 
                     if self.image_picker.is_reloading() {
                         self.image_picker.reloaded();
@@ -501,7 +512,7 @@ impl Surface {
     #[inline]
     pub fn queue_draw(&mut self, qh: &QueueHandle<Wpaperd>) {
         // Start loading the next image immediately
-        if let Err(err) = self.load_wallpaper(None) {
+        if let Err(err) = self.load_wallpaper() {
             warn!("{err:?}");
         }
         self.surface.frame(qh, self.surface.clone());

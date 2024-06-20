@@ -29,6 +29,13 @@ fn transparent_image() -> RgbaImage {
     RgbaImage::from_raw(1, 1, vec![0, 0, 0, 0]).unwrap()
 }
 
+#[derive(Debug)]
+pub enum TransitionStatus {
+    Started,
+    Running { started: u32, progress: f32 },
+    Ended,
+}
+
 pub struct Renderer {
     gl: gl::Gl,
     pub program: gl::types::GLuint,
@@ -37,11 +44,12 @@ pub struct Renderer {
     eab: gl::types::GLuint,
     // milliseconds time for the transition
     transition_time: u32,
-    pub time_started: u32,
     display_info: Rc<RefCell<DisplayInfo>>,
     prev_wallpaper: Option<Wallpaper>,
     current_wallpaper: Wallpaper,
     transparent_texture: gl::types::GLuint,
+    /// contains the progress of the current animation
+    transition_status: TransitionStatus,
 }
 
 impl Renderer {
@@ -71,12 +79,12 @@ impl Renderer {
             vao,
             vbo,
             eab,
-            time_started: 0,
             transition_time,
             prev_wallpaper: None,
             current_wallpaper,
             display_info,
             transparent_texture,
+            transition_status: TransitionStatus::Ended,
         };
 
         renderer.load_wallpaper(image, BackgroundMode::Stretch, None)?;
@@ -92,27 +100,54 @@ impl Renderer {
         Ok(())
     }
 
-    pub unsafe fn draw(&mut self, time: u32) -> Result<bool> {
+    pub unsafe fn draw(&mut self) -> Result<()> {
         self.gl.Clear(gl::COLOR_BUFFER_BIT);
         self.check_error("clearing the screen")?;
-
-        let progress = ((time.saturating_sub(self.time_started)) as f32
-            / self.transition_time as f32)
-            .min(1.0);
-        let transition_going = progress != 1.0;
 
         let loc = self
             .gl
             .GetUniformLocation(self.program, b"progress\0".as_ptr() as *const _);
         self.check_error("getting the uniform location")?;
-        self.gl.Uniform1f(loc, progress);
+        self.gl.Uniform1f(
+            loc,
+            match self.transition_status {
+                TransitionStatus::Started => 0.0,
+                TransitionStatus::Running {
+                    started: _,
+                    progress,
+                } => progress,
+                TransitionStatus::Ended => 1.0,
+            },
+        );
         self.check_error("calling Uniform1i")?;
 
         self.gl
             .DrawElements(gl::TRIANGLES, 6, gl::UNSIGNED_INT, std::ptr::null());
         self.check_error("drawing the triangles")?;
 
-        Ok(transition_going)
+        Ok(())
+    }
+
+    /// Update the transition status with the current time
+    #[inline]
+    pub fn update_transition_status(&mut self, time: u32) -> bool {
+        let started = match self.transition_status {
+            TransitionStatus::Started => time,
+            TransitionStatus::Running {
+                started,
+                progress: _,
+            } => started,
+            TransitionStatus::Ended => unreachable!(),
+        };
+        let progress =
+            ((time.saturating_sub(started)) as f32 / self.transition_time as f32).min(1.0);
+        if progress == 1.0 {
+            self.transition_status = TransitionStatus::Ended;
+            false
+        } else {
+            self.transition_status = TransitionStatus::Running { started, progress };
+            true
+        }
     }
 
     pub fn load_wallpaper(
@@ -300,9 +335,13 @@ impl Renderer {
     }
 
     #[inline]
-    pub fn start_transition(&mut self, time: u32, new_transition_time: u32) {
-        self.time_started = time;
-        self.transition_time = new_transition_time;
+    pub fn start_transition(&mut self, transition_time: u32) {
+        match self.transition_status {
+            TransitionStatus::Started | TransitionStatus::Running { .. } => unreachable!(),
+            TransitionStatus::Ended => self.transition_status = TransitionStatus::Started,
+        }
+        // Needed to skip the initial transition depending on the configuration
+        self.transition_time = transition_time;
     }
 
     #[inline]
@@ -350,7 +389,7 @@ impl Renderer {
     #[inline]
     pub fn force_transition_end(&mut self) {
         // Force the transition to end
-        self.time_started = 0;
+        self.transition_status = TransitionStatus::Ended;
     }
 
     #[inline]
@@ -363,6 +402,14 @@ impl Renderer {
                 self.program = program;
             }
             Err(err) => error!("{err:?}"),
+        }
+    }
+
+    #[inline]
+    pub fn transition_running(&self) -> bool {
+        match self.transition_status {
+            TransitionStatus::Started | TransitionStatus::Running { .. } => true,
+            TransitionStatus::Ended => false,
         }
     }
 }

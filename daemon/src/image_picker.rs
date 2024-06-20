@@ -10,7 +10,7 @@ use log::warn;
 
 use crate::{
     filelist_cache::FilelistCache,
-    wallpaper_info::{Sorting, WallpaperInfo},
+    wallpaper_info::{self, Sorting, WallpaperInfo},
 };
 
 #[derive(Debug)]
@@ -145,26 +145,39 @@ pub struct ImagePicker {
 impl ImagePicker {
     pub const DEFAULT_DRAWN_IMAGES_QUEUE_SIZE: usize = 10;
     pub fn new(wallpaper_info: &WallpaperInfo, filelist_cache: Rc<RefCell<FilelistCache>>) -> Self {
+        let files = filelist_cache.borrow().get(&wallpaper_info.path);
         Self {
-            current_img: PathBuf::from(""),
+            current_img: if files.len() != 0 {
+                match wallpaper_info.sorting {
+                    Sorting::Random => PathBuf::from(""),
+                    Sorting::Ascending => files[0].to_path_buf(),
+                    Sorting::Descending => files.last().unwrap().to_path_buf(),
+                }
+            } else {
+                PathBuf::from("")
+            },
             image_changed_instant: Instant::now(),
-            action: Some(ImagePickerAction::Next),
+            action: None,
             sorting: match wallpaper_info.sorting {
                 Sorting::Random => {
                     ImagePickerSorting::new_random(wallpaper_info.drawn_images_queue_size)
                 }
-                Sorting::Ascending => ImagePickerSorting::Ascending(usize::MAX),
-                Sorting::Descending => ImagePickerSorting::Descending(usize::MAX),
+                Sorting::Ascending => ImagePickerSorting::Ascending(0),
+                Sorting::Descending => ImagePickerSorting::Descending(0),
             },
             filelist_cache,
-            reload: false,
+            reload: true,
         }
     }
 
     /// Get the next image based on the sorting method
     fn get_image_path(&mut self, files: &[PathBuf]) -> (usize, PathBuf) {
         match (&self.action, &mut self.sorting) {
-            (None, _) if self.current_img.exists() => unreachable!(),
+            (
+                None,
+                ImagePickerSorting::Ascending(current_index)
+                | ImagePickerSorting::Descending(current_index),
+            ) if self.current_img.exists() => (*current_index, self.current_img.to_path_buf()),
             (None | Some(ImagePickerAction::Next), ImagePickerSorting::Random(queue)) => {
                 // Use the next images in the queue, if any
                 while let Some((next, index)) = queue.next() {
@@ -282,8 +295,6 @@ impl ImagePicker {
 
     pub fn get_image_from_path(&mut self, path: &Path) -> Option<(PathBuf, usize)> {
         if path.is_dir() {
-            self.action.as_ref()?;
-
             let files = self.filelist_cache.borrow().get(path);
 
             // There are no images, forcefully break out of the loop
@@ -292,7 +303,7 @@ impl ImagePicker {
                 None
             } else {
                 let (index, img_path) = self.get_image_path(&files);
-                if img_path == self.current_img {
+                if img_path == self.current_img && !self.reload {
                     None
                 } else {
                     Some((img_path, index))
