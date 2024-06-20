@@ -97,4 +97,17 @@ impl ImageLoader {
             ImageLoaderStatus::Waiting
         }
     }
+
+    /// Check that there are no threads waiting on zero requesters
+    #[cfg(debug_assertions)]
+    pub fn check_lingering_threads(&mut self) {
+        debug_assert!(!self
+            .images
+            .iter()
+            .any(|(_, image)| { image.requesters.is_empty() }));
+    }
+
+    pub fn is_image_loaded(&self, path: &Path) -> bool {
+        self.images.contains_key(path)
+    }
 }

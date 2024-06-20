@@ -187,6 +187,9 @@ fn run(opts: Opts, xdg_dirs: BaseDirectories) -> Result<()> {
             else {
                 surface.handle_pause_state(&event_loop.handle(), qh.clone())
             };
+
+            #[cfg(debug_assertions)]
+            wpaperd.image_loader.borrow_mut().check_lingering_threads();
         });
 
         event_loop
