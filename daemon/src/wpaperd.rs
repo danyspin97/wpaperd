@@ -90,7 +90,7 @@ impl Wpaperd {
     pub fn surface_from_wl_surface(&mut self, surface: &wl_surface::WlSurface) -> &mut Surface {
         self.surfaces
             .iter_mut()
-            .find(|s| surface == &s.surface)
+            .find(|s| surface == s.wl_surface())
             .expect("surface to be registered in wpaperd")
     }
 }
@@ -242,7 +242,7 @@ impl OutputHandler for Wpaperd {
             .surfaces
             .iter()
             .enumerate()
-            .find(|(_, surface)| surface.output == output)
+            .find(|(_, surface)| *surface.wl_output() == output)
         {
             Some((index, _)) => {
                 self.surfaces.swap_remove(index);
@@ -266,7 +266,7 @@ impl LayerShellHandler for Wpaperd {
         match self
             .surfaces
             .iter_mut()
-            .find(|surface| &surface.layer == layer)
+            .find(|surface| surface.layer() == layer)
         {
             Some(surface) => surface.change_size(configure, qh),
             None => error!("could not find display while handling configure in wayland"),

@@ -36,13 +36,13 @@ pub enum EventSource {
 }
 
 pub struct Surface {
-    pub surface: wl_surface::WlSurface,
-    pub output: WlOutput,
-    pub layer: LayerSurface,
+    wl_surface: wl_surface::WlSurface,
+    wl_output: WlOutput,
+    layer: LayerSurface,
     egl_context: EglContext,
     renderer: Renderer,
     pub image_picker: ImagePicker,
-    pub event_source: EventSource,
+    event_source: EventSource,
     wallpaper_info: WallpaperInfo,
     info: Rc<RefCell<DisplayInfo>>,
     image_loader: Rc<RefCell<ImageLoader>>,
@@ -62,23 +62,23 @@ pub struct Surface {
 
 impl Surface {
     pub fn new(
-        layer: LayerSurface,
-        output: WlOutput,
+        wl_layer: LayerSurface,
+        wl_output: WlOutput,
         info: DisplayInfo,
         wallpaper_info: WallpaperInfo,
         egl_display: egl::Display,
         filelist_cache: Rc<RefCell<FilelistCache>>,
         image_loader: Rc<RefCell<ImageLoader>>,
     ) -> Self {
-        let surface = layer.wl_surface().clone();
-        let egl_context = EglContext::new(egl_display, &surface);
+        let wl_surface = wl_layer.wl_surface().clone();
+        let egl_context = EglContext::new(egl_display, &wl_surface);
         // Make the egl context as current to make the renderer creation work
         egl_context
             .make_current()
             .expect("EGL context switching to work");
 
         // Commit the surface
-        surface.commit();
+        wl_surface.commit();
 
         let image_picker = ImagePicker::new(&wallpaper_info, filelist_cache);
 
@@ -97,10 +97,10 @@ impl Surface {
 
         let first_transition = !wallpaper_info.initial_transition;
         let mut surface = Self {
-            output,
-            layer,
+            wl_output,
+            layer: wl_layer,
             info,
-            surface,
+            wl_surface,
             egl_context,
             renderer,
             image_picker,
@@ -165,10 +165,10 @@ impl Surface {
             .context("Resetting the GL context")?;
 
         // Mark the entire surface as damaged
-        self.surface.damage_buffer(0, 0, width, height);
+        self.wl_surface.damage_buffer(0, 0, width, height);
 
         // Finally, commit the surface
-        self.surface.commit();
+        self.wl_surface.commit();
 
         Ok(())
     }
@@ -267,7 +267,7 @@ impl Surface {
         // self.layer.set_size(width as u32, height as u32);
         let display_name = self.name();
         self.egl_context
-            .resize(&self.surface, width, height)
+            .resize(&self.wl_surface, width, height)
             .with_context(|| {
                 format!("unable to switch resize EGL context for display {display_name}",)
             })?;
@@ -301,7 +301,7 @@ impl Surface {
         let mut info = self.info.borrow_mut();
         if info.change_transform(transform) {
             drop(info);
-            self.surface.set_buffer_transform(transform);
+            self.wl_surface.set_buffer_transform(transform);
             if let Err(err) = self.resize(qh) {
                 error!("{err:?}");
             }
@@ -312,7 +312,7 @@ impl Surface {
         let mut info = self.info.borrow_mut();
         if info.change_scale_factor(scale_factor) {
             drop(info);
-            self.surface.set_buffer_scale(scale_factor);
+            self.wl_surface.set_buffer_scale(scale_factor);
             // Resize the gl viewport
             if let Err(err) = self.resize(qh) {
                 error!("{err:?}");
@@ -515,8 +515,8 @@ impl Surface {
         if let Err(err) = self.load_wallpaper() {
             warn!("{err:?}");
         }
-        self.surface.frame(qh, self.surface.clone());
-        self.surface.commit();
+        self.wl_surface.frame(qh, self.wl_surface.clone());
+        self.wl_surface.commit();
     }
 
     #[inline]
@@ -557,6 +557,18 @@ impl Surface {
     #[inline]
     pub fn should_pause(&self) -> bool {
         self.should_pause
+    }
+
+    pub fn wl_surface(&self) -> &wl_surface::WlSurface {
+        &self.wl_surface
+    }
+
+    pub fn wl_output(&self) -> &WlOutput {
+        &self.wl_output
+    }
+
+    pub fn layer(&self) -> &LayerSurface {
+        &self.layer
     }
 }
 
