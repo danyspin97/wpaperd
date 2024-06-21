@@ -223,12 +223,11 @@ impl Surface {
                     };
                     self.skip_next_transition = false;
 
-                    self.renderer.start_transition(transition_time);
-
                     if self.image_picker.is_reloading() {
                         self.image_picker.reloaded();
                     } else {
                         self.image_picker.update_current_image(image_path, index);
+                        self.renderer.start_transition(transition_time);
                     }
                     // Restart the counter
                     self.loading_image_tries = 0;

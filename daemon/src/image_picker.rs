@@ -325,7 +325,7 @@ impl ImagePicker {
         } else if path == self.current_img && !self.reload {
             None
         } else {
-            // path is not a directory and it's not the current image
+            // path is not a directory, also it's not the current image or we need to reload
             Some((path.to_path_buf(), 0))
         }
     }
