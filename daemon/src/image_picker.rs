@@ -145,17 +145,26 @@ pub struct ImagePicker {
 impl ImagePicker {
     pub const DEFAULT_DRAWN_IMAGES_QUEUE_SIZE: usize = 10;
     pub fn new(wallpaper_info: &WallpaperInfo, filelist_cache: Rc<RefCell<FilelistCache>>) -> Self {
-        let files = filelist_cache.borrow().get(&wallpaper_info.path);
-        Self {
-            current_img: if files.len() != 0 {
+        let current_img = if wallpaper_info.path.is_dir() {
+            let files = filelist_cache.borrow().get(&wallpaper_info.path);
+            if files.len() != 0 {
                 match wallpaper_info.sorting {
-                    Sorting::Random => PathBuf::from(""),
+                    Sorting::Random => {
+                        let index = rand::random::<usize>() % files.len();
+                        files[index].to_path_buf()
+                    }
                     Sorting::Ascending => files[0].to_path_buf(),
                     Sorting::Descending => files.last().unwrap().to_path_buf(),
                 }
             } else {
                 PathBuf::from("")
-            },
+            }
+        } else {
+            wallpaper_info.path.to_path_buf()
+        };
+
+        Self {
+            current_img,
             image_changed_instant: Instant::now(),
             action: None,
             sorting: match wallpaper_info.sorting {
@@ -166,7 +175,7 @@ impl ImagePicker {
                 Sorting::Descending => ImagePickerSorting::Descending(0),
             },
             filelist_cache,
-            reload: false,
+            reload: true,
         }
     }
 

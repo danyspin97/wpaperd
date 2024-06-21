@@ -77,6 +77,7 @@ impl FilelistCache {
     }
 
     pub fn get(&self, path: &Path) -> Arc<Vec<PathBuf>> {
+        debug_assert!(path.is_dir());
         self.cache
             .iter()
             .find(|filelist| filelist.path == path)
