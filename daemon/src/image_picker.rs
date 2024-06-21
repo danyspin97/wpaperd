@@ -166,7 +166,7 @@ impl ImagePicker {
                 Sorting::Descending => ImagePickerSorting::Descending(0),
             },
             filelist_cache,
-            reload: true,
+            reload: false,
         }
     }
 
@@ -178,6 +178,10 @@ impl ImagePicker {
                 ImagePickerSorting::Ascending(current_index)
                 | ImagePickerSorting::Descending(current_index),
             ) if self.current_img.exists() => (*current_index, self.current_img.to_path_buf()),
+
+            (None, ImagePickerSorting::Random(_)) if self.current_img.exists() => {
+                (0, self.current_img.to_path_buf())
+            }
             (None | Some(ImagePickerAction::Next), ImagePickerSorting::Random(queue)) => {
                 // Use the next images in the queue, if any
                 while let Some((next, index)) = queue.next() {
