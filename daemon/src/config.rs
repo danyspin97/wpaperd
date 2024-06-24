@@ -129,9 +129,28 @@ impl SerializedWallpaperInfo {
         }
 
         let sorting = match (&self.sorting, &default.sorting) {
-            (Some(sorting), _) | (None, Some(sorting)) => *sorting,
-            (None, None) => Sorting::default(),
+            (None, Some(_)) if path.is_file() && !path_inherited => None,
+            (Some(sorting), _) | (None, Some(sorting)) => Some(*sorting),
+            (None, None) => None,
         };
+
+        // sorting can only be set when path is a directory
+        if sorting.is_some() && !path.is_dir() {
+            // Do no use bail! to add suggestion
+            return Err(anyhow!(
+                "Attribute {} is set to a file and attribute {} is also set.",
+                "path".bold().italic().blue(),
+                "sorting".bold().italic().blue()
+            )
+            .with_suggestion(|| {
+                format!(
+                    "Either remove {} or set {} to a directory",
+                    "path".bold().italic().blue(),
+                    "sorting".bold().italic().blue()
+                )
+            }));
+        }
+
         let mode = match (&self.mode, &default.mode) {
             (Some(mode), _) | (None, Some(mode)) => *mode,
             (None, None) => BackgroundMode::default(),

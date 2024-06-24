@@ -355,6 +355,7 @@ impl Surface {
         let path_changed = self.wallpaper_info.path != wallpaper_info.path;
         self.image_picker.update_sorting(
             self.wallpaper_info.sorting,
+            &self.wallpaper_info.path,
             path_changed,
             wallpaper_info.drawn_images_queue_size,
         );

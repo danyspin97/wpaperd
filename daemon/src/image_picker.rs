@@ -128,8 +128,24 @@ enum ImagePickerSorting {
 }
 
 impl ImagePickerSorting {
+    fn new(wallpaper_info: &WallpaperInfo, files_len: usize) -> Self {
+        match wallpaper_info.sorting {
+            Some(Sorting::Random) => Self::new_random(wallpaper_info.drawn_images_queue_size),
+            Some(Sorting::Ascending) => Self::new_ascending(files_len),
+            None | Some(Sorting::Descending) => Self::new_descending(),
+        }
+    }
+
     fn new_random(queue_size: usize) -> Self {
-        ImagePickerSorting::Random(Queue::with_capacity(queue_size))
+        Self::Random(Queue::with_capacity(queue_size))
+    }
+
+    fn new_descending() -> ImagePickerSorting {
+        Self::Descending(0)
+    }
+
+    fn new_ascending(files_len: usize) -> ImagePickerSorting {
+        Self::Ascending(files_len - 1)
     }
 }
 
@@ -149,15 +165,14 @@ impl ImagePicker {
             current_img: PathBuf::from(""),
             image_changed_instant: Instant::now(),
             action: Some(ImagePickerAction::Next),
-            sorting: match wallpaper_info.sorting {
-                Sorting::Random => {
-                    ImagePickerSorting::new_random(wallpaper_info.drawn_images_queue_size)
-                }
-                Sorting::Ascending => ImagePickerSorting::Ascending(
-                    filelist_cache.borrow().get(&wallpaper_info.path).len() - 1,
-                ),
-                Sorting::Descending => ImagePickerSorting::Descending(0),
-            },
+            sorting: ImagePickerSorting::new(
+                wallpaper_info,
+                filelist_cache
+                    .clone()
+                    .borrow()
+                    .get(&wallpaper_info.path)
+                    .len(),
+            ),
             filelist_cache,
             reload: false,
         }
@@ -335,43 +350,72 @@ impl ImagePicker {
     /// Return true if the path changed
     pub fn update_sorting(
         &mut self,
-        new_sorting: Sorting,
+        new_sorting: Option<Sorting>,
+        path: &Path,
         path_changed: bool,
         drawn_images_queue_size: usize,
     ) {
-        match (&mut self.sorting, new_sorting) {
-            (
-                ImagePickerSorting::Random { .. } | ImagePickerSorting::Descending(_),
-                Sorting::Ascending,
-            ) => self.sorting = ImagePickerSorting::Ascending(usize::MAX),
-            (
-                ImagePickerSorting::Random { .. } | ImagePickerSorting::Ascending(_),
-                Sorting::Descending,
-            ) => self.sorting = ImagePickerSorting::Descending(usize::MAX),
-            (
-                ImagePickerSorting::Descending(_) | ImagePickerSorting::Ascending(_),
-                Sorting::Random,
-            ) if path_changed => {
-                // If the path was changed, use a new random sorting
-                self.sorting = ImagePickerSorting::new_random(drawn_images_queue_size);
+        if let Some(new_sorting) = new_sorting {
+            match (&mut self.sorting, new_sorting) {
+                (_, Sorting::Ascending) if path_changed => {
+                    self.sorting = ImagePickerSorting::new_ascending(
+                        self.filelist_cache.borrow().get(path).len(),
+                    );
+                }
+                (_, Sorting::Descending) if path_changed => {
+                    self.sorting = ImagePickerSorting::new_descending();
+                }
+                (ImagePickerSorting::Descending(current_index), Sorting::Ascending) => {
+                    self.sorting = ImagePickerSorting::Ascending(*current_index)
+                }
+                (ImagePickerSorting::Ascending(current_index), Sorting::Descending) => {
+                    self.sorting = ImagePickerSorting::Descending(*current_index)
+                }
+                (ImagePickerSorting::Random { .. }, Sorting::Ascending | Sorting::Descending) => {
+                    let files = self.filelist_cache.borrow().get(path);
+                    let index = match files.binary_search(&self.current_img) {
+                        Ok(index) => Some(index),
+                        Err(_) => None,
+                    };
+                    self.sorting = match new_sorting {
+                        Sorting::Random => unreachable!(),
+                        Sorting::Ascending => match index {
+                            Some(index) => ImagePickerSorting::Ascending(index),
+                            None => ImagePickerSorting::new_ascending(files.len()),
+                        },
+                        Sorting::Descending => match index {
+                            Some(index) => ImagePickerSorting::Descending(index),
+                            None => ImagePickerSorting::new_descending(),
+                        },
+                    };
+                }
+                (
+                    ImagePickerSorting::Descending(_) | ImagePickerSorting::Ascending(_),
+                    Sorting::Random,
+                ) if path_changed => {
+                    // If the path was changed, use a new random sorting
+                    self.sorting = ImagePickerSorting::new_random(drawn_images_queue_size);
+                }
+                // The path has changed, use a new random sorting, otherwise we reuse the current
+                // drawn_images
+                (_, Sorting::Random) if path_changed => {
+                    self.sorting = ImagePickerSorting::new_random(drawn_images_queue_size);
+                }
+                (
+                    ImagePickerSorting::Descending(_) | ImagePickerSorting::Ascending(_),
+                    Sorting::Random,
+                ) => {
+                    // if the path was not changed, use the current image as the first image of
+                    // the drawn_images
+                    let mut queue = Queue::with_capacity(drawn_images_queue_size);
+                    queue.push(self.current_image());
+                    self.sorting = ImagePickerSorting::Random(queue);
+                }
+                // No need to update the sorting if it's the same
+                (_, _) => {}
             }
-            // The path has changed, use a new random sorting, otherwise we reuse the current
-            // drawn_images
-            (ImagePickerSorting::Random { .. }, Sorting::Random) if path_changed => {
-                self.sorting = ImagePickerSorting::new_random(drawn_images_queue_size);
-            }
-            (
-                ImagePickerSorting::Descending(_) | ImagePickerSorting::Ascending(_),
-                Sorting::Random,
-            ) => {
-                // if the path was not changed, use the current image as the first image of
-                // the drawn_images
-                let mut queue = Queue::with_capacity(drawn_images_queue_size);
-                queue.push(self.current_image());
-                self.sorting = ImagePickerSorting::Random(queue);
-            }
-            // No need to update the sorting if it's the same
-            (_, _) => {}
+        } else {
+            self.sorting = ImagePickerSorting::new_descending();
         }
     }
 
