@@ -46,7 +46,7 @@ pub struct Surface {
     wallpaper_info: WallpaperInfo,
     info: Rc<RefCell<DisplayInfo>>,
     image_loader: Rc<RefCell<ImageLoader>>,
-    drawn: bool,
+    window_drawn: bool,
     loading_image: Option<(PathBuf, usize)>,
     loading_image_tries: u8,
     /// Determines whether we should skip the next transition. Used to skip
@@ -106,7 +106,7 @@ impl Surface {
             image_picker,
             event_source: EventSource::NotSet,
             wallpaper_info,
-            drawn: false,
+            window_drawn: false,
             should_pause: false,
             image_loader,
             loading_image: None,
@@ -141,20 +141,21 @@ impl Surface {
             let transition_running = self.renderer.update_transition_status(time.unwrap_or(0));
             // If we don't have any time passed, just consider the transition to be ended
             if transition_running {
-                self.queue_draw(qh);
+                // Don't call queue_draw as it calls load_wallpaper again
+                self.wl_surface.frame(qh, self.wl_surface.clone());
             } else {
                 self.renderer.transition_finished();
             }
         } else if !wallpaper_loaded {
-            self.queue_draw(qh);
-            if self.drawn {
-                //return Ok(());
+            self.wl_surface.frame(qh, self.wl_surface.clone());
+            if self.window_drawn {
+                // We need to call commit, otherwise the call to frame above doesn't work
+                self.wl_surface().commit();
+                return Ok(());
             }
         }
 
         unsafe { self.renderer.draw()? }
-
-        self.drawn = true;
 
         self.renderer.clear_after_draw()?;
         self.egl_context.swap_buffers()?;
@@ -182,8 +183,14 @@ impl Surface {
                     .image_picker
                     .get_image_from_path(&self.wallpaper_info.path)
                 {
-                    // We are trying to load a new image
-                    self.loading_image = Some(item);
+                    if self.image_picker.current_image() == item.0
+                        && !self.image_picker.is_reloading()
+                    {
+                        break true;
+                    } else {
+                        // We are trying to load a new image
+                        self.loading_image = Some(item);
+                    }
                 } else {
                     // we don't need to load any image
                     break true;
@@ -195,9 +202,7 @@ impl Surface {
                 .expect("loading image to be set")
                 .clone();
 
-            if self.image_loader.borrow().is_image_loaded(&image_path)
-                && self.renderer.transition_running()
-            {
+            if self.renderer.transition_running() {
                 break true;
             }
 
@@ -325,8 +330,12 @@ impl Surface {
         info.width != 0 && info.height != 0
     }
 
-    pub fn drawn(&self) -> bool {
-        self.drawn
+    pub fn has_been_drawn(&self) -> bool {
+        self.window_drawn
+    }
+
+    pub fn drawn(&mut self) {
+        self.window_drawn = true;
     }
 
     /// Update the wallpaper_info of this Surface

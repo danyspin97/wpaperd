@@ -10,7 +10,7 @@ use log::warn;
 
 use crate::{
     filelist_cache::FilelistCache,
-    wallpaper_info::{self, Sorting, WallpaperInfo},
+    wallpaper_info::{Sorting, WallpaperInfo},
 };
 
 #[derive(Debug)]
@@ -145,37 +145,21 @@ pub struct ImagePicker {
 impl ImagePicker {
     pub const DEFAULT_DRAWN_IMAGES_QUEUE_SIZE: usize = 10;
     pub fn new(wallpaper_info: &WallpaperInfo, filelist_cache: Rc<RefCell<FilelistCache>>) -> Self {
-        let current_img = if wallpaper_info.path.is_dir() {
-            let files = filelist_cache.borrow().get(&wallpaper_info.path);
-            if files.len() != 0 {
-                match wallpaper_info.sorting {
-                    Sorting::Random => {
-                        let index = rand::random::<usize>() % files.len();
-                        files[index].to_path_buf()
-                    }
-                    Sorting::Ascending => files[0].to_path_buf(),
-                    Sorting::Descending => files.last().unwrap().to_path_buf(),
-                }
-            } else {
-                PathBuf::from("")
-            }
-        } else {
-            wallpaper_info.path.to_path_buf()
-        };
-
         Self {
-            current_img,
+            current_img: PathBuf::from(""),
             image_changed_instant: Instant::now(),
-            action: None,
+            action: Some(ImagePickerAction::Next),
             sorting: match wallpaper_info.sorting {
                 Sorting::Random => {
                     ImagePickerSorting::new_random(wallpaper_info.drawn_images_queue_size)
                 }
-                Sorting::Ascending => ImagePickerSorting::Ascending(0),
+                Sorting::Ascending => ImagePickerSorting::Ascending(
+                    filelist_cache.borrow().get(&wallpaper_info.path).len() - 1,
+                ),
                 Sorting::Descending => ImagePickerSorting::Descending(0),
             },
             filelist_cache,
-            reload: true,
+            reload: false,
         }
     }
 
@@ -241,67 +225,52 @@ impl ImagePicker {
                 queue.set_current_to(&self.current_img.to_path_buf());
                 (usize::MAX, self.current_image())
             }
-            // The current image is still in the same place
-            (Some(ImagePickerAction::Next), ImagePickerSorting::Descending(current_index))
-            | (Some(ImagePickerAction::Previous), ImagePickerSorting::Ascending(current_index))
-                if files.get(*current_index) == Some(&self.current_img) =>
-            {
-                // Start from the end
-                files
-                    .get(*current_index - 1)
-                    .map(|p| (*current_index - 1, p.to_path_buf()))
-                    .unwrap_or_else(|| {
-                        (
-                            files.len(),
-                            files
-                                .last()
-                                .expect("files vec to not be empty")
-                                .to_path_buf(),
-                        )
-                    })
-            }
-            // The image index is different
             (
                 None | Some(ImagePickerAction::Next),
                 ImagePickerSorting::Descending(current_index),
             )
-            | (
-                None | Some(ImagePickerAction::Previous),
-                ImagePickerSorting::Ascending(current_index),
-            ) => match files.binary_search(&self.current_img) {
-                Ok(new_index) => files
-                    .get(new_index - 1)
-                    .map(|p| (new_index - 1, p.to_path_buf()))
-                    .unwrap_or_else(|| (files.len(), files.last().unwrap().to_path_buf())),
-                Err(_err) => files
-                    .get(*current_index - 1)
-                    .map(|p| (*current_index - 1, p.to_path_buf()))
-                    .unwrap_or_else(|| (files.len(), files.last().unwrap().to_path_buf())),
-            },
-            // The current image is still in the same place
-            (Some(ImagePickerAction::Previous), ImagePickerSorting::Descending(current_index))
-            | (Some(ImagePickerAction::Next), ImagePickerSorting::Ascending(current_index))
-                if files.get(*current_index) == Some(&self.current_img) =>
-            {
-                // Start from the end
-                files
-                    .get(*current_index + 1)
-                    .map(|p| (*current_index + 1, p.to_path_buf()))
-                    .unwrap_or_else(|| (0, files.first().unwrap().to_path_buf()))
+            | (Some(ImagePickerAction::Previous), ImagePickerSorting::Ascending(current_index)) => {
+                let index = if files.get(*current_index) == Some(&self.current_img) {
+                    *current_index
+                } else {
+                    // if the current img doesn't correspond to the index we have
+                    // try looking for it in files
+                    match files.binary_search(&self.current_img) {
+                        Ok(new_index) => new_index,
+                        Err(_err) => {
+                            // if we don't find it, use the last index as starting point
+                            // if the current_index is too big, start from last image
+                            // this is a fail safe in case many files gets deleted
+                            if *current_index >= files.len() {
+                                0
+                            } else {
+                                *current_index
+                            }
+                        }
+                    }
+                };
+                let index = if index == 0 {
+                    files.len() - 1
+                } else {
+                    index - 1
+                };
+                (index, files[index].to_path_buf())
             }
-            // The image index is different
             (Some(ImagePickerAction::Previous), ImagePickerSorting::Descending(current_index))
-            | (Some(ImagePickerAction::Next), ImagePickerSorting::Ascending(current_index)) => {
-                match files.binary_search(&self.current_img) {
-                    Ok(new_index) => files
-                        .get(new_index + 1)
-                        .map(|p| (new_index + 1, p.to_path_buf()))
-                        .unwrap_or_else(|| (0, files.first().unwrap().to_path_buf())),
-                    Err(_err) => files
-                        .get(*current_index + 1)
-                        .map(|p| (*current_index + 1, p.to_path_buf()))
-                        .unwrap_or_else(|| (0, files.first().unwrap().to_path_buf())),
-                }
+            | (
+                None | Some(ImagePickerAction::Next),
+                ImagePickerSorting::Ascending(current_index),
+            ) => {
+                let index = if files.get(*current_index) == Some(&self.current_img) {
+                    *current_index
+                } else {
+                    match files.binary_search(&self.current_img) {
+                        Ok(new_index) => new_index,
+                        Err(_err) => *current_index,
+                    }
+                };
+                let index = (index + 1) % files.len();
+                (index, files[index].to_path_buf())
             }
         }
     }

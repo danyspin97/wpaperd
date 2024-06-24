@@ -1,8 +1,4 @@
-use std::{
-    collections::HashMap,
-    path::{Path, PathBuf},
-    thread::JoinHandle,
-};
+use std::{collections::HashMap, path::PathBuf, thread::JoinHandle};
 
 use image::{open, RgbaImage};
 use log::warn;
@@ -105,9 +101,5 @@ impl ImageLoader {
             .images
             .iter()
             .any(|(_, image)| { image.requesters.is_empty() }));
-    }
-
-    pub fn is_image_loaded(&self, path: &Path) -> bool {
-        self.images.contains_key(path)
     }
 }
