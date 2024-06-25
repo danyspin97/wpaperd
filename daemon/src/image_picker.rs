@@ -415,7 +415,7 @@ impl ImagePicker {
                 (_, _) => {}
             }
         } else {
-            self.sorting = ImagePickerSorting::new_descending();
+            self.sorting = ImagePickerSorting::new_random(drawn_images_queue_size);
         }
     }
 
