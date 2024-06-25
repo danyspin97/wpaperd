@@ -399,6 +399,10 @@ impl Renderer {
                 unsafe {
                     self.gl.DeleteProgram(self.program);
                 }
+                // Stop the transition immediately
+                if self.transition_running() {
+                    self.force_transition_end();
+                }
                 self.program = program;
             }
             Err(err) => error!("{err:?}"),
