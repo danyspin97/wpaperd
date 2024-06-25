@@ -186,6 +186,11 @@ transition_shader! {
             frequency: f32 = ("frequency", 0.5),
             drip_scale: f32 = ("dripScale", 0.5)
         } => 2000,
+        Doorway {
+            reflection: f32 = ("reflection", 0.4),
+            perspective: f32 = ("perspective", 0.4),
+            depth: f32 = ("depth", 3.0)
+        } => 1500,
         Dreamy{} => 1500,
         DreamyZoom{
             rotation: f32 = ("rotation", 6.0),
@@ -243,6 +248,35 @@ transition_shader! {
             rotations: f32 = ("rotations", 1.0),
             scale: f32 = ("scale", 8.0),
             back_color: [f32; 4] = ("backColor", [0.15, 0.15, 0.15, 1.0])
-        } => 1500
+        } => 1500,
+        RotateScaleVanish {
+            fade_in_second: bool = ("FadeInSecond", true),
+            reverse_effect: bool = ("ReverseEffect", false),
+            reverse_rotation: bool = ("ReverseRotation", false)
+        } => 1500,
+        SimpleZoom {
+            zoom_quickness: f32 = ("zoom_quickness", 0.8)
+        } => 1500,
+        Slides {
+            slides_type: i32 = ("type", 0),
+            slides_in: bool = ("In", false)
+        } => 1500,
+        StaticFade {
+            n_noise_pixels: f32 = ("n_noise_pixels", 200.0),
+            static_luminosity: f32 = ("static_luminosity", 0.8)
+        } => 1500,
+        StereoViewer {
+            zoom: f32 = ("zoom", 0.88),
+            corner_radius: f32 = ("corner_radius", 0.22)
+        } => 2000,
+        Swirl {} => 1500,
+        TvStatic {
+            offset: f32 = ("offset", 0.05)
+        } => 1000,
+        WaterDrop {
+            amplitude: f32 = ("amplitude", 30.0),
+            speed: f32 = ("speed", 30.0)
+        } => 1500,
+        WindowBlinds {} => 1500
     }
 }
