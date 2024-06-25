@@ -130,9 +130,11 @@ enum ImagePickerSorting {
 impl ImagePickerSorting {
     fn new(wallpaper_info: &WallpaperInfo, files_len: usize) -> Self {
         match wallpaper_info.sorting {
-            Some(Sorting::Random) => Self::new_random(wallpaper_info.drawn_images_queue_size),
+            None | Some(Sorting::Random) => {
+                Self::new_random(wallpaper_info.drawn_images_queue_size)
+            }
             Some(Sorting::Ascending) => Self::new_ascending(files_len),
-            None | Some(Sorting::Descending) => Self::new_descending(),
+            Some(Sorting::Descending) => Self::new_descending(),
         }
     }
 
