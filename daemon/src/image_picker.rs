@@ -242,6 +242,12 @@ impl ImagePicker {
                 let (index, loading_image) = group.loading_image.as_ref().unwrap();
                 (*index, loading_image.to_path_buf())
             }
+            (_, ImagePickerSorting::GroupedRandom(group))
+                if group.group.borrow().current_image != self.current_img =>
+            {
+                let group = group.group.borrow();
+                (group.index, group.current_image.clone())
+            }
             (None, ImagePickerSorting::Random(_) | ImagePickerSorting::GroupedRandom(_))
                 if self.current_img.exists() =>
             {
