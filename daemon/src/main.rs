@@ -8,6 +8,7 @@ mod opts;
 mod render;
 mod socket;
 mod surface;
+mod wallpaper_groups;
 mod wallpaper_info;
 mod wpaperd;
 
@@ -45,6 +46,8 @@ use smithay_client_toolkit::reexports::{
     calloop_wayland_source::WaylandSource,
     client::{globals::registry_queue_init, Connection, Proxy},
 };
+use wallpaper_groups::WallpaperGroups;
+use wallpaper_info::Sorting;
 use wpaperd_ipc::socket_path;
 use xdg::BaseDirectories;
 
@@ -121,7 +124,16 @@ fn run(opts: Opts, xdg_dirs: BaseDirectories) -> Result<()> {
         FilelistCache::new(config.paths(), &mut hotwatch, event_loop.handle())?;
     let filelist_cache = Rc::new(RefCell::new(filelist_cache));
 
-    let mut wpaperd = Wpaperd::new(&qh, &globals, config, egl_display, filelist_cache.clone())?;
+    let groups = Rc::new(RefCell::new(WallpaperGroups::new()));
+
+    let mut wpaperd = Wpaperd::new(
+        &qh,
+        &globals,
+        config,
+        egl_display,
+        filelist_cache.clone(),
+        groups,
+    )?;
 
     // Start listening on the IPC socket
     let socket = listen_on_ipc_socket(&socket_path()?).context("spawning the ipc socket")?;
@@ -183,11 +195,16 @@ fn run(opts: Opts, xdg_dirs: BaseDirectories) -> Result<()> {
                     error!("{err:?}");
                 };
                 surface.drawn();
-            }
-            // If the surface has already been drawn for the first time, then handle pausing/resuming
-            // the automatic wallpaper sequence.
-            else {
-                surface.handle_pause_state(&event_loop.handle(), qh.clone())
+            } else {
+                // If the surface has already been drawn for the first time, then handle pausing/resuming
+                // the automatic wallpaper sequence.
+                surface.handle_pause_state(&event_loop.handle(), qh.clone());
+                if matches!(
+                    surface.wallpaper_info.sorting,
+                    Some(Sorting::GroupedRandom { .. })
+                ) {
+                    // surface.image_picker.handle_grouped_sorting();
+                }
             };
 
             #[cfg(debug_assertions)]

@@ -125,6 +125,8 @@ represents a different display and can contain the following keys:
   This is only valid when path points to a directory. (_Optional_)
 - `sorting`, choose the sorting order. Valid options are `ascending`, `descending`, and `random`,
   with the default being `random`. This is only valid when path points to a directory. (_Optional_)
+- `group`, assign multiple displays to same group to share the same wallpaper when using
+  `random` sorting; group must be a number. (_Optional_)
 - `mode`, choose how to display the wallpaper when the size is different than the display
   resolution:
   - `fit` shows the entire image with black corners covering the empty space left

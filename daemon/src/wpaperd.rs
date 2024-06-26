@@ -25,6 +25,7 @@ use crate::display_info::DisplayInfo;
 use crate::filelist_cache::FilelistCache;
 use crate::image_loader::ImageLoader;
 use crate::surface::Surface;
+use crate::wallpaper_groups::WallpaperGroups;
 use crate::wallpaper_info::WallpaperInfo;
 
 pub struct Wpaperd {
@@ -38,6 +39,7 @@ pub struct Wpaperd {
     egl_display: egl::Display,
     pub filelist_cache: Rc<RefCell<FilelistCache>>,
     pub image_loader: Rc<RefCell<ImageLoader>>,
+    pub wallpaper_groups: Rc<RefCell<WallpaperGroups>>,
 }
 
 impl Wpaperd {
@@ -47,6 +49,7 @@ impl Wpaperd {
         config: Config,
         egl_display: egl::Display,
         filelist_cache: Rc<RefCell<FilelistCache>>,
+        wallpaper_groups: Rc<RefCell<WallpaperGroups>>,
     ) -> Result<Self> {
         let shm_state = Shm::bind(globals, qh)?;
 
@@ -63,6 +66,7 @@ impl Wpaperd {
             egl_display,
             filelist_cache,
             image_loader,
+            wallpaper_groups,
         })
     }
 
@@ -218,6 +222,8 @@ impl OutputHandler for Wpaperd {
             self.egl_display,
             self.filelist_cache.clone(),
             self.image_loader.clone(),
+            self.wallpaper_groups.clone(),
+            qh,
         ));
     }
 

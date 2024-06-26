@@ -47,6 +47,9 @@ impl Default for WallpaperInfo {
 pub enum Sorting {
     #[default]
     Random,
+    GroupedRandom {
+        group: u8,
+    },
     Ascending,
     Descending,
 }

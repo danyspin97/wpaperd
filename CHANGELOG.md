@@ -8,6 +8,7 @@
 - Add `offset` configuration to move the wallpaper from its center
 - Add `fit-border-color` background mode
 - Add `initial-transition` configuration to disable the startup transition if needed
+- Add `group` configuration to share the same wallpaper between multiple displays
 
 # 1.0.1
 

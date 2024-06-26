@@ -19,13 +19,13 @@ use smithay_client_toolkit::{
     shell::WaylandSurface,
 };
 
-use crate::wpaperd::Wpaperd;
 use crate::{display_info::DisplayInfo, wallpaper_info::WallpaperInfo};
 use crate::{
     filelist_cache::FilelistCache,
     render::{EglContext, Renderer},
 };
 use crate::{image_loader::ImageLoader, image_picker::ImagePicker};
+use crate::{wallpaper_groups::WallpaperGroups, wpaperd::Wpaperd};
 
 #[derive(Debug)]
 pub enum EventSource {
@@ -43,7 +43,7 @@ pub struct Surface {
     renderer: Renderer,
     pub image_picker: ImagePicker,
     event_source: EventSource,
-    wallpaper_info: WallpaperInfo,
+    pub wallpaper_info: WallpaperInfo,
     info: Rc<RefCell<DisplayInfo>>,
     image_loader: Rc<RefCell<ImageLoader>>,
     window_drawn: bool,
@@ -69,6 +69,8 @@ impl Surface {
         egl_display: egl::Display,
         filelist_cache: Rc<RefCell<FilelistCache>>,
         image_loader: Rc<RefCell<ImageLoader>>,
+        groups: Rc<RefCell<WallpaperGroups>>,
+        qh: &QueueHandle<Wpaperd>,
     ) -> Self {
         let wl_surface = wl_layer.wl_surface().clone();
         let egl_context = EglContext::new(egl_display, &wl_surface);
@@ -80,7 +82,7 @@ impl Surface {
         // Commit the surface
         wl_surface.commit();
 
-        let image_picker = ImagePicker::new(&wallpaper_info, filelist_cache);
+        let image_picker = ImagePicker::new(&wallpaper_info, &wl_surface, filelist_cache, groups);
 
         let image = black_image();
         let info = Rc::new(RefCell::new(info));
@@ -116,7 +118,7 @@ impl Surface {
 
         // Start loading the wallpaper as soon as possible (i.e. surface creation)
         // It will still be loaded as a texture when we have an openGL context
-        if let Err(err) = surface.load_wallpaper() {
+        if let Err(err) = surface.load_wallpaper(qh) {
             warn!("{err:?}");
         }
 
@@ -134,7 +136,7 @@ impl Surface {
         // Use the correct context before loading the texture and drawing
         self.egl_context.make_current()?;
 
-        let wallpaper_loaded = self.load_wallpaper()?;
+        let wallpaper_loaded = self.load_wallpaper(qh)?;
 
         if self.renderer.transition_running() {
             // Recalculate the current progress, the transition might end now
@@ -175,13 +177,13 @@ impl Surface {
     }
 
     // Call surface::frame when this return false
-    pub fn load_wallpaper(&mut self) -> Result<bool> {
+    pub fn load_wallpaper(&mut self, qh: &QueueHandle<Wpaperd>) -> Result<bool> {
         Ok(loop {
             // If we were not already trying to load an image
             if self.loading_image.is_none() {
                 if let Some(item) = self
                     .image_picker
-                    .get_image_from_path(&self.wallpaper_info.path)
+                    .get_image_from_path(&self.wallpaper_info.path, qh)
                 {
                     if self.image_picker.current_image() == item.0
                         && !self.image_picker.is_reloading()
@@ -361,7 +363,7 @@ impl Surface {
         );
         if path_changed {
             // ask the image_picker to pick a new a image
-            self.image_picker.next_image();
+            self.image_picker.next_image(&self.wallpaper_info.path, &qh);
             self.queue_draw(qh);
         }
         if self.wallpaper_info.duration != wallpaper_info.duration {
@@ -483,7 +485,9 @@ impl Surface {
                             TimeoutAction::ToDuration(remaining_time)
                         } else {
                             // Change the drawn image
-                            surface.image_picker.next_image();
+                            surface
+                                .image_picker
+                                .next_image(&surface.wallpaper_info.path, &qh);
                             surface.queue_draw(&qh);
                             TimeoutAction::ToDuration(duration)
                         }
@@ -521,7 +525,7 @@ impl Surface {
     #[inline]
     pub fn queue_draw(&mut self, qh: &QueueHandle<Wpaperd>) {
         // Start loading the next image immediately
-        if let Err(err) = self.load_wallpaper() {
+        if let Err(err) = self.load_wallpaper(qh) {
             warn!("{err:?}");
         }
         self.wl_surface.frame(qh, self.wl_surface.clone());

@@ -117,7 +117,9 @@ pub fn handle_message(
 
         IpcMessage::NextWallpaper { monitors } => check_monitors(wpaperd, &monitors).map(|_| {
             for surface in collect_surfaces(wpaperd, monitors) {
-                surface.image_picker.next_image();
+                surface
+                    .image_picker
+                    .next_image(&surface.wallpaper_info.path, &qh);
                 surface.queue_draw(&qh);
             }
 

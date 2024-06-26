@@ -7,14 +7,17 @@ use std::{
 };
 
 use log::warn;
+use smithay_client_toolkit::reexports::client::{protocol::wl_surface::WlSurface, QueueHandle};
 
 use crate::{
     filelist_cache::FilelistCache,
+    wallpaper_groups::{WallpaperGroup, WallpaperGroups},
     wallpaper_info::{Sorting, WallpaperInfo},
+    wpaperd::Wpaperd,
 };
 
 #[derive(Debug)]
-struct Queue {
+pub struct Queue {
     buffer: VecDeque<PathBuf>,
     current: usize,
     tail: usize,
@@ -22,7 +25,7 @@ struct Queue {
 }
 
 impl Queue {
-    fn with_capacity(size: usize) -> Self {
+    pub fn with_capacity(size: usize) -> Self {
         Self {
             buffer: VecDeque::with_capacity(size),
             current: 0,
@@ -121,18 +124,41 @@ enum ImagePickerAction {
     Previous,
 }
 
+struct GroupedRandom {
+    surface: WlSurface,
+    group: Rc<RefCell<WallpaperGroup>>,
+}
+
+impl Drop for GroupedRandom {
+    fn drop(&mut self) {
+        self.group.borrow_mut().surfaces.remove(&self.surface);
+    }
+}
+
 enum ImagePickerSorting {
     Random(Queue),
+    GroupedRandom(GroupedRandom),
     Ascending(usize),
     Descending(usize),
 }
 
 impl ImagePickerSorting {
-    fn new(wallpaper_info: &WallpaperInfo, files_len: usize) -> Self {
+    fn new(
+        wallpaper_info: &WallpaperInfo,
+        wl_surface: &WlSurface,
+        files_len: usize,
+        groups: Rc<RefCell<WallpaperGroups>>,
+    ) -> Self {
         match wallpaper_info.sorting {
             None | Some(Sorting::Random) => {
                 Self::new_random(wallpaper_info.drawn_images_queue_size)
             }
+            Some(Sorting::GroupedRandom { group }) => Self::new_grouped_random(
+                groups,
+                group,
+                wl_surface,
+                wallpaper_info.drawn_images_queue_size,
+            ),
             Some(Sorting::Ascending) => Self::new_ascending(files_len),
             Some(Sorting::Descending) => Self::new_descending(),
         }
@@ -149,6 +175,20 @@ impl ImagePickerSorting {
     fn new_ascending(files_len: usize) -> ImagePickerSorting {
         Self::Ascending(files_len - 1)
     }
+
+    fn new_grouped_random(
+        groups: Rc<RefCell<WallpaperGroups>>,
+        group: u8,
+        wl_surface: &WlSurface,
+        queue_size: usize,
+    ) -> Self {
+        Self::GroupedRandom(GroupedRandom {
+            surface: wl_surface.clone(),
+            group: groups
+                .borrow_mut()
+                .get_or_insert(group, wl_surface, queue_size),
+        })
+    }
 }
 
 pub struct ImagePicker {
@@ -162,18 +202,25 @@ pub struct ImagePicker {
 
 impl ImagePicker {
     pub const DEFAULT_DRAWN_IMAGES_QUEUE_SIZE: usize = 10;
-    pub fn new(wallpaper_info: &WallpaperInfo, filelist_cache: Rc<RefCell<FilelistCache>>) -> Self {
+    pub fn new(
+        wallpaper_info: &WallpaperInfo,
+        wl_surface: &WlSurface,
+        filelist_cache: Rc<RefCell<FilelistCache>>,
+        groups: Rc<RefCell<WallpaperGroups>>,
+    ) -> Self {
         Self {
             current_img: PathBuf::from(""),
             image_changed_instant: Instant::now(),
             action: Some(ImagePickerAction::Next),
             sorting: ImagePickerSorting::new(
                 wallpaper_info,
+                wl_surface,
                 filelist_cache
                     .clone()
                     .borrow()
                     .get(&wallpaper_info.path)
                     .len(),
+                groups,
             ),
             filelist_cache,
             reload: false,
@@ -181,66 +228,53 @@ impl ImagePicker {
     }
 
     /// Get the next image based on the sorting method
-    fn get_image_path(&mut self, files: &[PathBuf]) -> (usize, PathBuf) {
+    fn get_image_path(&mut self, files: &[PathBuf], qh: &QueueHandle<Wpaperd>) -> (usize, PathBuf) {
         match (&self.action, &mut self.sorting) {
             (
                 None,
                 ImagePickerSorting::Ascending(current_index)
                 | ImagePickerSorting::Descending(current_index),
             ) if self.current_img.exists() => (*current_index, self.current_img.to_path_buf()),
-
-            (None, ImagePickerSorting::Random(_)) if self.current_img.exists() => {
+            (_, ImagePickerSorting::GroupedRandom(group))
+                if group.group.borrow().loading_image.is_some() =>
+            {
+                let group = group.group.borrow();
+                let (index, loading_image) = group.loading_image.as_ref().unwrap();
+                (*index, loading_image.to_path_buf())
+            }
+            (None, ImagePickerSorting::Random(_) | ImagePickerSorting::GroupedRandom(_))
+                if self.current_img.exists() =>
+            {
                 (0, self.current_img.to_path_buf())
             }
             (None | Some(ImagePickerAction::Next), ImagePickerSorting::Random(queue)) => {
-                // Use the next images in the queue, if any
-                while let Some((next, index)) = queue.next() {
-                    if next.exists() {
-                        return (index, next.to_path_buf());
-                    }
-                }
-                // If there is only one image just return it
-                if files.len() == 1 {
-                    return (0, files[0].to_path_buf());
-                }
-
-                // Otherwise pick a new random image that has not been drawn before
-                // Try 5 times, then get a random image. We do this because it might happen
-                // that the queue is bigger than the amount of available wallpapers
-                let mut tries = 5;
-                loop {
-                    let index = rand::random::<usize>() % files.len();
-                    // search for an image that has not been drawn yet
-                    // fail after 5 tries
-                    if !queue.contains(&files[index]) {
-                        break (index, files[index].to_path_buf());
-                    }
-
-                    // We have already tried a bunch of times
-                    // We still need a new image, get the first one that is different than
-                    // the current one. We also know that there is more than one image
-                    if tries == 0 {
-                        break loop {
-                            let index = rand::random::<usize>() % files.len();
-                            if files[index] != self.current_img {
-                                break (index, files[index].to_path_buf());
-                            }
-                        };
-                    }
-
-                    tries -= 1;
+                next_random_image(&self.current_img, queue, files)
+            }
+            (None | Some(ImagePickerAction::Next), ImagePickerSorting::GroupedRandom(group)) => {
+                let mut group = group.group.borrow_mut();
+                if self.current_img == group.current_image {
+                    // start loading a new image
+                    let (index, path) =
+                        next_random_image(&self.current_img, &mut group.queue, files);
+                    group.loading_image = Some((index, path.to_path_buf()));
+                    group.queue_all_surfaces(qh);
+                    (index, path)
+                } else {
+                    (group.index, group.current_image.clone())
                 }
             }
             (Some(ImagePickerAction::Previous), ImagePickerSorting::Random(queue)) => {
-                while let Some((prev, index)) = queue.previous() {
-                    if prev.exists() {
-                        return (index, prev.to_path_buf());
-                    }
+                get_previous_image_for_random(&self.current_img, queue)
+            }
+            (Some(ImagePickerAction::Previous), ImagePickerSorting::GroupedRandom(group)) => {
+                let mut group = group.group.borrow_mut();
+                let queue = &mut group.queue;
+                let (index, path) = get_previous_image_for_random(&self.current_img, queue);
+                if path != group.current_image {
+                    group.loading_image = Some((index, path.to_path_buf()));
+                    group.queue_all_surfaces(qh);
                 }
-
-                // We didn't find any suitable image, reset to the last working one
-                queue.set_current_to(&self.current_img.to_path_buf());
-                (usize::MAX, self.current_image())
+                (index, path)
             }
             (
                 None | Some(ImagePickerAction::Next),
@@ -292,7 +326,11 @@ impl ImagePicker {
         }
     }
 
-    pub fn get_image_from_path(&mut self, path: &Path) -> Option<(PathBuf, usize)> {
+    pub fn get_image_from_path(
+        &mut self,
+        path: &Path,
+        qh: &QueueHandle<Wpaperd>,
+    ) -> Option<(PathBuf, usize)> {
         if path.is_dir() {
             let files = self.filelist_cache.borrow().get(path);
 
@@ -301,7 +339,7 @@ impl ImagePicker {
                 warn!("Directory {path:?} does not contain any valid image files.");
                 None
             } else {
-                let (index, img_path) = self.get_image_path(&files);
+                let (index, img_path) = self.get_image_path(&files, qh);
                 if img_path == self.current_img && !self.reload {
                     None
                 } else {
@@ -325,10 +363,29 @@ impl ImagePicker {
             }
             (None | Some(ImagePickerAction::Previous), ImagePickerSorting::Random { .. }) => {}
             (
+                None | Some(ImagePickerAction::Previous),
+                ImagePickerSorting::GroupedRandom(group),
+            ) => {
+                let mut group = group.group.borrow_mut();
+                group.loading_image = None;
+                group.current_image.clone_from(&img_path);
+                group.index = index;
+            }
+            (
                 _,
                 ImagePickerSorting::Ascending(current_index)
                 | ImagePickerSorting::Descending(current_index),
             ) => *current_index = index,
+            (Some(ImagePickerAction::Next), ImagePickerSorting::GroupedRandom(group)) => {
+                let mut group = group.group.borrow_mut();
+                let queue = &mut group.queue;
+                if queue.has_reached_end() || queue.buffer.get(index).is_none() {
+                    queue.push(img_path.clone());
+                }
+                group.loading_image = None;
+                group.current_image.clone_from(&img_path);
+                group.index = index;
+            }
         }
 
         self.current_img = img_path;
@@ -341,8 +398,9 @@ impl ImagePicker {
     }
 
     /// Update wallpaper by going up 1 index through the cached image paths
-    pub fn next_image(&mut self) {
+    pub fn next_image(&mut self, path: &Path, qh: &QueueHandle<Wpaperd>) {
         self.action = Some(ImagePickerAction::Next);
+        self.get_image_from_path(path, qh);
     }
 
     pub fn current_image(&self) -> PathBuf {
@@ -380,7 +438,7 @@ impl ImagePicker {
                         Err(_) => None,
                     };
                     self.sorting = match new_sorting {
-                        Sorting::Random => unreachable!(),
+                        Sorting::Random | Sorting::GroupedRandom { .. } => unreachable!(),
                         Sorting::Ascending => match index {
                             Some(index) => ImagePickerSorting::Ascending(index),
                             None => ImagePickerSorting::new_ascending(files.len()),
@@ -427,6 +485,13 @@ impl ImagePicker {
                 queue.resize(drawn_images_queue_size);
             }
             ImagePickerSorting::Ascending(_) | ImagePickerSorting::Descending(_) => {}
+            ImagePickerSorting::GroupedRandom(group) => {
+                group
+                    .group
+                    .borrow_mut()
+                    .queue
+                    .resize(drawn_images_queue_size);
+            }
         }
     }
 
@@ -444,6 +509,62 @@ impl ImagePicker {
     pub fn is_reloading(&self) -> bool {
         self.reload
     }
+}
+
+fn next_random_image(
+    current_image: &Path,
+    queue: &mut Queue,
+    files: &[PathBuf],
+) -> (usize, PathBuf) {
+    // Use the next images in the queue, if any
+    while let Some((next, index)) = queue.next() {
+        if next.exists() {
+            return (index, next.to_path_buf());
+        }
+    }
+    // If there is only one image just return it
+    if files.len() == 1 {
+        return (0, files[0].to_path_buf());
+    }
+
+    // Otherwise pick a new random image that has not been drawn before
+    // Try 5 times, then get a random image. We do this because it might happen
+    // that the queue is bigger than the amount of available wallpapers
+    let mut tries = 5;
+    loop {
+        let index = rand::random::<usize>() % files.len();
+        // search for an image that has not been drawn yet
+        // fail after 5 tries
+        if !queue.contains(&files[index]) {
+            break (index, files[index].to_path_buf());
+        }
+
+        // We have already tried a bunch of times
+        // We still need a new image, get the first one that is different than
+        // the current one. We also know that there is more than one image
+        if tries == 0 {
+            break loop {
+                let index = rand::random::<usize>() % files.len();
+                if files[index] != current_image {
+                    break (index, files[index].to_path_buf());
+                }
+            };
+        }
+
+        tries -= 1;
+    }
+}
+
+fn get_previous_image_for_random(current_image: &Path, queue: &mut Queue) -> (usize, PathBuf) {
+    while let Some((prev, index)) = queue.previous() {
+        if prev.exists() {
+            return (index, prev.to_path_buf());
+        }
+    }
+
+    // We didn't find any suitable image, reset to the last working one
+    queue.set_current_to(current_image);
+    (usize::MAX, current_image.to_path_buf())
 }
 
 #[cfg(test)]
