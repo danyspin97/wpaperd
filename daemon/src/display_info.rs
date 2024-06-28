@@ -50,6 +50,16 @@ impl DisplayInfo {
     }
 
     #[inline]
+    pub fn scaled_width(&self) -> i32 {
+        self.width * self.scale
+    }
+
+    #[inline]
+    pub fn scaled_height(&self) -> i32 {
+        self.height * self.scale
+    }
+
+    #[inline]
     pub fn ratio(&self) -> f32 {
         self.adjusted_width() as f32 / self.adjusted_height() as f32
     }

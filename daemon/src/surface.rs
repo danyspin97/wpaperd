@@ -93,6 +93,7 @@ impl Surface {
                 info.clone(),
                 0,
                 wallpaper_info.transition.clone(),
+                info.borrow().transform,
             )
             .expect("unable to create the renderer")
         };
@@ -308,7 +309,14 @@ impl Surface {
         if info.change_transform(transform) {
             drop(info);
             self.wl_surface.set_buffer_transform(transform);
-            if let Err(err) = self.resize(qh) {
+            if let Err(err) = self
+                .resize(qh)
+                .and_then(|_| {
+                    self.renderer
+                        .set_mode(self.wallpaper_info.mode, self.wallpaper_info.offset)
+                })
+                .and_then(|_| unsafe { self.renderer.set_projection_matrix(transform) })
+            {
                 error!("{err:?}");
             }
         }
@@ -421,8 +429,9 @@ impl Surface {
         if self.wallpaper_info.transition != wallpaper_info.transition {
             match self.egl_context.make_current() {
                 Ok(_) => {
+                    let transform = self.renderer.display_info.borrow().transform;
                     self.renderer
-                        .update_transition(self.wallpaper_info.transition.clone());
+                        .update_transition(self.wallpaper_info.transition.clone(), transform);
                 }
                 Err(err) => {
                     error!("{err:?}");

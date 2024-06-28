@@ -7,6 +7,7 @@ use color_eyre::{
 use egl::API as egl;
 use image::{DynamicImage, RgbaImage};
 use log::error;
+use smithay_client_toolkit::reexports::client::protocol::wl_output::Transform;
 
 use crate::{
     display_info::DisplayInfo,
@@ -44,7 +45,7 @@ pub struct Renderer {
     eab: gl::types::GLuint,
     // milliseconds time for the transition
     transition_time: u32,
-    display_info: Rc<RefCell<DisplayInfo>>,
+    pub display_info: Rc<RefCell<DisplayInfo>>,
     prev_wallpaper: Option<Wallpaper>,
     current_wallpaper: Wallpaper,
     transparent_texture: gl::types::GLuint,
@@ -58,6 +59,7 @@ impl Renderer {
         display_info: Rc<RefCell<DisplayInfo>>,
         transition_time: u32,
         transition: Transition,
+        transform: Transform,
     ) -> Result<Self> {
         let gl = gl::Gl::load_with(|name| {
             egl.get_proc_address(name)
@@ -88,6 +90,7 @@ impl Renderer {
         };
 
         renderer.load_wallpaper(image, BackgroundMode::Stretch, None)?;
+        renderer.set_projection_matrix(transform)?;
 
         Ok(renderer)
     }
@@ -185,9 +188,9 @@ impl Renderer {
 
     pub fn set_mode(&mut self, mode: BackgroundMode, offset: Option<f32>) -> Result<()> {
         let display_info = (*self.display_info).borrow();
-        let display_width = display_info.adjusted_width() as f32;
-        let display_height = display_info.adjusted_height() as f32;
-        let display_ratio = display_info.ratio();
+        let display_width = display_info.scaled_width() as f32;
+        let display_height = display_info.scaled_height() as f32;
+        let display_ratio = display_width / display_height;
         let gen_texture_scale = |image_width: f32, image_height: f32| {
             let image_ratio: f32 = image_width / image_height;
             Box::new(match mode {
@@ -393,7 +396,7 @@ impl Renderer {
     }
 
     #[inline]
-    pub fn update_transition(&mut self, transition: Transition) {
+    pub fn update_transition(&mut self, transition: Transition, transform: Transform) {
         match create_program(&self.gl, transition) {
             Ok(program) => {
                 unsafe {
@@ -404,6 +407,9 @@ impl Renderer {
                     self.force_transition_end();
                 }
                 self.program = program;
+                unsafe {
+                    self.set_projection_matrix(transform);
+                }
             }
             Err(err) => error!("{err:?}"),
         }
@@ -415,6 +421,23 @@ impl Renderer {
             TransitionStatus::Started | TransitionStatus::Running { .. } => true,
             TransitionStatus::Ended => false,
         }
+    }
+
+    pub unsafe fn set_projection_matrix(&self, transform: Transform) -> Result<()> {
+        let projection_matrix = projection_matrix(transform);
+        let loc = self
+            .gl
+            .GetUniformLocation(self.program, b"projection_matrix\0".as_ptr() as *const _);
+        self.check_error("getting the uniform location for projection_matrix")?;
+        ensure!(loc > 0, "projection_matrix not found");
+        self.gl
+            .UniformMatrix2fv(loc, 1, 0, projection_matrix.as_ptr());
+        //self.gl
+        //    .UniformMatrix2fv(loc, 1, 0, [1.0, 0.0, 0.0, 1.0].as_ptr());
+
+        self.check_error("calling Uniform1i")?;
+
+        Ok(())
     }
 }
 
@@ -470,6 +493,62 @@ fn create_program(gl: &gl::Gl, transition: Transition) -> Result<gl::types::GLui
         uniform_callback(gl, program)?;
 
         Ok(program)
+    }
+}
+
+#[rustfmt::skip]
+fn projection_matrix(transform: Transform) -> [f32; 4] {
+    println!("HERE");
+    match transform {
+        Transform::Normal => {
+            [
+                1.0, 0.0,
+                0.0, 1.0,
+            ]
+        }
+        Transform::_90 => {
+            [
+                0.0, 1.0,
+                -1.0, 0.0,
+            ]
+        }
+        Transform::_180 => {
+            [
+                -1.0, 0.0,
+                0.0, -1.0,
+            ]
+        }
+        Transform::_270 => {
+            [
+                0.0, -1.0,
+                1.0, 0.0,
+            ]
+        }
+        Transform::Flipped => {
+            [
+                -1.0, 0.0,
+                0.0, 1.0,
+            ]
+        }
+        Transform::Flipped90 => {
+            [
+                0.0, -1.0,
+                -1.0, 0.0,
+            ]
+        }
+        Transform::Flipped180 => {
+            [
+                1.0, 0.0,
+                0.0, -1.0,
+            ]
+        }
+        Transform::Flipped270 => {
+            [
+                0.0, 1.0,
+                1.0, 0.0,
+            ]
+        }
+        _ => unreachable!()
     }
 }
 

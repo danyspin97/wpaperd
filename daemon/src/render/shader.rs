@@ -59,10 +59,12 @@ precision mediump float;
 layout (location = 0) in vec2 aPosition;
 layout (location = 1) in vec2 aTexCoord;
 
+layout (location = 10) uniform mat2 projection_matrix;
+
 out vec2 v_texcoord;
 
 void main() {
-    gl_Position = vec4(aPosition, 1.0, 1.0);
+    gl_Position = vec4(aPosition* projection_matrix, 1.0, 1.0);
     v_texcoord = aTexCoord;
 }";
 
