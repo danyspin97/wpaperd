@@ -10,7 +10,7 @@ use log::warn;
 use smithay_client_toolkit::reexports::client::{protocol::wl_surface::WlSurface, QueueHandle};
 
 use crate::{
-    filelist_cache::FilelistCache,
+    filelist_cache::{self, FilelistCache},
     wallpaper_groups::{WallpaperGroup, WallpaperGroups},
     wallpaper_info::{Sorting, WallpaperInfo},
     wpaperd::Wpaperd,
@@ -146,8 +146,8 @@ impl ImagePickerSorting {
     fn new(
         wallpaper_info: &WallpaperInfo,
         wl_surface: &WlSurface,
-        files_len: usize,
         groups: Rc<RefCell<WallpaperGroups>>,
+        filelist_cache: Rc<RefCell<FilelistCache>>,
     ) -> Self {
         match wallpaper_info.sorting {
             None | Some(Sorting::Random) => {
@@ -159,7 +159,14 @@ impl ImagePickerSorting {
                 wl_surface,
                 wallpaper_info.drawn_images_queue_size,
             ),
-            Some(Sorting::Ascending) => Self::new_ascending(files_len),
+            Some(Sorting::Ascending) => {
+                let files_len = filelist_cache
+                    .clone()
+                    .borrow()
+                    .get(&wallpaper_info.path)
+                    .len();
+                Self::new_ascending(files_len)
+            }
             Some(Sorting::Descending) => Self::new_descending(),
         }
     }
@@ -215,12 +222,8 @@ impl ImagePicker {
             sorting: ImagePickerSorting::new(
                 wallpaper_info,
                 wl_surface,
-                filelist_cache
-                    .clone()
-                    .borrow()
-                    .get(&wallpaper_info.path)
-                    .len(),
                 groups,
+                filelist_cache.clone(),
             ),
             filelist_cache,
             reload: false,
