@@ -138,6 +138,24 @@ impl CompositorHandler for Wpaperd {
         self.surface_from_wl_surface(surface)
             .change_transform(new_transform, qh);
     }
+
+    fn surface_enter(
+        &mut self,
+        _conn: &Connection,
+        _qh: &QueueHandle<Self>,
+        _surface: &wl_surface::WlSurface,
+        _output: &wl_output::WlOutput,
+    ) {
+    }
+
+    fn surface_leave(
+        &mut self,
+        _conn: &Connection,
+        _qh: &QueueHandle<Self>,
+        _surface: &wl_surface::WlSurface,
+        _output: &wl_output::WlOutput,
+    ) {
+    }
 }
 
 impl OutputHandler for Wpaperd {
