@@ -498,7 +498,6 @@ fn create_program(gl: &gl::Gl, transition: Transition) -> Result<gl::types::GLui
 
 #[rustfmt::skip]
 fn projection_matrix(transform: Transform) -> [f32; 4] {
-    println!("HERE");
     match transform {
         Transform::Normal => {
             [
@@ -508,8 +507,8 @@ fn projection_matrix(transform: Transform) -> [f32; 4] {
         }
         Transform::_90 => {
             [
-                0.0, 1.0,
-                -1.0, 0.0,
+                0.0, -1.0,
+                1.0, 0.0,
             ]
         }
         Transform::_180 => {
@@ -520,8 +519,8 @@ fn projection_matrix(transform: Transform) -> [f32; 4] {
         }
         Transform::_270 => {
             [
-                0.0, -1.0,
-                1.0, 0.0,
+                0.0, 1.0,
+                -1.0, 0.0,
             ]
         }
         Transform::Flipped => {
