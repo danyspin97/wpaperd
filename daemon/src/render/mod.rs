@@ -128,7 +128,7 @@ fn load_texture(gl: &gl::Gl, image: DynamicImage) -> Result<gl::types::GLuint> {
         let mut texture = 0;
         gl.GenTextures(1, &mut texture);
         gl_check!(gl, "generating textures");
-        gl.ActiveTexture(gl::TEXTURE0);
+        gl.ActiveTexture(gl::TEXTURE1);
         gl_check!(gl, "activating textures");
         gl.BindTexture(gl::TEXTURE_2D, texture);
         gl_check!(gl, "binding textures");

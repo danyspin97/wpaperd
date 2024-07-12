@@ -171,9 +171,8 @@ impl Renderer {
                 .expect("previous wallpaper to be set")
                 .bind(&self.gl)?;
 
-            self.gl.ActiveTexture(gl::TEXTURE1);
-            self.check_error("activating gl::TEXTURE1")?;
-            self.current_wallpaper.bind(&self.gl)?;
+            // current_wallpaper is already binded to TEXTURE1, as load_texture loads the image
+            // there
         }
 
         Ok(())
