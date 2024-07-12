@@ -48,13 +48,8 @@ macro_rules! gl_check {
 
 fn initialize_objects(
     gl: &gl::Gl,
-) -> Result<(gl::types::GLuint, gl::types::GLuint, gl::types::GLuint)> {
+) -> Result<(gl::types::GLuint, gl::types::GLuint)> {
     unsafe {
-        let mut vao = 0;
-        gl.GenVertexArrays(1, &mut vao);
-        gl_check!(gl, "generating the vertex array");
-        gl.BindVertexArray(vao);
-        gl_check!(gl, "binding the vertex array");
         let mut vbo = 0;
         gl.GenBuffers(1, &mut vbo);
         gl_check!(gl, "generating the vbo buffer");
@@ -109,7 +104,7 @@ fn initialize_objects(
         gl.EnableVertexAttribArray(TEX_ATTRIB as gl::types::GLuint);
         gl_check!(gl, "enabling the texture attribute for the vertex");
 
-        Ok((vao, vbo, eab))
+        Ok((vbo, eab))
     }
 }
 
@@ -125,7 +120,7 @@ fn load_texture(gl: &gl::Gl, image: DynamicImage) -> Result<gl::types::GLuint> {
         gl.TexImage2D(
             gl::TEXTURE_2D,
             0,
-            gl::RGBA8.try_into().unwrap(),
+            gl::RGBA.try_into().unwrap(),
             image.width().try_into().unwrap(),
             image.height().try_into().unwrap(),
             0,

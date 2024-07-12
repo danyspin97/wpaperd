@@ -65,7 +65,7 @@ impl UniformSetter for [i32; 2] {
 impl UniformSetter for [u32; 2] {
     unsafe fn set_uniform(&self, gl: &gl::Gl, loc: gl::types::GLint) {
         unsafe {
-            gl.Uniform2uiv(loc, 1, self.as_ptr());
+            gl.Uniform2iv(loc, 1, self.as_ptr() as *const _);
         }
     }
 }

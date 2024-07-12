@@ -40,7 +40,6 @@ pub enum TransitionStatus {
 pub struct Renderer {
     gl: gl::Gl,
     pub program: gl::types::GLuint,
-    vao: gl::types::GLuint,
     vbo: gl::types::GLuint,
     eab: gl::types::GLuint,
     // milliseconds time for the transition
@@ -69,7 +68,7 @@ impl Renderer {
         let program = create_program(&gl, transition)
             .context("unable to create program during openGL ES initialization")?;
 
-        let (vao, vbo, eab) = initialize_objects(&gl)?;
+        let (vbo, eab) = initialize_objects(&gl)?;
 
         let current_wallpaper = Wallpaper::new();
 
@@ -78,7 +77,6 @@ impl Renderer {
         let mut renderer = Self {
             gl,
             program,
-            vao,
             vbo,
             eab,
             transition_time,
@@ -351,9 +349,9 @@ impl Renderer {
     pub fn clear_after_draw(&self) -> Result<()> {
         unsafe {
             // Unbind the framebuffer and renderbuffer before deleting.
-            self.gl.BindBuffer(gl::PIXEL_UNPACK_BUFFER, 0);
-            self.check_error("unbinding the unpack buffer")?;
-            self.gl.BindFramebuffer(gl::DRAW_FRAMEBUFFER, 0);
+            // self.gl.BindBuffer(gl::PIXEL_UNPACK_BUFFER, 0);
+            // self.check_error("unbinding the unpack buffer")?;
+            self.gl.BindFramebuffer(gl::FRAMEBUFFER, 0);
             self.check_error("unbinding the framebuffer")?;
             self.gl.BindRenderbuffer(gl::RENDERBUFFER, 0);
             self.check_error("unbinding the render buffer")?;
@@ -568,7 +566,6 @@ impl Drop for Renderer {
             }
             self.gl.DeleteBuffers(1, &self.eab);
             self.gl.DeleteBuffers(1, &self.vbo);
-            self.gl.DeleteBuffers(1, &self.vao);
             self.gl.DeleteProgram(self.program);
         }
     }

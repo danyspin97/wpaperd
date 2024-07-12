@@ -52,7 +52,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     Registry::new(
         Api::Gles2,
-        (3, 0),
+        (2, 0),
         Profile::Core,
         Fallbacks::All,
         ["GL_EXT_texture_border_clamp"],
