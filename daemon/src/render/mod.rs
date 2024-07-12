@@ -47,9 +47,7 @@ macro_rules! gl_check {
     }};
 }
 
-fn initialize_objects(
-    gl: &gl::Gl,
-) -> Result<(gl::types::GLuint, gl::types::GLuint)> {
+fn initialize_objects(gl: &gl::Gl) -> Result<(gl::types::GLuint, gl::types::GLuint)> {
     unsafe {
         let mut vbo = 0;
         gl.GenBuffers(1, &mut vbo);

@@ -233,14 +233,12 @@ impl OutputHandler for Wpaperd {
         };
 
         self.surfaces.push(Surface::new(
+            self,
             layer,
             output,
             display_info,
             wallpaper_info,
             self.egl_display,
-            self.filelist_cache.clone(),
-            self.image_loader.clone(),
-            self.wallpaper_groups.clone(),
             qh,
         ));
     }

@@ -10,7 +10,7 @@ use log::warn;
 use smithay_client_toolkit::reexports::client::{protocol::wl_surface::WlSurface, QueueHandle};
 
 use crate::{
-    filelist_cache::{self, FilelistCache},
+    filelist_cache::FilelistCache,
     wallpaper_groups::{WallpaperGroup, WallpaperGroups},
     wallpaper_info::{Sorting, WallpaperInfo},
     wpaperd::Wpaperd,

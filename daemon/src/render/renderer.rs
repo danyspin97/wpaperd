@@ -19,12 +19,7 @@ use crate::{
     wallpaper_info::BackgroundMode,
 };
 
-use super::{
-    coordinates::{get_opengl_point_coordinates, Coordinates},
-    gl,
-    wallpaper::Wallpaper,
-    Transition,
-};
+use super::{gl, wallpaper::Wallpaper, Transition};
 
 fn transparent_image() -> RgbaImage {
     RgbaImage::from_raw(1, 1, vec![0, 0, 0, 0]).unwrap()
@@ -393,7 +388,9 @@ impl Renderer {
                 }
                 self.program = program;
                 unsafe {
-                    self.set_projection_matrix(transform);
+                    if let Err(err) = self.set_projection_matrix(transform) {
+                        error!("{err:?}");
+                    }
                 }
             }
             Err(err) => error!("{err:?}"),

@@ -19,13 +19,10 @@ use smithay_client_toolkit::{
     shell::WaylandSurface,
 };
 
+use crate::render::{EglContext, Renderer};
+use crate::wpaperd::Wpaperd;
 use crate::{display_info::DisplayInfo, wallpaper_info::WallpaperInfo};
-use crate::{
-    filelist_cache::FilelistCache,
-    render::{EglContext, Renderer},
-};
 use crate::{image_loader::ImageLoader, image_picker::ImagePicker};
-use crate::{wallpaper_groups::WallpaperGroups, wpaperd::Wpaperd};
 
 #[derive(Debug)]
 pub enum EventSource {
@@ -62,14 +59,12 @@ pub struct Surface {
 
 impl Surface {
     pub fn new(
+        wpaperd: &Wpaperd,
         wl_layer: LayerSurface,
         wl_output: WlOutput,
         info: DisplayInfo,
         wallpaper_info: WallpaperInfo,
         egl_display: egl::Display,
-        filelist_cache: Rc<RefCell<FilelistCache>>,
-        image_loader: Rc<RefCell<ImageLoader>>,
-        groups: Rc<RefCell<WallpaperGroups>>,
         qh: &QueueHandle<Wpaperd>,
     ) -> Self {
         let wl_surface = wl_layer.wl_surface().clone();
@@ -82,7 +77,12 @@ impl Surface {
         // Commit the surface
         wl_surface.commit();
 
-        let image_picker = ImagePicker::new(&wallpaper_info, &wl_surface, filelist_cache, groups);
+        let image_picker = ImagePicker::new(
+            &wallpaper_info,
+            &wl_surface,
+            wpaperd.filelist_cache.clone(),
+            wpaperd.wallpaper_groups.clone(),
+        );
 
         let image = black_image();
         let info = Rc::new(RefCell::new(info));
@@ -111,7 +111,7 @@ impl Surface {
             wallpaper_info,
             window_drawn: false,
             should_pause: false,
-            image_loader,
+            image_loader: wpaperd.image_loader.clone(),
             loading_image: None,
             loading_image_tries: 0,
             skip_next_transition: first_transition,
@@ -371,7 +371,7 @@ impl Surface {
         );
         if path_changed {
             // ask the image_picker to pick a new a image
-            self.image_picker.next_image(&self.wallpaper_info.path, &qh);
+            self.image_picker.next_image(&self.wallpaper_info.path, qh);
             self.queue_draw(qh);
         }
         if self.wallpaper_info.duration != wallpaper_info.duration {
