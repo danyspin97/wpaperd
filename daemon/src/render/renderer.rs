@@ -246,21 +246,8 @@ impl Renderer {
         };
 
         let prev_texture_scale = gen_texture_scale(prev_image_width, prev_image_height);
-        let vertex_data = get_opengl_point_coordinates(
-            Coordinates::default_vec_coordinates(),
-            Coordinates::default_texture_coordinates(),
-        );
 
         unsafe {
-            // Update the vertex buffer
-            self.gl.BufferSubData(
-                gl::ARRAY_BUFFER,
-                0,
-                (vertex_data.len() * std::mem::size_of::<f32>()) as gl::types::GLsizeiptr,
-                vertex_data.as_ptr() as *const _,
-            );
-            self.check_error("buffering the data")?;
-
             let loc = self
                 .gl
                 .GetUniformLocation(self.program, b"textureScale\0".as_ptr() as *const _);

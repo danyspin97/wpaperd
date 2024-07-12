@@ -11,6 +11,7 @@ use color_eyre::{
     eyre::{bail, ensure},
     Result,
 };
+use coordinates::{get_opengl_point_coordinates, Coordinates};
 use image::DynamicImage;
 
 pub use egl_context::EglContext;
@@ -103,6 +104,22 @@ fn initialize_objects(
         gl_check!(gl, "setting the texture attribute for the vertex");
         gl.EnableVertexAttribArray(TEX_ATTRIB as gl::types::GLuint);
         gl_check!(gl, "enabling the texture attribute for the vertex");
+
+        // Set the Coordinates of the two triangles. These don't change during
+        // the running of the program.
+        let vertex_data = get_opengl_point_coordinates(
+            Coordinates::default_vec_coordinates(),
+            Coordinates::default_texture_coordinates(),
+        );
+
+        // Update the vertex buffer
+        gl.BufferSubData(
+            gl::ARRAY_BUFFER,
+            0,
+            (vertex_data.len() * std::mem::size_of::<f32>()) as gl::types::GLsizeiptr,
+            vertex_data.as_ptr() as *const _,
+        );
+        gl_check!(gl, "buffering the data");
 
         Ok((vbo, eab))
     }
