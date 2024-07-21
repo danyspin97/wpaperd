@@ -4,7 +4,10 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     systems.url = "github:nix-systems/default-linux";
-    rust-overlay.url = "github:oxalica/rust-overlay";
+    rust-overlay = {
+      url = "github:oxalica/rust-overlay";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs = {
@@ -22,7 +25,7 @@
         overlays = [self.overlays.default (import rust-overlay)];
       });
   in {
-    overlays = import ./nix/overlays.nix {inherit self lib;};
+    overlays = import ./nix/overlays.nix {inherit self lib pkgsFor;};
 
     packages = eachSystem (system: {
       default = self.packages.${system}.wpaperd;
@@ -30,7 +33,6 @@
       inherit
         (pkgsFor.${system})
         wpaperd
-        overlays
         ;
     });
 
