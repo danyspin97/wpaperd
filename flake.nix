@@ -4,12 +4,18 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     systems.url = "github:nix-systems/default-linux";
+
+    fenix = {
+      url = "github:nix-community/fenix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs = {
     self,
     nixpkgs,
     systems,
+    fenix,
     ...
   }: let
     inherit (nixpkgs) lib;
@@ -20,7 +26,7 @@
         overlays = [self.overlays.default];
       });
   in {
-    overlays = import ./nix/overlays.nix {inherit self lib;};
+    overlays = import ./nix/overlays.nix {inherit self lib fenix;};
 
     packages = eachSystem (system: {
       default = self.packages.${system}.wpaperd;

@@ -1,6 +1,7 @@
 {
   self,
   lib,
+  fenix,
 }: let
   inherit ((builtins.fromTOML (builtins.readFile ../daemon/Cargo.toml)).package) version;
 
@@ -16,6 +17,12 @@ in {
     in {
       wpaperd = final.callPackage ./default.nix {
         version = "${version}+date=${date}_${self.shortRev or "dirty"}";
+        rustPlatform = let
+          toolchain = fenix.packages.${final.system}.latest.toolchain;
+        in (final.makeRustPlatform {
+          cargo = toolchain;
+          rustc = toolchain;
+        });
       };
     })
   ];

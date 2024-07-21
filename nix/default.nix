@@ -1,5 +1,7 @@
 {
   lib,
+  libglvnd,
+  makeWrapper,
   rustPlatform,
   pkg-config,
   wayland,
@@ -19,16 +21,25 @@ rustPlatform.buildRustPackage rec {
   };
 
   nativeBuildInputs = [
+    makeWrapper
     pkg-config
   ];
 
-  buildInputs =
-    [
-      wayland
-      glew-egl
-    ];
+  buildInputs = [
+    glew-egl
+    libglvnd
+    wayland
+  ];
 
   cargoLock.lockFile = ../Cargo.lock;
+
+  # Wrap the program in a script that sets the
+  # LD_LIBRARY_PATH environment variable so that
+  # it can find the shared libraries it depends on.
+  postFixup = ''
+    wrapProgram $out/bin/wpaperd \
+      --prefix LD_LIBRARY_PATH : "${lib.makeLibraryPath buildInputs}:/run/opengl-driver/lib"
+  '';
 
   meta = with lib; {
     description = "Wallpaper daemon for Wayland";
