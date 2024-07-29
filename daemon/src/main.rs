@@ -53,6 +53,11 @@ use xdg::BaseDirectories;
 
 use crate::wpaperd::Wpaperd;
 
+use tikv_jemallocator::Jemalloc;
+
+#[global_allocator]
+static GLOBAL: Jemalloc = Jemalloc;
+
 fn run(opts: Opts, xdg_dirs: BaseDirectories) -> Result<()> {
     // Path passed from the CLI or the wpaperd.toml file has precedence
     let config_file = if let Some(config) = opts.config {
