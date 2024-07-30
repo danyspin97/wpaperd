@@ -1,8 +1,9 @@
 {
   self,
   lib,
+  pkgsFor
 }: let
-  inherit ((builtins.fromTOML (builtins.readFile ../daemon/Cargo.toml)).package) version;
+  inherit ((builtins.fromTOML (builtins.readFile ../daemon/Cargo.toml)).package) version rust-overlay;
 
   mkDate = longDate: (lib.concatStringsSep "-" [
     (builtins.substring 0 4 longDate)
@@ -16,6 +17,12 @@ in {
     in {
       wpaperd = final.callPackage ./default.nix {
         version = "${version}+date=${date}_${self.shortRev or "dirty"}";
+        rustPlatform = let
+          toolchain = pkgsFor.${final.system}.rust-bin.stable.latest.default;
+        in (final.makeRustPlatform {
+            cargo = toolchain;
+            rustc = toolchain;
+          });
       };
     })
   ];

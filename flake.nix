@@ -4,12 +4,17 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     systems.url = "github:nix-systems/default-linux";
+    rust-overlay = {
+      url = "github:oxalica/rust-overlay";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs = {
     self,
     nixpkgs,
     systems,
+    rust-overlay,
     ...
   }: let
     inherit (nixpkgs) lib;
@@ -17,10 +22,10 @@
     pkgsFor = eachSystem (system:
       import nixpkgs {
         inherit system;
-        overlays = [self.overlays.default];
+        overlays = [self.overlays.default (import rust-overlay)];
       });
   in {
-    overlays = import ./nix/overlays.nix {inherit self lib;};
+    overlays = import ./nix/overlays.nix {inherit self lib pkgsFor;};
 
     packages = eachSystem (system: {
       default = self.packages.${system}.wpaperd;
@@ -34,6 +39,9 @@
     devShells = eachSystem (system:
       with pkgsFor.${system}; {
         default = mkShell {
+          buildInputs = [
+            rust-bin.stable.latest.default
+          ];
           packages = [
             pkg-config
             wayland
