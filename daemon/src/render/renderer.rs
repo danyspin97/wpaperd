@@ -33,7 +33,7 @@ pub enum TransitionStatus {
 }
 
 pub struct Renderer {
-    gl: gl::Gl,
+    gl: Rc<gl::Gl>,
     pub program: gl::types::GLuint,
     vbo: gl::types::GLuint,
     eab: gl::types::GLuint,
@@ -55,17 +55,17 @@ impl Renderer {
         transition: Transition,
         transform: Transform,
     ) -> Result<Self> {
-        let gl = gl::Gl::load_with(|name| {
+        let gl = Rc::new(gl::Gl::load_with(|name| {
             egl.get_proc_address(name)
                 .expect("egl.get_proc_address to work") as *const std::ffi::c_void
-        });
+        }));
 
         let program = create_program(&gl, transition)
             .context("unable to create program during openGL ES initialization")?;
 
         let (vbo, eab) = initialize_objects(&gl)?;
 
-        let current_wallpaper = Wallpaper::new();
+        let current_wallpaper = Wallpaper::new(gl.clone());
 
         let transparent_texture = load_texture(&gl, transparent_image().into())?;
 
@@ -152,8 +152,11 @@ impl Renderer {
         mode: BackgroundMode,
         offset: Option<f32>,
     ) -> Result<()> {
-        self.prev_wallpaper = Some(std::mem::take(&mut self.current_wallpaper));
-        self.current_wallpaper.load_image(&self.gl, image)?;
+        self.prev_wallpaper = Some(std::mem::replace(
+            &mut self.current_wallpaper,
+            Wallpaper::new(self.gl.clone()),
+        ));
+        self.current_wallpaper.load_image(image)?;
 
         self.bind_wallpapers(mode, offset)?;
 
@@ -169,7 +172,7 @@ impl Renderer {
             self.prev_wallpaper
                 .as_ref()
                 .expect("previous wallpaper to be set")
-                .bind(&self.gl)?;
+                .bind()?;
 
             // current_wallpaper is already binded to TEXTURE1, as load_texture loads the image
             // there
@@ -230,11 +233,14 @@ impl Renderer {
             })
         };
         let texture_scale = gen_texture_scale(
-            self.current_wallpaper.image_width as f32,
-            self.current_wallpaper.image_height as f32,
+            self.current_wallpaper.get_image_width() as f32,
+            self.current_wallpaper.get_image_height() as f32,
         );
         let (prev_image_width, prev_image_height) = if let Some(prev_wp) = &self.prev_wallpaper {
-            (prev_wp.image_width as f32, prev_wp.image_height as f32)
+            (
+                prev_wp.get_image_width() as f32,
+                prev_wp.get_image_height() as f32,
+            )
         } else {
             (1.0, 1.0)
         };
@@ -543,10 +549,6 @@ impl Deref for Renderer {
 impl Drop for Renderer {
     fn drop(&mut self) {
         unsafe {
-            self.gl.DeleteTextures(1, &self.current_wallpaper.texture);
-            if let Some(wp) = &self.prev_wallpaper {
-                self.gl.DeleteTextures(1, &wp.texture);
-            }
             self.gl.DeleteBuffers(1, &self.eab);
             self.gl.DeleteBuffers(1, &self.vbo);
             self.gl.DeleteProgram(self.program);
