@@ -53,7 +53,7 @@ pub unsafe fn create_shader(
 }
 
 pub const VERTEX_SHADER_SOURCE: &CStr = c"
-#version 320 es
+#version 310 es
 precision mediump float;
 
 layout (location = 0) in vec2 aPosition;
@@ -69,7 +69,7 @@ void main() {
 }";
 
 pub const FRAGMENT_SHADER_SOURCE: &CStr = c"
-#version 320 es
+#version 310 es
 precision mediump float;
 out vec4 FragColor;
 
