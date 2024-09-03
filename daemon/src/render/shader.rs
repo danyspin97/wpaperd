@@ -12,7 +12,7 @@ use super::gl;
 pub unsafe fn create_shader(
     gl: &gl::Gl,
     shader: gl::types::GLenum,
-    sources: &[*const i8],
+    sources: &[*const u8],
 ) -> Result<gl::types::GLuint> {
     let shader = gl.CreateShader(shader);
     gl_check!(gl, "calling CreateShader");
