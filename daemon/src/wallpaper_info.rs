@@ -42,14 +42,11 @@ impl Default for WallpaperInfo {
     }
 }
 
-#[derive(Debug, Copy, Clone, Default, Eq, PartialEq, Deserialize)]
-#[serde(rename_all = "lowercase")]
+#[derive(Debug, Copy, Clone, Default, Eq, PartialEq)]
 pub enum Sorting {
     #[default]
     Random,
-    GroupedRandom {
-        group: u8,
-    },
+    GroupedRandom { group: u8 },
     Ascending,
     Descending,
 }

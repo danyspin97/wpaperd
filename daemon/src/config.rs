@@ -26,6 +26,26 @@ use crate::{
     wallpaper_info::{BackgroundMode, Sorting, WallpaperInfo},
 };
 
+#[derive(Debug, Copy, Clone, Default, Eq, PartialEq, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum SerializedSorting {
+    #[default]
+    Random,
+    Ascending,
+    Descending,
+}
+
+impl From<Sorting> for SerializedSorting {
+    fn from(s: Sorting) -> SerializedSorting {
+        match s {
+            Sorting::Ascending => SerializedSorting::Ascending,
+            Sorting::Descending => SerializedSorting::Descending,
+            Sorting::Random => SerializedSorting::Random,
+            _ => unreachable!(),
+        }
+    }
+}
+
 #[derive(Default, Deserialize, PartialEq, Debug, Clone)]
 #[serde(deny_unknown_fields)]
 pub struct SerializedWallpaperInfo {
@@ -35,7 +55,7 @@ pub struct SerializedWallpaperInfo {
     pub duration: Option<Duration>,
     #[serde(rename = "apply-shadow")]
     pub apply_shadow: Option<bool>,
-    pub sorting: Option<Sorting>,
+    pub sorting: Option<SerializedSorting>,
     pub mode: Option<BackgroundMode>,
     #[serde(rename = "queue-size")]
     pub queue_size: Option<usize>,
@@ -56,6 +76,9 @@ pub struct SerializedWallpaperInfo {
     ///
     /// See [crate::wallpaper_info::WallpaperInfo]
     pub offset: Option<f32>,
+
+    /// Assign these displays to a group that shows the same wallpaper
+    pub group: Option<u8>,
 }
 
 impl SerializedWallpaperInfo {
@@ -134,22 +157,65 @@ impl SerializedWallpaperInfo {
             (None, None) => None,
         };
 
-        // sorting can only be set when path is a directory
-        if sorting.is_some() && !path.is_dir() {
+        let group = match (&self.group, &default.group) {
+            (None, Some(_)) if path.is_file() && !path_inherited => None,
+            (Some(sorting), _) | (None, Some(sorting)) => Some(*sorting),
+            (None, None) => None,
+        };
+
+        // sorting and group can only be set when path is a directory
+        if (sorting.is_some() || group.is_some()) && !path.is_dir() {
             // Do no use bail! to add suggestion
             return Err(anyhow!(
-                "Attribute {} is set to a file and attribute {} is also set.",
+                "{} cannot be set when {} is a directory",
+                if sorting.is_some() {
+                    "sorting"
+                } else {
+                    "group"
+                }
+                .bold()
+                .italic()
+                .blue(),
                 "path".bold().italic().blue(),
-                "sorting".bold().italic().blue()
             )
             .with_suggestion(|| {
                 format!(
                     "Either remove {} or set {} to a directory",
+                    if sorting.is_some() {
+                        "sorting"
+                    } else {
+                        "group"
+                    }
+                    .bold()
+                    .italic()
+                    .blue(),
                     "path".bold().italic().blue(),
-                    "sorting".bold().italic().blue()
                 )
             }));
         }
+
+        // If there is no sorting but the group is set
+        let sorting = if group.is_some() && sorting.is_none() {
+            // Assign it the default one, so that we can do the group match below
+            Some(Sorting::default().into())
+        } else {
+            None
+        };
+        let sorting = sorting.map(|sorting| {
+            if let Some(group) = group {
+                match sorting {
+                    SerializedSorting::Random => Sorting::GroupedRandom { group },
+                    SerializedSorting::Ascending => todo!(),
+                    SerializedSorting::Descending => todo!(),
+                }
+            } else {
+                match sorting {
+                    SerializedSorting::Random => Sorting::Random,
+                    SerializedSorting::Ascending => Sorting::Ascending,
+                    SerializedSorting::Descending => Sorting::Descending,
+                }
+            }
+        });
 
         let mode = match (&self.mode, &default.mode) {
             (Some(mode), _) | (None, Some(mode)) => *mode,
