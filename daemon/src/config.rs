@@ -308,6 +308,49 @@ impl Config {
             }
         });
 
+        let groups = config
+            .data
+            .iter()
+            .filter_map(|(name, info)| {
+                // It's a bit overkill to call this function again, but the displays are on average 1 or 2
+                // and the code is simple enough that it wouldn't make a difference with 10 either
+                info.apply_and_validate(&config.default)
+                    .map(|res| (name, res))
+                    .ok()
+            })
+            .collect::<Vec<_>>();
+
+        // Check if all the groups share the same path
+        // This check is only useful when there is more than one display
+        // We display a warning related to the config issue, but we are not fixing anything here
+        // The path that will be used is probably not what the user expect, but proving an "expected"
+        // behaviour for a configuration issue seems overkill
+        if groups.len() > 1 {
+            // We want to skip displays for which we already displayed the warning
+            let mut errored_list = Vec::new();
+            for i in 0..groups.len() {
+                let x = groups.get(i).unwrap();
+                for j in 1..groups.len() {
+                    if errored_list.contains(&j) {
+                        continue;
+                    }
+                    let y = groups.get(j).unwrap();
+                    if x.1.sorting == y.1.sorting && x.1.path != y.1.path {
+                        warn!(
+                            "Displays {} and {} are assigned to group {} but have different paths",
+                            x.0,
+                            y.0,
+                            match x.1.sorting.unwrap() {
+                                Sorting::GroupedRandom { group } => group,
+                                _ => unreachable!(),
+                            }
+                        );
+                        errored_list.push(j);
+                    }
+                }
+            }
+        }
+
         config.path = path.to_path_buf();
         Ok(config)
     }
