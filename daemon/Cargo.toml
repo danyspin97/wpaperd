@@ -16,32 +16,32 @@ rust-version = "1.63.0"
 
 [dependencies]
 wpaperd-ipc = { path = "../ipc", version = "1.0.0" }
-clap = { version = "4.5.7", features = ["derive", "wrap_help"] }
+clap = { version = "4.5.20", features = ["derive", "wrap_help"] }
 color-eyre = { version = "0.6.3", default-features = false }
-flexi_logger = { version = "0.28.5", default-features = false, features = ["colors"] }
-image = "0.25.1"
+flexi_logger = { version = "0.29.3", default-features = false, features = ["colors"] }
+image = "0.25.4"
 hotwatch = "0.5.0"
 humantime-serde = "1.1.1"
 log = "0.4.22"
-new_mime_guess = "4.0.1"
+new_mime_guess = "4.0.4"
 nix = { version = "0.29.0", features = ["process"] }
 rand = "0.8.5"
-serde = { version = "1.0.203", features = ["derive", "rc"] }
-smithay-client-toolkit = { version = "0.19.1", default-features = false, features = [ "calloop" ] }
-toml = "0.8.14"
+serde = { version = "1.0.210", features = ["derive", "rc"] }
+smithay-client-toolkit = { version = "0.19.2", default-features = false, features = [ "calloop" ] }
+toml = "0.8.19"
 xdg = "2.5.2"
 walkdir = "2.5.0"
 dirs = "5.0.1"
-serde_json = "1.0.118"
-wayland-egl = "0.32.1"
+serde_json = "1.0.131"
+wayland-egl = "0.32.4"
 khronos-egl = { version = "6.0.0", features = [ "static" ] }
 format-bytes = "0.3.0"
 tikv-jemallocator = "0.6.0"
 
 [build-dependencies]
-clap = { version = "4.5.7", features = ["derive", "cargo"] }
-clap_complete = "4.5.6"
-clap_mangen = "0.2.21"
+clap = { version = "4.5.20", features = ["derive", "cargo"] }
+clap_complete = "4.5.33"
+clap_mangen = "0.2.24"
 gl_generator = "0.14.0"
 
 [features]
