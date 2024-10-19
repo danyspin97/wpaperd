@@ -199,7 +199,7 @@ impl SerializedWallpaperInfo {
             // Assign it the default one, so that we can do the group match below
             Some(Sorting::default().into())
         } else {
-            None
+            sorting
         };
         let sorting = sorting.map(|sorting| {
             if let Some(group) = group {
