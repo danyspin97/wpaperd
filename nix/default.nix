@@ -3,10 +3,10 @@
   rustPlatform,
   pkg-config,
   wayland,
-  glew-egl,
+  glew,
   version ? "git",
 }:
-rustPlatform.buildRustPackage rec {
+rustPlatform.buildRustPackage {
   pname = "wpaperd";
   inherit version;
 
@@ -22,11 +22,10 @@ rustPlatform.buildRustPackage rec {
     pkg-config
   ];
 
-  buildInputs =
-    [
-      wayland
-      glew-egl
-    ];
+  buildInputs = [
+    wayland
+    glew
+  ];
 
   cargoLock.lockFile = ../Cargo.lock;
 

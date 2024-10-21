@@ -45,7 +45,7 @@
           packages = [
             pkg-config
             wayland
-            glew-egl
+            glew
           ];
         };
       });
