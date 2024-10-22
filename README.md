@@ -172,9 +172,13 @@ path = "/home/danyspin97/default_wallpaper.png"
 
 [DP-3]
 path = "/home/danyspin97/Wallpapers"
+
+[Dell Inc. DELL U2419H GY1VSS2]
+path = "/home/danyspin97/Wallpapers/1080p"
 ```
 
-If you're running sway, you can look for the available outputs and their ID by running:
+If you're running sway, you can look for the available outputs and
+their ID (or description) by running:
 
 ```bash
 $ swaymsg -t get_outputs
@@ -185,6 +189,8 @@ On Hyprland you can run:
 ```bash
 $ hyprctl monitors
 ```
+
+Output descriptions take priority over output IDs.
 
 ## FAQ
 
