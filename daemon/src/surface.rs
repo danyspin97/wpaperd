@@ -264,6 +264,10 @@ impl Surface {
         self.info.borrow().name.to_string()
     }
 
+    pub fn description(&self) -> String {
+        self.info.borrow().description.to_string()
+    }
+
     /// Resize the surface
     pub fn resize(&mut self, qh: &QueueHandle<Wpaperd>) -> Result<()> {
         let info = self.info.borrow();

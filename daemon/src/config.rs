@@ -355,9 +355,20 @@ impl Config {
         Ok(config)
     }
 
-    pub fn get_output_by_name(&self, name: &str) -> Result<WallpaperInfo> {
+    pub fn get_info_for_output(&self, name: &str, description: &str) -> Result<WallpaperInfo> {
+        let mut cleaned = String::from(description);
+
+        // Wayland may report an output description that includes
+        // information about the port and port type.  This information
+        // is *not* reported by sway so we need to strip it off so
+        // outputs are matched the way users expect.
+        if let Some(offset) = cleaned.rfind(" (") {
+            cleaned.truncate(offset);
+        }
+
         self.data
-            .get(name)
+            .get(&cleaned)
+            .or_else(|| self.data.get(name))
             .unwrap_or(&self.any)
             .apply_and_validate(&self.default)
     }

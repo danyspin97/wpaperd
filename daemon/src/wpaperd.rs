@@ -72,7 +72,9 @@ impl Wpaperd {
 
     pub fn update_surfaces(&mut self, ev_handle: LoopHandle<Wpaperd>, qh: &QueueHandle<Wpaperd>) {
         for surface in &mut self.surfaces {
-            let res = self.config.get_output_by_name(&surface.name());
+            let name = surface.name();
+            let description = surface.description();
+            let res = self.config.get_info_for_output(&name, &description);
             match res {
                 Ok(wallpaper_info) => {
                     surface.update_wallpaper_info(&ev_handle, qh, wallpaper_info);
@@ -186,6 +188,11 @@ impl OutputHandler for Wpaperd {
             .as_ref()
             .map(|name| name.to_string())
             .unwrap_or_else(|| "unnamed".to_string());
+        let description = info
+            .description
+            .as_ref()
+            .map(|description| description.to_string())
+            .unwrap_or_else(|| "no-description".to_string());
         let display_info = DisplayInfo::new(info);
 
         let layer = self.layer_state.create_layer_surface(
@@ -221,7 +228,7 @@ impl OutputHandler for Wpaperd {
             }
         };
 
-        let wallpaper_info = match self.config.get_output_by_name(&name) {
+        let wallpaper_info = match self.config.get_info_for_output(&name, &description) {
             Ok(wallpaper_info) => wallpaper_info,
             Err(err) => {
                 warn!(

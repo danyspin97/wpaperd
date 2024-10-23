@@ -6,6 +6,7 @@ use smithay_client_toolkit::{
 #[derive(Debug)]
 pub struct DisplayInfo {
     pub name: String,
+    pub description: String,
     pub width: i32,
     pub height: i32,
     pub scale: i32,
@@ -16,6 +17,7 @@ impl DisplayInfo {
     pub fn new(info: OutputInfo) -> Self {
         Self {
             name: info.name.unwrap_or_default(),
+            description: info.description.unwrap_or_default(),
             width: 0,
             height: 0,
             scale: info.scale_factor,
