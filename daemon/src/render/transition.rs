@@ -209,7 +209,7 @@ transition_shader! {
             pause: f32 = ("pause", 0.1),
             divider_width: f32 = ("dividerWidth", 0.05),
             bgcolor: [f32; 4] = ("bgcolor", [0.0, 0.0, 0.0, 1.0]),
-           randomness: f32 = ("randomness", 0.1)
+            randomness: f32 = ("randomness", 0.1)
         } => 1500,
         Hexagonalize {
             steps: i32 = ("steps", 50),
