@@ -42,10 +42,12 @@ impl Default for WallpaperInfo {
     }
 }
 
-#[derive(Debug, Copy, Clone, Default, Eq, PartialEq)]
+#[derive(Debug, Copy, Clone, Default, Eq, PartialEq, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub enum Sorting {
     #[default]
     Random,
+    #[serde(skip)]
     GroupedRandom {
         group: u8,
     },

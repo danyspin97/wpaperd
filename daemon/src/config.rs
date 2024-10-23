@@ -26,26 +26,6 @@ use crate::{
     wallpaper_info::{BackgroundMode, Sorting, WallpaperInfo},
 };
 
-#[derive(Debug, Copy, Clone, Default, Eq, PartialEq, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum SerializedSorting {
-    #[default]
-    Random,
-    Ascending,
-    Descending,
-}
-
-impl From<Sorting> for SerializedSorting {
-    fn from(s: Sorting) -> SerializedSorting {
-        match s {
-            Sorting::Ascending => SerializedSorting::Ascending,
-            Sorting::Descending => SerializedSorting::Descending,
-            Sorting::Random => SerializedSorting::Random,
-            _ => unreachable!(),
-        }
-    }
-}
-
 #[derive(Default, Deserialize, PartialEq, Debug, Clone)]
 #[serde(deny_unknown_fields)]
 pub struct SerializedWallpaperInfo {
@@ -55,7 +35,7 @@ pub struct SerializedWallpaperInfo {
     pub duration: Option<Duration>,
     #[serde(rename = "apply-shadow")]
     pub apply_shadow: Option<bool>,
-    pub sorting: Option<SerializedSorting>,
+    pub sorting: Option<Sorting>,
     pub mode: Option<BackgroundMode>,
     #[serde(rename = "queue-size")]
     pub queue_size: Option<usize>,
@@ -204,16 +184,13 @@ impl SerializedWallpaperInfo {
         let sorting = sorting.map(|sorting| {
             if let Some(group) = group {
                 match sorting {
-                    SerializedSorting::Random => Sorting::GroupedRandom { group },
-                    SerializedSorting::Ascending => todo!(),
-                    SerializedSorting::Descending => todo!(),
+                    Sorting::Random => Sorting::GroupedRandom { group },
+                    Sorting::Ascending => todo!(),
+                    Sorting::Descending => todo!(),
+                    Sorting::GroupedRandom { group: _ } => unreachable!(),
                 }
             } else {
-                match sorting {
-                    SerializedSorting::Random => Sorting::Random,
-                    SerializedSorting::Ascending => Sorting::Ascending,
-                    SerializedSorting::Descending => Sorting::Descending,
-                }
+                sorting
             }
         });
 
