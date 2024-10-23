@@ -378,41 +378,7 @@ impl Surface {
             self.image_picker.next_image(&self.wallpaper_info.path, qh);
             self.queue_draw(qh);
         }
-        if self.wallpaper_info.duration != wallpaper_info.duration {
-            match (self.wallpaper_info.duration, wallpaper_info.duration) {
-                (None, None) => {
-                    unreachable!()
-                }
-                // There was a duration before but now it has been removed
-                (None, Some(_)) => {
-                    if let EventSource::Running(registration_token) = self.event_source {
-                        handle.remove(registration_token);
-                    }
-                }
-                // There wasn't a duration before but now it has been added or it has changed
-                (Some(new_duration), None) | (Some(new_duration), Some(_)) => {
-                    if let EventSource::Running(registration_token) = self.event_source {
-                        handle.remove(registration_token);
-                    }
-
-                    // if the path has not changed or the duration has changed
-                    // and the remaining time is great than 0
-                    let timer = if let (false, Some(remaining_time)) = (
-                        path_changed,
-                        remaining_duration(new_duration, self.image_picker.image_changed_instant),
-                    ) {
-                        Some(Timer::from_duration(remaining_time))
-                    } else {
-                        // otherwise draw the image immediately, the next timer
-                        // will be set to the new duration
-                        Some(Timer::immediate())
-                    };
-
-                    self.event_source = EventSource::NotSet;
-                    self.add_timer(timer, handle, qh.clone());
-                }
-            }
-        }
+        self.handle_new_duration(&wallpaper_info, handle, path_changed, qh);
 
         if self.wallpaper_info.mode != wallpaper_info.mode
             || self.wallpaper_info.offset != wallpaper_info.offset
@@ -449,6 +415,50 @@ impl Surface {
         if self.wallpaper_info.transition_time != wallpaper_info.transition_time {
             self.renderer
                 .update_transition_time(self.wallpaper_info.transition_time);
+        }
+    }
+
+    fn handle_new_duration(
+        &mut self,
+        wallpaper_info: &WallpaperInfo,
+        handle: &LoopHandle<Wpaperd>,
+        path_changed: bool,
+        qh: &QueueHandle<Wpaperd>,
+    ) {
+        if self.wallpaper_info.duration != wallpaper_info.duration {
+            match (self.wallpaper_info.duration, wallpaper_info.duration) {
+                (None, None) => {
+                    unreachable!()
+                }
+                // There was a duration before but now it has been removed
+                (None, Some(_)) => {
+                    if let EventSource::Running(registration_token) = self.event_source {
+                        handle.remove(registration_token);
+                    }
+                }
+                // There wasn't a duration before but now it has been added or it has changed
+                (Some(new_duration), None) | (Some(new_duration), Some(_)) => {
+                    if let EventSource::Running(registration_token) = self.event_source {
+                        handle.remove(registration_token);
+                    }
+
+                    // if the path has not changed or the duration has changed
+                    // and the remaining time is great than 0
+                    let timer = if let (false, Some(remaining_time)) = (
+                        path_changed,
+                        remaining_duration(new_duration, self.image_picker.image_changed_instant),
+                    ) {
+                        Some(Timer::from_duration(remaining_time))
+                    } else {
+                        // otherwise draw the image immediately, the next timer
+                        // will be set to the new duration
+                        Some(Timer::immediate())
+                    };
+
+                    self.event_source = EventSource::NotSet;
+                    self.add_timer(timer, handle, qh.clone());
+                }
+            }
         }
     }
 
