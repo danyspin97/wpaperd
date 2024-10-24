@@ -19,10 +19,13 @@ use smithay_client_toolkit::{
     shell::WaylandSurface,
 };
 
-use crate::render::{EglContext, Renderer};
 use crate::wpaperd::Wpaperd;
 use crate::{display_info::DisplayInfo, wallpaper_info::WallpaperInfo};
 use crate::{image_loader::ImageLoader, image_picker::ImagePicker};
+use crate::{
+    render::{EglContext, Renderer},
+    wallpaper_groups::WallpaperGroups,
+};
 
 #[derive(Debug)]
 pub enum EventSource {
@@ -359,6 +362,7 @@ impl Surface {
         handle: &LoopHandle<Wpaperd>,
         qh: &QueueHandle<Wpaperd>,
         mut wallpaper_info: WallpaperInfo,
+        wallpaper_groups: Rc<RefCell<WallpaperGroups>>,
     ) {
         if self.wallpaper_info == wallpaper_info {
             return;
@@ -371,13 +375,16 @@ impl Surface {
             self.wallpaper_info.sorting,
             &self.wallpaper_info.path,
             path_changed,
+            &self.wl_surface,
             wallpaper_info.drawn_images_queue_size,
+            &wallpaper_groups,
         );
         if path_changed {
             // ask the image_picker to pick a new a image
             self.image_picker.next_image(&self.wallpaper_info.path, qh);
-            self.queue_draw(qh);
         }
+        // Always queue draw to load changes (needed for GroupedRandom)
+        self.queue_draw(qh);
         self.handle_new_duration(&wallpaper_info, handle, path_changed, qh);
 
         if self.wallpaper_info.mode != wallpaper_info.mode

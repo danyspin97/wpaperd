@@ -10,6 +10,7 @@ use smithay_client_toolkit::reexports::client::{protocol::wl_surface::WlSurface,
 use crate::{image_picker::Queue, wpaperd::Wpaperd};
 
 pub struct WallpaperGroup {
+    pub group: u8,
     pub index: usize,
     pub current_image: PathBuf,
     pub loading_image: Option<(usize, PathBuf)>,
@@ -18,8 +19,9 @@ pub struct WallpaperGroup {
 }
 
 impl WallpaperGroup {
-    pub fn new(queue_size: usize) -> Self {
+    pub fn new(group: u8, queue_size: usize) -> Self {
         Self {
+            group,
             index: 0,
             current_image: PathBuf::from(""),
             loading_image: None,
@@ -55,9 +57,22 @@ impl WallpaperGroups {
     ) -> Rc<RefCell<WallpaperGroup>> {
         self.groups
             .entry(group)
-            .or_insert_with(|| Rc::new(RefCell::new(WallpaperGroup::new(queue_size))));
+            .or_insert_with(|| Rc::new(RefCell::new(WallpaperGroup::new(group, queue_size))));
         let wp_group = self.groups.get_mut(&group).unwrap();
         wp_group.borrow_mut().surfaces.insert(wl_surface.clone());
         wp_group.clone()
+    }
+
+    pub fn remove(&mut self, group: u8, wl_surface: &WlSurface) {
+        let wp_group = self.groups.get(&group).unwrap();
+        let mut wp_group = wp_group.borrow_mut();
+        // if this wl_surface is the last one for this WallpaperGroup
+        if wp_group.surfaces.len() == 1 {
+            drop(wp_group);
+            // Remove it from the WallpaperGroups
+            self.groups.remove(&group);
+        } else {
+            wp_group.surfaces.remove(wl_surface);
+        }
     }
 }

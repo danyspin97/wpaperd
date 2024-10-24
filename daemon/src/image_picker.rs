@@ -127,11 +127,32 @@ enum ImagePickerAction {
 struct GroupedRandom {
     surface: WlSurface,
     group: Rc<RefCell<WallpaperGroup>>,
+    groups: Rc<RefCell<WallpaperGroups>>,
+}
+
+impl GroupedRandom {
+    fn new(
+        groups: Rc<RefCell<WallpaperGroups>>,
+        group: u8,
+        wl_surface: &WlSurface,
+        queue_size: usize,
+    ) -> Self {
+        Self {
+            surface: wl_surface.clone(),
+            group: groups
+                .borrow_mut()
+                .get_or_insert(group, wl_surface, queue_size),
+            groups: groups.clone(),
+        }
+    }
 }
 
 impl Drop for GroupedRandom {
     fn drop(&mut self) {
-        self.group.borrow_mut().surfaces.remove(&self.surface);
+        let group = self.group.borrow();
+        let group_index = group.group;
+        drop(group);
+        self.groups.borrow_mut().remove(group_index, &self.surface);
     }
 }
 
@@ -153,12 +174,14 @@ impl ImagePickerSorting {
             None | Some(Sorting::Random) => {
                 Self::new_random(wallpaper_info.drawn_images_queue_size)
             }
-            Some(Sorting::GroupedRandom { group }) => Self::new_grouped_random(
-                groups,
-                group,
-                wl_surface,
-                wallpaper_info.drawn_images_queue_size,
-            ),
+            Some(Sorting::GroupedRandom { group }) => {
+                ImagePickerSorting::GroupedRandom(GroupedRandom::new(
+                    groups,
+                    group,
+                    wl_surface,
+                    wallpaper_info.drawn_images_queue_size,
+                ))
+            }
             Some(Sorting::Ascending) => {
                 let files_len = filelist_cache
                     .clone()
@@ -181,20 +204,6 @@ impl ImagePickerSorting {
 
     fn new_ascending(files_len: usize) -> ImagePickerSorting {
         Self::Ascending(files_len - 1)
-    }
-
-    fn new_grouped_random(
-        groups: Rc<RefCell<WallpaperGroups>>,
-        group: u8,
-        wl_surface: &WlSurface,
-        queue_size: usize,
-    ) -> Self {
-        Self::GroupedRandom(GroupedRandom {
-            surface: wl_surface.clone(),
-            group: groups
-                .borrow_mut()
-                .get_or_insert(group, wl_surface, queue_size),
-        })
     }
 }
 
@@ -422,10 +431,17 @@ impl ImagePicker {
         new_sorting: Option<Sorting>,
         path: &Path,
         path_changed: bool,
+        wl_surface: &WlSurface,
         drawn_images_queue_size: usize,
+        wallpaper_groups: &Rc<RefCell<WallpaperGroups>>,
     ) {
         if let Some(new_sorting) = new_sorting {
             match (&mut self.sorting, new_sorting) {
+                // If the the sorting stayed the same, do nothing
+                (ImagePickerSorting::Ascending(_), Sorting::Ascending)
+                | (ImagePickerSorting::Descending(_), Sorting::Descending)
+                | (ImagePickerSorting::Random(_), Sorting::Random)
+                    if !path_changed => {}
                 (_, Sorting::Ascending) if path_changed => {
                     self.sorting = ImagePickerSorting::new_ascending(
                         self.filelist_cache.borrow().get(path).len(),
@@ -434,57 +450,72 @@ impl ImagePicker {
                 (_, Sorting::Descending) if path_changed => {
                     self.sorting = ImagePickerSorting::new_descending();
                 }
-                (ImagePickerSorting::Descending(current_index), Sorting::Ascending) => {
-                    self.sorting = ImagePickerSorting::Ascending(*current_index)
-                }
-                (ImagePickerSorting::Ascending(current_index), Sorting::Descending) => {
-                    self.sorting = ImagePickerSorting::Descending(*current_index)
-                }
-                (ImagePickerSorting::Random { .. }, Sorting::Ascending | Sorting::Descending) => {
-                    let files = self.filelist_cache.borrow().get(path);
-                    let index = match files.binary_search(&self.current_img) {
-                        Ok(index) => Some(index),
-                        Err(_) => None,
-                    };
+                (_, Sorting::Ascending | Sorting::Descending) => {
+                    let index = self.get_current_index();
                     self.sorting = match new_sorting {
                         Sorting::Random | Sorting::GroupedRandom { .. } => unreachable!(),
-                        Sorting::Ascending => match index {
-                            Some(index) => ImagePickerSorting::Ascending(index),
-                            None => ImagePickerSorting::new_ascending(files.len()),
-                        },
-                        Sorting::Descending => match index {
-                            Some(index) => ImagePickerSorting::Descending(index),
-                            None => ImagePickerSorting::new_descending(),
-                        },
+                        Sorting::Ascending => ImagePickerSorting::Ascending(index),
+                        Sorting::Descending => ImagePickerSorting::Descending(index),
                     };
-                }
-                (
-                    ImagePickerSorting::Descending(_) | ImagePickerSorting::Ascending(_),
-                    Sorting::Random,
-                ) if path_changed => {
-                    // If the path was changed, use a new random sorting
-                    self.sorting = ImagePickerSorting::new_random(drawn_images_queue_size);
                 }
                 // The path has changed, use a new random sorting, otherwise we reuse the current
                 // drawn_images
                 (_, Sorting::Random) if path_changed => {
                     self.sorting = ImagePickerSorting::new_random(drawn_images_queue_size);
                 }
-                (
-                    ImagePickerSorting::Descending(_) | ImagePickerSorting::Ascending(_),
-                    Sorting::Random,
-                ) => {
+                (_, Sorting::Random) => {
                     // if the path was not changed, use the current image as the first image of
                     // the drawn_images
                     let mut queue = Queue::with_capacity(drawn_images_queue_size);
                     queue.push(self.current_image());
                     self.sorting = ImagePickerSorting::Random(queue);
                 }
-                // No need to update the sorting if it's the same
-                (_, _) => {}
+                (_, Sorting::GroupedRandom { group }) if path_changed => {
+                    self.sorting = ImagePickerSorting::GroupedRandom(GroupedRandom::new(
+                        wallpaper_groups.clone(),
+                        group,
+                        wl_surface,
+                        drawn_images_queue_size,
+                    ));
+                }
+                // If the group is the same
+                (
+                    ImagePickerSorting::GroupedRandom(grouped_random),
+                    Sorting::GroupedRandom { group },
+                ) if grouped_random.group.borrow().group == group => {}
+                (_, Sorting::GroupedRandom { group }) => {
+                    let grouped_random = GroupedRandom::new(
+                        wallpaper_groups.clone(),
+                        group,
+                        wl_surface,
+                        drawn_images_queue_size,
+                    );
+
+                    let mut group = grouped_random.group.borrow_mut();
+                    // If there are no other surfaces, we must reuse the current wallpaper
+                    if group.surfaces.len() == 1 {
+                        group.current_image = self.current_img.clone();
+                        group.index = self.get_current_index();
+                        group.queue.push(self.current_img.clone());
+                    }
+
+                    drop(group);
+                    self.sorting = ImagePickerSorting::GroupedRandom(grouped_random);
+                }
             }
         } else {
             self.sorting = ImagePickerSorting::new_random(drawn_images_queue_size);
+        }
+    }
+
+    fn get_current_index(&mut self) -> usize {
+        match &self.sorting {
+            ImagePickerSorting::Random(queue) => queue.current,
+            // This is already covered above
+            ImagePickerSorting::GroupedRandom(old_grouped_random) => {
+                old_grouped_random.group.borrow().index
+            }
+            ImagePickerSorting::Ascending(index) | ImagePickerSorting::Descending(index) => *index,
         }
     }
 

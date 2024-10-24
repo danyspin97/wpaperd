@@ -77,7 +77,12 @@ impl Wpaperd {
             let res = self.config.get_info_for_output(&name, &description);
             match res {
                 Ok(wallpaper_info) => {
-                    surface.update_wallpaper_info(&ev_handle, qh, wallpaper_info);
+                    surface.update_wallpaper_info(
+                        &ev_handle,
+                        qh,
+                        wallpaper_info,
+                        self.wallpaper_groups.clone(),
+                    );
                 }
                 Err(err) => warn!(
                     "Configuration error for display {}: {err:?}",
