@@ -62,6 +62,7 @@ impl DisplayInfo {
     }
 
     #[inline]
+    #[allow(unused)]
     pub fn ratio(&self) -> f32 {
         self.adjusted_width() as f32 / self.adjusted_height() as f32
     }
