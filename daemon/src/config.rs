@@ -295,6 +295,10 @@ impl Config {
                     .map(|res| (name, res))
                     .ok()
             })
+            .filter(|(_, info)| {
+                info.sorting.is_some()
+                    && matches!(info.sorting.unwrap(), Sorting::GroupedRandom { .. })
+            })
             .collect::<Vec<_>>();
 
         // Check if all the groups share the same path
@@ -314,8 +318,7 @@ impl Config {
                     let y = groups.get(j).unwrap();
                     if !(x.1.sorting.is_none()
                         || x.1.sorting != y.1.sorting
-                        || x.1.path == y.1.path
-                        || !matches!(x.1.sorting.unwrap(), Sorting::GroupedRandom { .. }))
+                        || x.1.path == y.1.path)
                     {
                         warn!(
                             "Displays {} and {} are assigned to group {} but have different paths",
