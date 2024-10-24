@@ -312,7 +312,11 @@ impl Config {
                         continue;
                     }
                     let y = groups.get(j).unwrap();
-                    if x.1.sorting == y.1.sorting && x.1.path != y.1.path {
+                    if !(x.1.sorting.is_none()
+                        || x.1.sorting != y.1.sorting
+                        || x.1.path == y.1.path
+                        || !matches!(x.1.sorting.unwrap(), Sorting::GroupedRandom { .. }))
+                    {
                         warn!(
                             "Displays {} and {} are assigned to group {} but have different paths",
                             x.0,
