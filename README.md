@@ -104,6 +104,9 @@ calculate the next wallpaper accordingly. When `sorting` is set to `random`, it 
 all the wallpapers shown in a queue, so that the commands `next` and `previous` can work
 as intended.
 
+**Notice**: _the queue only works when `queue-size` setting (which defaults to `10`) is bigger
+than the number of available images in the folder_.
+
 The cycling of images can also be paused/resumed by running the `pause` and `resume` commands, or just `toggle-pause`, using _wpaperctl_:
 
 ```bash
