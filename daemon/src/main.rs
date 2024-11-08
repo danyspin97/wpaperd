@@ -195,7 +195,7 @@ fn run(opts: Opts, xdg_dirs: BaseDirectories) -> Result<()> {
 
             // This is only true once per surface at startup (or when a new display gets connected)
             if !surface.has_been_drawn() {
-                surface.add_timer(None, &event_loop.handle(), qh.clone());
+                surface.add_timer(&event_loop.handle(), qh.clone(), None);
                 if let Err(err) = surface.draw(&qh, None) {
                     error!("{err:?}");
                 };

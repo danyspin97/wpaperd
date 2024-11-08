@@ -3,7 +3,6 @@ use std::{
     collections::VecDeque,
     path::{Path, PathBuf},
     rc::Rc,
-    time::Instant,
 };
 
 use log::warn;
@@ -209,7 +208,6 @@ impl ImagePickerSorting {
 
 pub struct ImagePicker {
     current_img: PathBuf,
-    pub image_changed_instant: Instant,
     action: Option<ImagePickerAction>,
     sorting: ImagePickerSorting,
     filelist_cache: Rc<RefCell<FilelistCache>>,
@@ -226,7 +224,6 @@ impl ImagePicker {
     ) -> Self {
         Self {
             current_img: PathBuf::from(""),
-            image_changed_instant: Instant::now(),
             action: Some(ImagePickerAction::Next),
             sorting: ImagePickerSorting::new(
                 wallpaper_info,
