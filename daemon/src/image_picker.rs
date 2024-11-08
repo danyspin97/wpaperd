@@ -372,9 +372,7 @@ impl ImagePicker {
     pub fn update_current_image(&mut self, img_path: PathBuf, index: usize) {
         match (self.action.take(), &mut self.sorting) {
             (Some(ImagePickerAction::Next), ImagePickerSorting::Random(queue)) => {
-                if queue.has_reached_end() || queue.buffer.get(index).is_none() {
-                    queue.push(img_path.clone());
-                }
+                queue.push(img_path.clone());
             }
             (None | Some(ImagePickerAction::Previous), ImagePickerSorting::Random { .. }) => {}
             (
