@@ -2317,6 +2317,8 @@ dependencies = [
  "clap",
  "clap_complete",
  "clap_mangen",
+ "humantime",
+ "humantime-serde",
  "serde",
  "serde_json",
  "wpaperd-ipc",

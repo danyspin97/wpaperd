@@ -158,6 +158,21 @@ pub fn handle_message(
                 IpcResponse::Ok
             })
         }
+
+        IpcMessage::GetStatus { monitors } => {
+            check_monitors(wpaperd, &monitors).map(|_| IpcResponse::DisplaysStatus {
+                entries: collect_surfaces(wpaperd, monitors)
+                    .iter()
+                    .map(|surface| {
+                        (
+                            surface.name().to_string(),
+                            surface.status().to_string(),
+                            surface.get_remaining_duration(),
+                        )
+                    })
+                    .collect(),
+            })
+        }
     };
 
     let mut stream = BufWriter::new(ustream);

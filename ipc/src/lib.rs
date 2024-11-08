@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::{path::PathBuf, time::Duration};
 
 use serde::{Deserialize, Serialize};
 use xdg::{BaseDirectories, BaseDirectoriesError};
@@ -13,12 +13,20 @@ pub enum IpcMessage {
     TogglePauseWallpaper { monitors: Vec<String> },
     AllWallpapers,
     ReloadWallpaper { monitors: Vec<String> },
+    GetStatus { monitors: Vec<String> },
 }
 
 #[derive(Serialize, Deserialize)]
 pub enum IpcResponse {
-    CurrentWallpaper { path: PathBuf },
-    AllWallpapers { entries: Vec<(String, PathBuf)> },
+    CurrentWallpaper {
+        path: PathBuf,
+    },
+    AllWallpapers {
+        entries: Vec<(String, PathBuf)>,
+    },
+    DisplaysStatus {
+        entries: Vec<(String, String, Option<Duration>)>,
+    },
     Ok,
 }
 
