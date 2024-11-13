@@ -161,7 +161,28 @@ fn run(opts: Opts, xdg_dirs: BaseDirectories) -> Result<()> {
         }
     }
 
+    let (ctrlc_ping, ctrl_ping_source) = calloop::ping::make_ping()?;
+    let should_exit = Arc::new(AtomicBool::new(false));
+    let should_exit_clone = should_exit.clone();
+    // Handle SIGINT, SIGTERM, and SIGHUP, so that the application can stop nicely
+    ctrlc::set_handler(move || {
+        // Just wake up the event loop. The actual exit will be handled by the main loop
+        // The event loop callback will set should_exit to true
+        ctrlc_ping.ping();
+    })
+    .expect("Error setting Ctrl-C handler");
+    event_loop
+        .handle()
+        .insert_source(ctrl_ping_source, move |_, _, _| {
+            should_exit_clone.store(true, Ordering::Release);
+        })
+        .map_err(|e| anyhow!("inserting the filelist event listener in the event loop: {e}"))?;
+
     loop {
+        if should_exit.load(Ordering::Acquire) {
+            break Ok(());
+        }
+
         // If the config has been modified, this value will return true
         if wpaperd
             .config
