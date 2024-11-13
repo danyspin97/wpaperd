@@ -248,6 +248,13 @@ impl OutputHandler for Wpaperd {
             }
         };
 
+        let xdg_state_home_dir = match self.xdg_dirs.create_state_directory("wallpapers") {
+            Ok(dir) => dir,
+            Err(err) => {
+                warn!("Could not create wallpapers state directory: {err:?}");
+                self.xdg_dirs.get_state_home()
+            }
+        };
         self.surfaces.push(Surface::new(
             self,
             layer,
@@ -256,7 +263,7 @@ impl OutputHandler for Wpaperd {
             wallpaper_info,
             self.egl_display,
             qh,
-            self.xdg_dirs.get_state_home(),
+            xdg_state_home_dir,
         ));
     }
 

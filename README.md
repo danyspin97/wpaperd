@@ -197,14 +197,13 @@ Output descriptions take priority over output IDs.
 
 ### Wallpaper link
 
-**wpaperd** creates a symlink in `XDG_STATE_HOME/wpaperd` (`.local/state/wpaperd` by default) for
-each display that points to the current wallpaper used. This is useful
-to integrate the current status with other components.
+**wpaperd** creates a symlink in `XDG_STATE_HOME/wpaperd/wallpapers`
+(`.local/state/wpaperd/wallpapers` by default) for each display that points to the current
+wallpaper used. This is useful to integrate the current status with other components.
 
 ```bash
-~ $ ls ~/.local/state/wpaperd
-DP-3@      wpaperd_2024-03-13_16-32-20.log    wpaperd_2024-03-21_12-21-07.log
-DP-4@      wpaperd_2024-03-20_20-19-55.log
+~ $ ls ~/.local/state/wpaperd/wallpapers
+DP-3@      DP-4@
 ```
 
 ### Transitions

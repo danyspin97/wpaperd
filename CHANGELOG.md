@@ -11,7 +11,7 @@
 - Add `group` configuration to share the same wallpaper between multiple displays
 - Match displays using their name or their description (fixes #90)
 - Add multiple transition styles from [gl-transition]
-- Add a link to the current wallpaper in `.local/state/wpaperd` for each display
+- Add a link to the current wallpaper in `.local/state/wpaperd/wallpapers` for each display
 
 [gl-transition]: https://gl-transitions.com/
 
