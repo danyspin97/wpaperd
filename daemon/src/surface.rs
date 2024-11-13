@@ -726,6 +726,18 @@ impl Surface {
     }
 }
 
+impl Drop for Surface {
+    fn drop(&mut self) {
+        // Do not leave any symlink when a surface gets destroyed
+        let link = self.xdg_state_home.join(&self.info.borrow().name);
+        if link.exists() {
+            if let Err(err) = fs::remove_file(&link) {
+                warn!("Could not delete symlink {link:?}: {err:?}");
+            }
+        }
+    }
+}
+
 fn black_image() -> RgbaImage {
     RgbaImage::from_raw(1, 1, vec![0, 0, 0, 255]).unwrap()
 }
