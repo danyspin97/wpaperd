@@ -19,6 +19,7 @@ use smithay_client_toolkit::{
     delegate_compositor, delegate_layer, delegate_output, delegate_registry, delegate_shm,
     registry_handlers,
 };
+use xdg::BaseDirectories;
 
 use crate::config::Config;
 use crate::display_info::DisplayInfo;
@@ -40,6 +41,7 @@ pub struct Wpaperd {
     pub filelist_cache: Rc<RefCell<FilelistCache>>,
     pub image_loader: Rc<RefCell<ImageLoader>>,
     pub wallpaper_groups: Rc<RefCell<WallpaperGroups>>,
+    pub xdg_dirs: BaseDirectories,
 }
 
 impl Wpaperd {
@@ -50,6 +52,7 @@ impl Wpaperd {
         egl_display: egl::Display,
         filelist_cache: Rc<RefCell<FilelistCache>>,
         wallpaper_groups: Rc<RefCell<WallpaperGroups>>,
+        xdg_dirs: BaseDirectories,
     ) -> Result<Self> {
         let shm_state = Shm::bind(globals, qh)?;
 
@@ -67,6 +70,7 @@ impl Wpaperd {
             filelist_cache,
             image_loader,
             wallpaper_groups,
+            xdg_dirs,
         })
     }
 
@@ -252,6 +256,7 @@ impl OutputHandler for Wpaperd {
             wallpaper_info,
             self.egl_display,
             qh,
+            self.xdg_dirs.get_state_home(),
         ));
     }
 

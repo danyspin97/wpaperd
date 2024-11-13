@@ -1,6 +1,7 @@
 use std::{
     cell::RefCell,
-    path::PathBuf,
+    fs,
+    path::{Path, PathBuf},
     rc::Rc,
     time::{Duration, Instant},
 };
@@ -75,6 +76,8 @@ pub struct Surface {
     /// Setting this to true will mean only an explicit next/previous wallpaper command will change
     /// the wallpaper.
     should_pause: bool,
+    /// Contains the value of XDG_STATE_HOME, given by wapaperd at struct creation
+    xdg_state_home: PathBuf,
 }
 
 impl Surface {
@@ -86,6 +89,7 @@ impl Surface {
         wallpaper_info: WallpaperInfo,
         egl_display: egl::Display,
         qh: &QueueHandle<Wpaperd>,
+        xdg_state_home: PathBuf,
     ) -> Self {
         let wl_surface = wl_layer.wl_surface().clone();
         let egl_context = EglContext::new(egl_display, &wl_surface);
@@ -135,6 +139,7 @@ impl Surface {
             loading_image: None,
             loading_image_tries: 0,
             skip_next_transition: first_transition,
+            xdg_state_home,
         };
 
         // Start loading the wallpaper as soon as possible (i.e. surface creation)
@@ -254,6 +259,7 @@ impl Surface {
                     if self.image_picker.is_reloading() {
                         self.image_picker.reloaded();
                     } else {
+                        self.update_wallpaper_link(&image_path);
                         self.image_picker.update_current_image(image_path, index);
                         self.renderer.start_transition(transition_time);
                         // Update the instant where we have drawn the image
@@ -496,7 +502,6 @@ impl Surface {
                         let saturating_sub = new_duration.saturating_sub(time_passed);
                         if saturating_sub.is_zero() {
                             // The image was on screen for the same time as the new duration
-                            // so we can draw a new image
                             self.image_picker.next_image(&self.wallpaper_info.path, qh);
                             new_duration
                         } else {
@@ -701,6 +706,22 @@ impl Surface {
             EventSource::Running(_, duration, instant) => remaining_duration(*duration, *instant),
             EventSource::Paused(duration) => Some(*duration),
             EventSource::NotSet => None,
+        }
+    }
+
+    /// Add a symlink into .local/state that points to the current wallpaper
+    fn update_wallpaper_link(&self, image_path: &Path) {
+        let link = self.xdg_state_home.join(&self.info.borrow().name);
+        // remove the previous file if it exists, otherwise symlink() fails
+        if link.exists() {
+            if let Err(err) = fs::remove_file(&link) {
+                warn!("Could not delete symlink {link:?}: {err:?}");
+                // Do no try to create a new symlink
+                return;
+            }
+        }
+        if let Err(err) = std::os::unix::fs::symlink(image_path, &link) {
+            warn!("Could not create symlink {link:?}: {err:?}");
         }
     }
 }

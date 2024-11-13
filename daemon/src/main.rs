@@ -138,6 +138,7 @@ fn run(opts: Opts, xdg_dirs: BaseDirectories) -> Result<()> {
         egl_display,
         filelist_cache.clone(),
         groups,
+        xdg_dirs,
     )?;
 
     // Start listening on the IPC socket
