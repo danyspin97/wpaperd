@@ -87,12 +87,11 @@ impl Surface {
         wl_output: WlOutput,
         info: DisplayInfo,
         wallpaper_info: WallpaperInfo,
-        egl_display: egl::Display,
         qh: &QueueHandle<Wpaperd>,
         xdg_state_home: PathBuf,
     ) -> Self {
         let wl_surface = wl_layer.wl_surface().clone();
-        let egl_context = EglContext::new(egl_display, &wl_surface);
+        let egl_context = EglContext::new(wpaperd.egl_display, &wl_surface);
         // Make the egl context as current to make the renderer creation work
         egl_context
             .make_current()
@@ -263,15 +262,11 @@ impl Surface {
                         self.image_picker.update_current_image(image_path, index);
                         self.renderer.start_transition(transition_time);
                         // Update the instant where we have drawn the image
-                        match self.event_source {
-                            EventSource::Running(registration_token, duration, _) => {
-                                self.event_source = EventSource::Running(
-                                    registration_token,
-                                    duration,
-                                    Instant::now(),
-                                );
-                            }
-                            _ => {}
+                        if let EventSource::Running(registration_token, duration, _) =
+                            self.event_source
+                        {
+                            self.event_source =
+                                EventSource::Running(registration_token, duration, Instant::now());
                         }
                     }
                     // Restart the counter

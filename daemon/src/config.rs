@@ -177,7 +177,7 @@ impl SerializedWallpaperInfo {
         // If there is no sorting but the group is set
         let sorting = if group.is_some() && sorting.is_none() {
             // Assign it the default one, so that we can do the group match below
-            Some(Sorting::default().into())
+            Some(Sorting::default())
         } else {
             sorting
         };

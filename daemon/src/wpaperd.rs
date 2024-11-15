@@ -37,7 +37,7 @@ pub struct Wpaperd {
     pub registry_state: RegistryState,
     pub surfaces: Vec<Surface>,
     pub config: Config,
-    egl_display: egl::Display,
+    pub egl_display: egl::Display,
     pub filelist_cache: Rc<RefCell<FilelistCache>>,
     pub image_loader: Rc<RefCell<ImageLoader>>,
     pub wallpaper_groups: Rc<RefCell<WallpaperGroups>>,
@@ -261,7 +261,6 @@ impl OutputHandler for Wpaperd {
             output,
             display_info,
             wallpaper_info,
-            self.egl_display,
             qh,
             xdg_state_home_dir,
         ));
