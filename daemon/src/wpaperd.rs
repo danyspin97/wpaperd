@@ -52,11 +52,10 @@ impl Wpaperd {
         egl_display: egl::Display,
         filelist_cache: Rc<RefCell<FilelistCache>>,
         wallpaper_groups: Rc<RefCell<WallpaperGroups>>,
+        image_loader: Rc<RefCell<ImageLoader>>,
         xdg_dirs: BaseDirectories,
     ) -> Result<Self> {
         let shm_state = Shm::bind(globals, qh)?;
-
-        let image_loader = Rc::new(RefCell::new(ImageLoader::new()));
 
         Ok(Self {
             compositor_state: CompositorState::bind(globals, qh)?,

@@ -38,7 +38,7 @@ pub struct Renderer {
     vbo: gl::types::GLuint,
     eab: gl::types::GLuint,
     // milliseconds time for the transition
-    transition_time: u32,
+    pub transition_time: u32,
     pub display_info: Rc<RefCell<DisplayInfo>>,
     prev_wallpaper: Option<Wallpaper>,
     current_wallpaper: Wallpaper,

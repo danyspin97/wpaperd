@@ -37,6 +37,7 @@ use egl::API as egl;
 use filelist_cache::FilelistCache;
 use flexi_logger::{Duplicate, FileSpec, Logger};
 use hotwatch::Hotwatch;
+use image_loader::ImageLoader;
 use ipc_server::{handle_message, listen_on_ipc_socket};
 use log::error;
 use nix::unistd::fork;
@@ -131,6 +132,29 @@ fn run(opts: Opts, xdg_dirs: BaseDirectories) -> Result<()> {
 
     let groups = Rc::new(RefCell::new(WallpaperGroups::new()));
 
+    let (image_loader_ping, ping_source) =
+        calloop::ping::make_ping().context("Unable to create a calloop::ping::Ping")?;
+    event_loop
+        .handle()
+        .insert_source(ping_source, |_, _, wpaperd| {
+            // An image has been loaded, update the surfaces status
+            wpaperd
+                .surfaces
+                .iter_mut()
+                .for_each(|surface| match surface.load_wallpaper() {
+                    Ok(wallpaper_loaded) => {
+                        if wallpaper_loaded {
+                            surface.queue_draw(&qh);
+                            surface.image_picker.handle_grouped_sorting(&qh);
+                        }
+                    }
+
+                    Err(err) => error!("{err:?}"),
+                });
+        })
+        .map_err(|e| anyhow!("inserting the image loader event listener in the event loop: {e}"))?;
+    let image_loader = Rc::new(RefCell::new(ImageLoader::new(image_loader_ping)));
+
     let mut wpaperd = Wpaperd::new(
         &qh,
         &globals,
@@ -138,6 +162,7 @@ fn run(opts: Opts, xdg_dirs: BaseDirectories) -> Result<()> {
         egl_display,
         filelist_cache.clone(),
         groups,
+        image_loader,
         xdg_dirs,
     )?;
 
@@ -217,6 +242,8 @@ fn run(opts: Opts, xdg_dirs: BaseDirectories) -> Result<()> {
 
             // This is only true once per surface at startup (or when a new display gets connected)
             if !surface.has_been_drawn() {
+                // Add the first timer, it will run endlessy or it will be updated in
+                // Surface::handle_new_duration
                 surface.add_timer(&event_loop.handle(), qh.clone(), None);
                 if let Err(err) = surface.draw(&qh, None) {
                     error!("{err:?}");

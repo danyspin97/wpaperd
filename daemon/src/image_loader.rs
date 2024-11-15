@@ -2,6 +2,7 @@ use std::{collections::HashMap, path::PathBuf, thread::JoinHandle};
 
 use image::{open, RgbaImage};
 use log::warn;
+use smithay_client_toolkit::reexports::calloop::ping::Ping;
 
 struct Image {
     data: Option<RgbaImage>,
@@ -17,12 +18,14 @@ pub enum ImageLoaderStatus {
 
 pub struct ImageLoader {
     images: HashMap<PathBuf, Image>,
+    ping: Ping,
 }
 
 impl ImageLoader {
-    pub fn new() -> Self {
+    pub fn new(ping: Ping) -> Self {
         Self {
             images: HashMap::new(),
+            ping,
         }
     }
 
@@ -75,23 +78,38 @@ impl ImageLoader {
                 ImageLoaderStatus::Waiting
             }
         } else {
-            // Start loading a new image
-            let path_clone = path.clone();
-            let handle = std::thread::spawn(|| match open(path_clone) {
-                Ok(image) => Some(image.into_rgba8()),
-                Err(err) => {
-                    warn!("{err:?}");
-                    None
-                }
-            });
-            let image = Image {
-                requesters: vec![requester_name],
-                thread_handle: Some(handle),
-                data: None,
-            };
-            self.images.insert(path, image);
+            self.start_new_thread(path, requester_name);
             ImageLoaderStatus::Waiting
         }
+    }
+
+    fn start_new_thread(&mut self, path: PathBuf, requester_name: String) {
+        // Start loading a new image in a new thread
+        let path_clone = path.clone();
+        let ping_clone = self.ping.clone();
+        let handle = std::thread::spawn(move || match open(&path_clone) {
+            Ok(image) => {
+                // Notify the event loop that the image has been loaded
+                // We need this so that Surface::load_wallpaper is called even if
+                // wl_surface::frame doesn't get called by the compositor (e.g. a window is
+                // fullscreen)
+                // Do the conversion first, then the ping, otherwise we will have a race
+                // condition
+                let image = image.into_rgba8();
+                ping_clone.ping();
+                Some(image)
+            }
+            Err(err) => {
+                warn!("{err:?}");
+                None
+            }
+        });
+        let image = Image {
+            requesters: vec![requester_name],
+            thread_handle: Some(handle),
+            data: None,
+        };
+        self.images.insert(path, image);
     }
 
     /// Check that there are no threads waiting on zero requesters

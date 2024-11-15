@@ -237,7 +237,7 @@ impl ImagePicker {
     }
 
     /// Get the next image based on the sorting method
-    fn get_image_path(&mut self, files: &[PathBuf], qh: &QueueHandle<Wpaperd>) -> (usize, PathBuf) {
+    fn get_image_path(&mut self, files: &[PathBuf]) -> (usize, PathBuf) {
         match (&self.action, &mut self.sorting) {
             (
                 None,
@@ -272,7 +272,6 @@ impl ImagePicker {
                     let (index, path) =
                         next_random_image(&self.current_img, &mut group.queue, files);
                     group.loading_image = Some((index, path.to_path_buf()));
-                    group.queue_all_surfaces(qh);
                     (index, path)
                 } else {
                     (group.index, group.current_image.clone())
@@ -287,7 +286,6 @@ impl ImagePicker {
                 let (index, path) = get_previous_image_for_random(&self.current_img, queue);
                 if path != group.current_image {
                     group.loading_image = Some((index, path.to_path_buf()));
-                    group.queue_all_surfaces(qh);
                 }
                 (index, path)
             }
@@ -341,11 +339,7 @@ impl ImagePicker {
         }
     }
 
-    pub fn get_image_from_path(
-        &mut self,
-        path: &Path,
-        qh: &QueueHandle<Wpaperd>,
-    ) -> Option<(PathBuf, usize)> {
+    pub fn get_image_from_path(&mut self, path: &Path) -> Option<(PathBuf, usize)> {
         if path.is_dir() {
             let files = self.filelist_cache.borrow().get(path);
 
@@ -354,7 +348,7 @@ impl ImagePicker {
                 warn!("Directory {path:?} does not contain any valid image files.");
                 None
             } else {
-                let (index, img_path) = self.get_image_path(&files, qh);
+                let (index, img_path) = self.get_image_path(&files);
                 if img_path == self.current_img && !self.reload {
                     None
                 } else {
@@ -411,9 +405,9 @@ impl ImagePicker {
     }
 
     /// Update wallpaper by going up 1 index through the cached image paths
-    pub fn next_image(&mut self, path: &Path, qh: &QueueHandle<Wpaperd>) {
+    pub fn next_image(&mut self, path: &Path) {
         self.action = Some(ImagePickerAction::Next);
-        self.get_image_from_path(path, qh);
+        self.get_image_from_path(path);
     }
 
     pub fn current_image(&self) -> PathBuf {
@@ -543,6 +537,12 @@ impl ImagePicker {
     #[inline]
     pub fn is_reloading(&self) -> bool {
         self.reload
+    }
+
+    pub fn handle_grouped_sorting(&self, qh: &QueueHandle<Wpaperd>) {
+        if let ImagePickerSorting::GroupedRandom(grouped_random) = &self.sorting {
+            grouped_random.group.borrow().queue_all_surfaces(qh);
+        }
     }
 }
 

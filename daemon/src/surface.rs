@@ -65,7 +65,7 @@ pub struct Surface {
     info: Rc<RefCell<DisplayInfo>>,
     image_loader: Rc<RefCell<ImageLoader>>,
     window_drawn: bool,
-    loading_image: Option<(PathBuf, usize)>,
+    pub loading_image: Option<(PathBuf, usize)>,
     loading_image_tries: u8,
     /// Determines whether we should skip the next transition. Used to skip
     /// the first transition when starting up.
@@ -143,7 +143,7 @@ impl Surface {
 
         // Start loading the wallpaper as soon as possible (i.e. surface creation)
         // It will still be loaded as a texture when we have an openGL context
-        if let Err(err) = surface.load_wallpaper(qh) {
+        if let Err(err) = surface.load_wallpaper() {
             warn!("{err:?}");
         }
 
@@ -158,10 +158,16 @@ impl Surface {
         // Drop the borrow to self
         drop(info);
 
-        // Use the correct context before loading the texture and drawing
+        // Use the correct context before drawing
         self.egl_context.make_current()?;
 
-        let wallpaper_loaded = self.load_wallpaper(qh)?;
+        if let EventSource::Running(_, _, instant) = self.event_source {
+            // if the time we are drawing is past the transition_time
+            if instant.elapsed().as_millis() >= self.renderer.transition_time.into() {
+                // skip the transition and draw the image directly
+                self.renderer.transition_finished();
+            }
+        }
 
         if self.renderer.transition_running() {
             // Recalculate the current progress, the transition might end now
@@ -173,8 +179,10 @@ impl Surface {
             } else {
                 self.renderer.transition_finished();
             }
-        } else if !wallpaper_loaded {
+            // We are waiting for an image to be loaded in memory
+        } else if self.loading_image.is_some() {
             self.wl_surface.frame(qh, self.wl_surface.clone());
+            // We need to draw the first time, do not exit this function
             if self.window_drawn {
                 // We need to call commit, otherwise the call to frame above doesn't work
                 self.wl_surface().commit();
@@ -201,95 +209,97 @@ impl Surface {
         Ok(())
     }
 
+    // Start loading a wallpaper with the image_loader.
+    // Returns true when it is loaded, false when we need to wait
     // Call surface::frame when this return false
-    pub fn load_wallpaper(&mut self, qh: &QueueHandle<Wpaperd>) -> Result<bool> {
-        Ok(loop {
-            // If we were not already trying to load an image
-            if self.loading_image.is_none() {
-                if let Some(item) = self
-                    .image_picker
-                    .get_image_from_path(&self.wallpaper_info.path, qh)
+    pub fn load_wallpaper(&mut self) -> Result<bool> {
+        // If we were not already trying to load an image
+        if self.loading_image.is_none() {
+            if let Some(item) = self
+                .image_picker
+                .get_image_from_path(&self.wallpaper_info.path)
+            {
+                if self.image_picker.current_image() == item.0 && !self.image_picker.is_reloading()
                 {
-                    if self.image_picker.current_image() == item.0
-                        && !self.image_picker.is_reloading()
-                    {
-                        break true;
-                    } else {
-                        // We are trying to load a new image
-                        self.loading_image = Some(item);
-                    }
+                    return Ok(true);
                 } else {
-                    // we don't need to load any image
-                    break true;
+                    // We are trying to load a new image
+                    self.loading_image = Some(item);
                 }
+            } else {
+                // we don't need to load any image
+                return Ok(true);
             }
-            let (image_path, index) = self
-                .loading_image
-                .as_ref()
-                .expect("loading image to be set")
-                .clone();
+        }
 
-            if self.renderer.transition_running() {
-                break true;
-            }
+        let (image_path, index) = self
+            .loading_image
+            .as_ref()
+            .expect("loading image to be set")
+            .clone();
 
-            let res = self
-                .image_loader
-                .borrow_mut()
-                .background_load(image_path.to_owned(), self.name());
-            match res {
-                crate::image_loader::ImageLoaderStatus::Loaded(data) => {
-                    // Renderer::load_wallpaper load the wallpaper in a openGL texture
-                    // Set the correct opengl context
-                    self.egl_context.make_current()?;
-                    self.renderer.load_wallpaper(
-                        data.into(),
-                        self.wallpaper_info.mode,
-                        self.wallpaper_info.offset,
-                    )?;
+        if self.renderer.transition_running() {
+            return Ok(true);
+        }
 
-                    let transition_time = if self.skip_next_transition {
-                        0
-                    } else {
-                        self.wallpaper_info.transition_time
-                    };
-                    self.skip_next_transition = false;
+        let res = self
+            .image_loader
+            .borrow_mut()
+            .background_load(image_path.to_owned(), self.name());
+        match res {
+            crate::image_loader::ImageLoaderStatus::Loaded(data) => {
+                // Renderer::load_wallpaper load the wallpaper in a openGL texture
+                // Set the correct opengl context
+                self.egl_context.make_current()?;
+                self.renderer.load_wallpaper(
+                    data.into(),
+                    self.wallpaper_info.mode,
+                    self.wallpaper_info.offset,
+                )?;
 
-                    if self.image_picker.is_reloading() {
-                        self.image_picker.reloaded();
-                    } else {
-                        self.update_wallpaper_link(&image_path);
-                        self.image_picker.update_current_image(image_path, index);
-                        self.renderer.start_transition(transition_time);
-                        // Update the instant where we have drawn the image
-                        if let EventSource::Running(registration_token, duration, _) =
-                            self.event_source
-                        {
-                            self.event_source =
-                                EventSource::Running(registration_token, duration, Instant::now());
-                        }
-                    }
-                    // Restart the counter
-                    self.loading_image_tries = 0;
-                    self.loading_image = None;
-                    break true;
+                if self.image_picker.is_reloading() {
+                    self.image_picker.reloaded();
+                } else {
+                    self.setup_drawing_image(image_path, index);
                 }
-                crate::image_loader::ImageLoaderStatus::Waiting => {
-                    // wait until the image has been loaded
-                    break false;
-                }
-                crate::image_loader::ImageLoaderStatus::Error => {
-                    // We don't want to try too many times
-                    self.loading_image_tries += 1;
-                    // The image we were trying to load failed
-                    self.loading_image = None;
-                }
+                // Restart the counter
+                self.loading_image_tries = 0;
+                self.loading_image = None;
+                Ok(true)
             }
-            // If we have tried too many times, stop
-            if self.loading_image_tries == 5 {
-                break true;
+            crate::image_loader::ImageLoaderStatus::Waiting => {
+                // wait until the image has been loaded
+                Ok(false)
             }
-        })
+            crate::image_loader::ImageLoaderStatus::Error => {
+                // We don't want to try too many times
+                self.loading_image_tries += 1;
+                // The image we were trying to load failed
+                self.loading_image = None;
+                // If we have tried too many times, stop
+                if self.loading_image_tries != 5 {
+                    return self.load_wallpaper();
+                }
+                Ok(false)
+            }
+        }
+    }
+
+    pub fn setup_drawing_image(&mut self, image_path: PathBuf, index: usize) {
+        let transition_time = if self.skip_next_transition {
+            0
+        } else {
+            self.wallpaper_info.transition_time
+        };
+        self.skip_next_transition = false;
+
+        self.update_wallpaper_link(&image_path);
+        self.image_picker.update_current_image(image_path, index);
+        self.renderer.start_transition(transition_time);
+        // Update the instant where we have drawn the image
+        if let EventSource::Running(registration_token, duration, _) = self.event_source {
+            self.event_source = EventSource::Running(registration_token, duration, Instant::now());
+        }
     }
 
     pub fn name(&self) -> String {
@@ -414,7 +424,7 @@ impl Surface {
         );
         if path_changed {
             // ask the image_picker to pick a new a image
-            self.image_picker.next_image(&self.wallpaper_info.path, qh);
+            self.image_picker.next_image(&self.wallpaper_info.path);
         }
         // Always queue draw to load changes (needed for GroupedRandom)
         self.queue_draw(qh);
@@ -497,7 +507,7 @@ impl Surface {
                         let saturating_sub = new_duration.saturating_sub(time_passed);
                         if saturating_sub.is_zero() {
                             // The image was on screen for the same time as the new duration
-                            self.image_picker.next_image(&self.wallpaper_info.path, qh);
+                            self.image_picker.next_image(&self.wallpaper_info.path);
                             new_duration
                         } else {
                             saturating_sub
@@ -577,14 +587,30 @@ impl Surface {
                             TimeoutAction::Drop
                         }
                         EventSource::Running(registration_token, duration, instant) => {
+                            // The timer went off before the actual duration expired, run the next
+                            // one with the remaining duration
                             let duration = if let Some(duration_left) =
                                 remaining_duration(duration, instant)
                             {
                                 duration_left
                             } else {
+                                // otherwise get the next image and set the new duration
+                                // before doing so, we need to check that the transition ended
+                                // if it didn't, it means that the transition never ran.
+                                // It happens when there is a display with a fullscreen window
+                                // and wpaperd surface doesn't receive any frame event.
+                                if surface.renderer.transition_running() {
+                                    // Mark the transition ended, so that we have simulated the
+                                    // entire drawing of an image
+                                    // This actually never gets called if the draw function can end
+                                    // the transition itself. Still, this might be triggered with
+                                    // other compositors, left as a safety measure.
+                                    surface.renderer.transition_finished();
+                                    surface.renderer.force_transition_end();
+                                }
                                 surface
                                     .image_picker
-                                    .next_image(&surface.wallpaper_info.path, &qh);
+                                    .next_image(&surface.wallpaper_info.path);
                                 surface.queue_draw(&qh);
                                 surface.wallpaper_info.duration.unwrap()
                             };
@@ -630,8 +656,7 @@ impl Surface {
 
     #[inline]
     pub fn queue_draw(&mut self, qh: &QueueHandle<Wpaperd>) {
-        // Start loading the next image immediately
-        if let Err(err) = self.load_wallpaper(qh) {
+        if let Err(err) = self.load_wallpaper() {
             warn!("{err:?}");
         }
         self.wl_surface.frame(qh, self.wl_surface.clone());

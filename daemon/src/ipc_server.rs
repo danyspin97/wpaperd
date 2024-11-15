@@ -119,7 +119,7 @@ pub fn handle_message(
             for surface in collect_surfaces(wpaperd, monitors) {
                 surface
                     .image_picker
-                    .next_image(&surface.wallpaper_info.path, &qh);
+                    .next_image(&surface.wallpaper_info.path);
                 surface.queue_draw(&qh);
             }
 
