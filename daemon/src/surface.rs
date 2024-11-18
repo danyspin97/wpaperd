@@ -533,11 +533,12 @@ impl Surface {
                         // it was on screen without the timer being paused
                         let time_passed = match self.event_source {
                             EventSource::Running(_, duration, instant) => {
-                                if old_duration != duration {
-                                    old_duration - duration + instant.elapsed()
-                                } else {
-                                    instant.elapsed()
-                                }
+                                // The old_duration is the full duration that the wallpaper needed
+                                // to be displayed. The duration is the one that the timer is set
+                                // to, which might be different than old_duration if the timer was
+                                // paused. So calculate how much time the image was displayed with
+                                // this information.
+                                old_duration.saturating_sub(duration) + instant.elapsed()
                             }
                             EventSource::Paused(duration) => old_duration - duration,
                             EventSource::NotSet => unreachable!(),
@@ -547,6 +548,9 @@ impl Surface {
                         if saturating_sub.is_zero() {
                             // The image was on screen for the same time as the new duration
                             self.image_picker.next_image(&self.wallpaper_info.path);
+                            if let Err(err) = self.load_wallpaper(None) {
+                                warn!("{err:?}");
+                            }
                             new_duration
                         } else {
                             saturating_sub
