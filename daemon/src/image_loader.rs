@@ -53,6 +53,10 @@ impl ImageLoader {
                     // the thread is still running
                     // reassign the handle
                     image.thread_handle = Some(handle);
+                    // if this is a new requester, add it to the list
+                    if !image.requesters.contains(&requester_name) {
+                        image.requesters.push(requester_name);
+                    }
                     return ImageLoaderStatus::Waiting;
                 }
             }
