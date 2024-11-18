@@ -260,7 +260,6 @@ impl OutputHandler for Wpaperd {
             output,
             display_info,
             wallpaper_info,
-            qh,
             xdg_state_home_dir,
         ));
     }

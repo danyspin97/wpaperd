@@ -134,23 +134,24 @@ fn run(opts: Opts, xdg_dirs: BaseDirectories) -> Result<()> {
 
     let (image_loader_ping, ping_source) =
         calloop::ping::make_ping().context("Unable to create a calloop::ping::Ping")?;
+    let handle = event_loop.handle();
+    let qh_clone = qh.clone();
     event_loop
         .handle()
-        .insert_source(ping_source, |_, _, wpaperd| {
+        .insert_source(ping_source, move |_, _, wpaperd| {
             // An image has been loaded, update the surfaces status
-            wpaperd
-                .surfaces
-                .iter_mut()
-                .for_each(|surface| match surface.load_wallpaper() {
+            wpaperd.surfaces.iter_mut().for_each(|surface| {
+                match surface.load_wallpaper(Some(&handle)) {
                     Ok(wallpaper_loaded) => {
                         if wallpaper_loaded {
-                            surface.queue_draw(&qh);
-                            surface.image_picker.handle_grouped_sorting(&qh);
+                            surface.queue_draw(&qh_clone);
+                            surface.image_picker.handle_grouped_sorting(&qh_clone);
                         }
                     }
 
                     Err(err) => error!("{err:?}"),
-                });
+                }
+            });
         })
         .map_err(|e| anyhow!("inserting the image loader event listener in the event loop: {e}"))?;
     let image_loader = Rc::new(RefCell::new(ImageLoader::new(image_loader_ping)));

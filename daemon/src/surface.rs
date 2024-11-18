@@ -1,6 +1,7 @@
 use std::{
     cell::RefCell,
     fs,
+    ops::Add,
     path::{Path, PathBuf},
     rc::Rc,
     time::{Duration, Instant},
@@ -87,7 +88,6 @@ impl Surface {
         wl_output: WlOutput,
         info: DisplayInfo,
         wallpaper_info: WallpaperInfo,
-        qh: &QueueHandle<Wpaperd>,
         xdg_state_home: PathBuf,
     ) -> Self {
         let wl_surface = wl_layer.wl_surface().clone();
@@ -143,7 +143,7 @@ impl Surface {
 
         // Start loading the wallpaper as soon as possible (i.e. surface creation)
         // It will still be loaded as a texture when we have an openGL context
-        if let Err(err) = surface.load_wallpaper() {
+        if let Err(err) = surface.load_wallpaper(None) {
             warn!("{err:?}");
         }
 
@@ -160,14 +160,6 @@ impl Surface {
 
         // Use the correct context before drawing
         self.egl_context.make_current()?;
-
-        if let EventSource::Running(_, _, instant) = self.event_source {
-            // if the time we are drawing is past the transition_time
-            if instant.elapsed().as_millis() >= self.renderer.transition_time.into() {
-                // skip the transition and draw the image directly
-                self.renderer.transition_finished();
-            }
-        }
 
         if self.renderer.transition_running() {
             // Recalculate the current progress, the transition might end now
@@ -212,7 +204,7 @@ impl Surface {
     // Start loading a wallpaper with the image_loader.
     // Returns true when it is loaded, false when we need to wait
     // Call surface::frame when this return false
-    pub fn load_wallpaper(&mut self) -> Result<bool> {
+    pub fn load_wallpaper(&mut self, handle: Option<&LoopHandle<Wpaperd>>) -> Result<bool> {
         // If we were not already trying to load an image
         if self.loading_image.is_none() {
             if let Some(item) = self
@@ -259,8 +251,10 @@ impl Surface {
 
                 if self.image_picker.is_reloading() {
                     self.image_picker.reloaded();
+                } else if let Some(handle) = handle {
+                    self.setup_drawing_image(image_path, index, handle);
                 } else {
-                    self.setup_drawing_image(image_path, index);
+                    warn!("No handle to add transition timer");
                 }
                 // Restart the counter
                 self.loading_image_tries = 0;
@@ -278,14 +272,19 @@ impl Surface {
                 self.loading_image = None;
                 // If we have tried too many times, stop
                 if self.loading_image_tries != 5 {
-                    return self.load_wallpaper();
+                    return self.load_wallpaper(handle);
                 }
                 Ok(false)
             }
         }
     }
 
-    pub fn setup_drawing_image(&mut self, image_path: PathBuf, index: usize) {
+    pub fn setup_drawing_image(
+        &mut self,
+        image_path: PathBuf,
+        index: usize,
+        handle: &LoopHandle<Wpaperd>,
+    ) {
         let transition_time = if self.skip_next_transition {
             0
         } else {
@@ -296,9 +295,49 @@ impl Surface {
         self.update_wallpaper_link(&image_path);
         self.image_picker.update_current_image(image_path, index);
         self.renderer.start_transition(transition_time);
+        self.add_transition_timer(handle);
         // Update the instant where we have drawn the image
         if let EventSource::Running(registration_token, duration, _) = self.event_source {
             self.event_source = EventSource::Running(registration_token, duration, Instant::now());
+        }
+    }
+
+    pub fn add_transition_timer(&mut self, handle: &LoopHandle<Wpaperd>) {
+        let timer =
+            Timer::from_duration(Duration::from_millis(self.renderer.transition_time.into()));
+
+        let name = self.name().clone();
+        if let Err(err) = handle.insert_source(
+            timer,
+            move |_deadline, _: &mut (), wpaperd: &mut Wpaperd| {
+                let surface = match wpaperd
+                    .surface_from_name(&name)
+                    .with_context(|| format!("expecting surface {name} to be available"))
+                {
+                    Ok(surface) => surface,
+                    Err(err) => {
+                        error!("{err:?}");
+                        return TimeoutAction::Drop;
+                    }
+                };
+
+                if let EventSource::Running(_, _, instant) = surface.event_source {
+                    // if the time we are drawing is past the transition_time
+                    let time_left = Duration::from_millis(surface.renderer.transition_time.into())
+                        .saturating_sub(instant.elapsed());
+                    if time_left.is_zero() {
+                        // skip the transition and draw the image directly
+                        surface.renderer.transition_finished();
+                        TimeoutAction::Drop
+                    } else {
+                        TimeoutAction::ToDuration(time_left)
+                    }
+                } else {
+                    TimeoutAction::Drop
+                }
+            },
+        ) {
+            error!("{err:?}");
         }
     }
 
@@ -557,7 +596,12 @@ impl Surface {
         // We need a duration to set a timer
         let duration = match duration_left {
             Some(duration) => Some(duration),
-            None => self.wallpaper_info.duration,
+            // Add the transition time to have more precise duration
+            None => self.wallpaper_info.duration.map(|d| {
+                d.add(Duration::from_millis(
+                    self.wallpaper_info.transition_time.into(),
+                ))
+            }),
         };
         let Some(duration) = duration else { return };
 
@@ -656,7 +700,7 @@ impl Surface {
 
     #[inline]
     pub fn queue_draw(&mut self, qh: &QueueHandle<Wpaperd>) {
-        if let Err(err) = self.load_wallpaper() {
+        if let Err(err) = self.load_wallpaper(None) {
             warn!("{err:?}");
         }
         self.wl_surface.frame(qh, self.wl_surface.clone());
