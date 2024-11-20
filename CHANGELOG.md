@@ -1,17 +1,24 @@
-# 1.1
+# 1.1.0
 
 ## Breaking changes
-- Rename `transition_time` and `queue_size` to kebab case (`transition-time and `queue-size`).
+- Rename `transition_time` and `queue_size` to kebab case (`transition-time` and `queue-size`).
 
 ## New features
 - Add `avif` feature to load `avif` images (requires `dav1d` library)
-- Add `offset` configuration to move the wallpaper from its center
-- Add `fit-border-color` background mode
+- Add `offset` configuration to move the wallpaper from the center of the screen
+- Add `fit-border-color` background mode, which works like `fit` but uses the color of the
+  border of the image to fill the rest of the screen not covered
 - Add `initial-transition` configuration to disable the startup transition if needed
 - Add `group` configuration to share the same wallpaper between multiple displays
 - Match displays using their name or their description (fixes #90)
 - Add multiple transition styles from [gl-transition]
 - Add a link to the current wallpaper in `.local/state/wpaperd/wallpapers` for each display
+- Listen to SIGINT, SIGTERM and SIGHUP signals and do a graceful exit
+
+## Other changes
+- Reworked the timer handling
+- Reworked wallpaper loading to be lighter
+- Many bug fixes and small changes on its behavior
 
 [gl-transition]: https://gl-transitions.com/
 
