@@ -54,8 +54,10 @@ use xdg::BaseDirectories;
 
 use crate::wpaperd::Wpaperd;
 
+#[cfg(feature = "jemalloc")]
 use tikv_jemallocator::Jemalloc;
 
+#[cfg(feature = "jemalloc")]
 #[global_allocator]
 static GLOBAL: Jemalloc = Jemalloc;
 

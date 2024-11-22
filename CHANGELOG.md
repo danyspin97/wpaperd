@@ -1,4 +1,7 @@
 # 1.1.1
+## New features
+- Make jemalloc feature optional, enabled by default
+
 ## Bug fixes
 - Fix build on non x86_64 architectures
 
