@@ -1,3 +1,7 @@
+# 1.1.1
+## Bug fixes
+- Fix build on non x86_64 architectures
+
 # 1.1.0
 
 ## Breaking changes
