@@ -1,0 +1,12 @@
+[Unit]
+Description=Modern wallpaper daemon for Wayland
+Documentation=man:wpaperd(1)
+PartOf=graphical-session.target
+Requires=graphical-session.target
+After=graphical-session.target
+
+[Service]
+ExecStart=/usr/bin/wpaperd
+
+[Install]
+WantedBy=graphical-session.target
