@@ -451,13 +451,6 @@ fn create_program(gl: &gl::Gl, transition: Transition) -> Result<gl::types::GLui
         gl_check!(gl, "attach fragment shader");
         gl.LinkProgram(program);
         gl_check!(gl, "linking the program");
-        {
-            // This shouldn't be needed, gl_check already checks the status of LinkProgram
-            let mut status: i32 = 0;
-            gl.GetProgramiv(program, gl::LINK_STATUS, &mut status as *mut _);
-            ensure!(status == 1, "Program was not linked correctly");
-        }
-        gl_check!(gl, "calling UseProgram");
         gl.DeleteShader(vertex_shader);
         gl_check!(gl, "deleting the vertex shader");
         gl.DeleteShader(fragment_shader);
