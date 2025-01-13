@@ -3,7 +3,10 @@ use wayland_egl::WlEglSurface;
 
 use egl::API as egl;
 
-use color_eyre::{eyre::Context, Result};
+use color_eyre::{
+    eyre::{Context, OptionExt},
+    Result,
+};
 
 pub struct EglContext {
     pub display: egl::Display,
@@ -14,7 +17,7 @@ pub struct EglContext {
 }
 
 impl EglContext {
-    pub fn new(egl_display: egl::Display, wl_surface: &WlSurface) -> Self {
+    pub fn new(egl_display: egl::Display, wl_surface: &WlSurface) -> Result<Self> {
         const ATTRIBUTES: [i32; 7] = [
             egl::RED_SIZE,
             8,
@@ -27,8 +30,8 @@ impl EglContext {
 
         let config = egl
             .choose_first_config(egl_display, &ATTRIBUTES)
-            .expect("unable to choose an EGL configuration")
-            .expect("no EGL configuration found");
+            .wrap_err("Failed to find EGL configurations")?
+            .ok_or_eyre("No available EGL configuration")?;
 
         const CONTEXT_ATTRIBUTES: [i32; 5] = [
             egl::CONTEXT_MAJOR_VERSION,
@@ -40,10 +43,11 @@ impl EglContext {
 
         let context = egl
             .create_context(egl_display, config, None, &CONTEXT_ATTRIBUTES)
-            .expect("unable to create an EGL context");
+            .wrap_err("Failed to create an EGL context")?;
 
         // First, create a small surface, we don't know the size of the output yet
-        let wl_egl_surface = WlEglSurface::new(wl_surface.id(), 10, 10).unwrap();
+        let wl_egl_surface = WlEglSurface::new(wl_surface.id(), 10, 10)
+            .wrap_err("Failed to create a WlEglSurface")?;
 
         let surface = unsafe {
             egl.create_window_surface(
@@ -52,16 +56,16 @@ impl EglContext {
                 wl_egl_surface.ptr() as egl::NativeWindowType,
                 None,
             )
-            .expect("unable to create an EGL surface")
+            .wrap_err("Failed to create an EGL window surface")?
         };
 
-        Self {
+        Ok(Self {
             display: egl_display,
             context,
             config,
             surface,
             wl_egl_surface,
-        }
+        })
     }
 
     #[inline]
@@ -72,23 +76,23 @@ impl EglContext {
             Some(self.surface),
             Some(self.context),
         )
-        .with_context(|| "unable to make the context current")
+        .wrap_err("Failed to set the current EGL context")
     }
 
     // Swap the buffers of the surface
     #[inline]
     pub fn swap_buffers(&self) -> Result<()> {
         egl.swap_buffers(self.display, self.surface)
-            .with_context(|| "unable to post the surface content")
+            .wrap_err("Failed to draw the content of the GL buffer")
     }
 
     /// Resize the surface
     /// Resizing the surface means to destroy the previous one and then recreate it
     pub fn resize(&mut self, wl_surface: &WlSurface, width: i32, height: i32) -> Result<()> {
         egl.destroy_surface(self.display, self.surface)
-            .context("unable to destroy EGL surface")?;
+            .wrap_err("Failed to destroy the EGL surface")?;
         let wl_egl_surface = WlEglSurface::new(wl_surface.id(), width, height)
-            .context("unable to create a new WlEglSurface")?;
+            .wrap_err("Failed to create a WlEglSurface")?;
 
         let surface = unsafe {
             egl.create_window_surface(
@@ -97,7 +101,7 @@ impl EglContext {
                 wl_egl_surface.ptr() as egl::NativeWindowType,
                 None,
             )
-            .context("unable to create an EGL surface")?
+            .wrap_err("Failed to create an EGL window surface")?
         };
 
         self.surface = surface;

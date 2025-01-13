@@ -28,10 +28,8 @@ use std::{
 };
 
 use clap::Parser;
-use color_eyre::{
-    eyre::{anyhow, ContextCompat, WrapErr},
-    Result, Section,
-};
+use color_eyre::eyre::{eyre, OptionExt, WrapErr};
+use color_eyre::{Result, Section};
 use config::Config;
 use egl::API as egl;
 use filelist_cache::FilelistCache;
@@ -69,13 +67,13 @@ fn run(opts: Opts, xdg_dirs: BaseDirectories) -> Result<()> {
         // Read the new config or the legacy file
         let legacy_config_file = xdg_dirs
             .place_config_file("wallpaper.toml")
-            .context("unable to identify legacy config file wallpaper.toml")?;
+            .wrap_err("Failed to locate legacy config file wallpaper.toml")?;
         if legacy_config_file.exists() {
             legacy_config_file
         } else {
             xdg_dirs
                 .place_config_file("config.toml")
-                .context("unable to identify config file config.toml")?
+                .wrap_err("Failed to locate config file config.toml")?
         }
     };
 
@@ -95,47 +93,52 @@ fn run(opts: Opts, xdg_dirs: BaseDirectories) -> Result<()> {
     // we use the OpenGL ES API because it's more widely supported
     // and it's used by wlroots
     egl.bind_api(egl::OPENGL_ES_API)
-        .context("unable to select OpenGL API")?;
+        .wrap_err("Failed to bind OpenGL ES API during initialization")?;
 
     let conn = Connection::connect_to_env()
-        .context("connecting to wayland")
+        .wrap_err("Failed to connect to the Wayland server")
         .suggestion("Are you running a wayland compositor?")?;
 
     let egl_display = unsafe {
         egl.get_display(conn.display().id().as_ptr() as *mut std::ffi::c_void)
-            .context("getting the display from the WlDisplay")?
+            .ok_or_eyre("Failed to get EGL display during initialization")?
     };
     egl.initialize(egl_display)
-        .context("initializing the egl display")?;
+        .wrap_err("Failed the EGL display initialization")?;
 
     let (globals, event_queue) =
-        registry_queue_init(&conn).context("initializing the wayland registry queue")?;
+        registry_queue_init(&conn).wrap_err("Failed to initialize the Wayland registry queue")?;
     let qh = event_queue.handle();
 
     let mut event_loop = calloop::EventLoop::<Wpaperd>::try_new()?;
 
     WaylandSource::new(conn.clone(), event_queue)
         .insert(event_loop.handle())
-        .map_err(|e| anyhow!("insterting the wayland source into the event loop: {e}"))?;
+        .map_err(|e| eyre!("{e}"))
+        .wrap_err("Failed to insert the Wayland source into the event loop")?;
 
-    let (ping, ping_source) =
-        calloop::ping::make_ping().context("Unable to create a calloop::ping::Ping")?;
+    let (ping, ping_source) = calloop::ping::make_ping()
+        .wrap_err("Failed to create a calloop::ping::Ping for the hotwatch listener")?;
     event_loop
         .handle()
         .insert_source(ping_source, |_, _, _| {})
-        .map_err(|e| anyhow!("inserting the hotwatch event listener in the event loop: {e}"))?;
+        .map_err(|e| eyre!("{e}"))
+        .wrap_err("Failed to insert the hotwatch listener into the event loop")?;
 
-    let mut hotwatch = Hotwatch::new().context("hotwatch failed to initialize")?;
-    config.listen_to_changes(&mut hotwatch, ping)?;
+    let mut hotwatch = Hotwatch::new().wrap_err("Failed to initialize hotwatch listener")?;
+    config
+        .listen_to_changes(&mut hotwatch, ping)
+        .wrap_err("Failed to watch on config file changes")?;
 
     let (ping, filelist_cache) =
-        FilelistCache::new(config.paths(), &mut hotwatch, event_loop.handle())?;
+        FilelistCache::new(config.paths(), &mut hotwatch, event_loop.handle())
+            .wrap_err("Failed to create FilelistCache")?;
     let filelist_cache = Rc::new(RefCell::new(filelist_cache));
 
     let groups = Rc::new(RefCell::new(WallpaperGroups::new()));
 
-    let (image_loader_ping, ping_source) =
-        calloop::ping::make_ping().context("Unable to create a calloop::ping::Ping")?;
+    let (image_loader_ping, ping_source) = calloop::ping::make_ping()
+        .wrap_err("Failed to create a calloop::ping::Ping for the image loader")?;
     let handle = event_loop.handle();
     let qh_clone = qh.clone();
     event_loop
@@ -155,7 +158,8 @@ fn run(opts: Opts, xdg_dirs: BaseDirectories) -> Result<()> {
                 }
             });
         })
-        .map_err(|e| anyhow!("inserting the image loader event listener in the event loop: {e}"))?;
+        .map_err(|e| eyre!("{e}"))
+        .wrap_err("Failed to insert the image loader listener into the event loop")?;
     let image_loader = Rc::new(RefCell::new(ImageLoader::new(image_loader_ping)));
 
     let mut wpaperd = Wpaperd::new(
@@ -167,10 +171,12 @@ fn run(opts: Opts, xdg_dirs: BaseDirectories) -> Result<()> {
         groups,
         image_loader,
         xdg_dirs,
-    )?;
+    )
+    .wrap_err("Failed to initiliaze wpaperd status")?;
 
     // Start listening on the IPC socket
-    let socket = listen_on_ipc_socket(&socket_path()?).context("spawning the ipc socket")?;
+    let socket = listen_on_ipc_socket(&socket_path().wrap_err("Failed to locate wpaperd socket")?)
+        .wrap_err("Failed to listen to IPC socket")?;
 
     // Add source to calloop loop.
     event_loop
@@ -189,7 +195,8 @@ fn run(opts: Opts, xdg_dirs: BaseDirectories) -> Result<()> {
         }
     }
 
-    let (ctrlc_ping, ctrl_ping_source) = calloop::ping::make_ping()?;
+    let (ctrlc_ping, ctrl_ping_source) =
+        calloop::ping::make_ping().wrap_err("Failed to create calloop::")?;
     let should_exit = Arc::new(AtomicBool::new(false));
     let should_exit_clone = should_exit.clone();
     // Handle SIGINT, SIGTERM, and SIGHUP, so that the application can stop nicely
@@ -198,13 +205,14 @@ fn run(opts: Opts, xdg_dirs: BaseDirectories) -> Result<()> {
         // The event loop callback will set should_exit to true
         ctrlc_ping.ping();
     })
-    .expect("Error setting Ctrl-C handler");
+    .wrap_err("Failed to set signal handler")?;
     event_loop
         .handle()
         .insert_source(ctrl_ping_source, move |_, _, _| {
             should_exit_clone.store(true, Ordering::Release);
         })
-        .map_err(|e| anyhow!("inserting the filelist event listener in the event loop: {e}"))?;
+        .map_err(|e| eyre!("{e}"))
+        .wrap_err("Failed to insert the signal handler listener into the event loop")?;
 
     loop {
         if should_exit.load(Ordering::Acquire) {
@@ -269,18 +277,20 @@ fn run(opts: Opts, xdg_dirs: BaseDirectories) -> Result<()> {
 
         event_loop
             .dispatch(None, &mut wpaperd)
-            .context("dispatching the event loop")?;
+            .wrap_err("Failed to dispatch the event loop")?;
     }
 }
 
 fn main() -> Result<()> {
-    color_eyre::install()?;
+    color_eyre::install().wrap_err("Failed to inject color_eyre")?;
 
-    let xdg_dirs = BaseDirectories::with_prefix("wpaperd")?;
+    let xdg_dirs =
+        BaseDirectories::with_prefix("wpaperd").wrap_err("Failed to initialize XDG directories")?;
 
     let opts = Opts::parse();
 
-    let mut logger = Logger::try_with_env_or_str(if opts.verbose { "debug" } else { "info" })?;
+    let mut logger = Logger::try_with_env_or_str(if opts.verbose { "debug" } else { "info" })
+        .wrap_err("Failed to initialize logger")?;
 
     if opts.daemon {
         // If wpaperd detach, then log to files
@@ -294,7 +304,7 @@ fn main() -> Result<()> {
         logger = logger.duplicate_to_stderr(Duplicate::Warn);
     }
 
-    logger.start()?;
+    logger.start().wrap_err("Failed to start logger")?;
 
     if let Err(err) = run(opts, xdg_dirs) {
         error!("{err:?}");

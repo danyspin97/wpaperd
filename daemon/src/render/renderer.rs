@@ -1,7 +1,7 @@
 use std::{cell::RefCell, ffi::CStr, ops::Deref, rc::Rc};
 
 use color_eyre::{
-    eyre::{bail, ensure, Context},
+    eyre::{ensure, OptionExt, WrapErr},
     Result,
 };
 use egl::API as egl;
@@ -57,17 +57,19 @@ impl Renderer {
     ) -> Result<Self> {
         let gl = Rc::new(gl::Gl::load_with(|name| {
             egl.get_proc_address(name)
-                .expect("egl.get_proc_address to work") as *const std::ffi::c_void
+                .ok_or_eyre("Cannot find openGL ES")
+                .unwrap() as *const std::ffi::c_void
         }));
 
-        let program = create_program(&gl, transition)
-            .context("unable to create program during openGL ES initialization")?;
+        let program =
+            create_program(&gl, transition).wrap_err("Failed to create openGL program")?;
 
-        let (vbo, eab) = initialize_objects(&gl)?;
+        let (vbo, eab) = initialize_objects(&gl).wrap_err("Failed to initialize openGL objects")?;
 
         let current_wallpaper = Wallpaper::new(gl.clone());
 
-        let transparent_texture = load_texture(&gl, transparent_image().into())?;
+        let transparent_texture = load_texture(&gl, transparent_image().into())
+            .wrap_err("Failed to load transparent image into a texture")?;
 
         let mut renderer = Self {
             gl,
@@ -82,8 +84,12 @@ impl Renderer {
             transition_status: TransitionStatus::Ended,
         };
 
-        renderer.load_wallpaper(image, BackgroundMode::Stretch, None)?;
-        renderer.set_projection_matrix(transform)?;
+        renderer
+            .load_wallpaper(image, BackgroundMode::Stretch, None)
+            .wrap_err("Failed to query image loader")?;
+        renderer
+            .set_projection_matrix(transform)
+            .wrap_err("Failed to set projection matrix for openGL context")?;
 
         Ok(renderer)
     }
@@ -98,12 +104,12 @@ impl Renderer {
 
     pub unsafe fn draw(&mut self) -> Result<()> {
         self.gl.Clear(gl::COLOR_BUFFER_BIT);
-        self.check_error("clearing the screen")?;
+        self.check_error("Failed to clear the screen")?;
 
         let loc = self
             .gl
             .GetUniformLocation(self.program, b"progress\0".as_ptr() as *const _);
-        self.check_error("getting the uniform location")?;
+        self.check_error("Failed to get the uniform location for progress")?;
         self.gl.Uniform1f(
             loc,
             match self.transition_status {
@@ -115,11 +121,11 @@ impl Renderer {
                 TransitionStatus::Ended => 1.0,
             },
         );
-        self.check_error("calling Uniform1i")?;
+        self.check_error("Failed to set the progress in the openGL shader")?;
 
         self.gl
             .DrawElements(gl::TRIANGLES, 6, gl::UNSIGNED_INT, std::ptr::null());
-        self.check_error("drawing the triangles")?;
+        self.check_error("Failed to draw the vertices")?;
 
         Ok(())
     }
@@ -168,10 +174,10 @@ impl Renderer {
 
         unsafe {
             self.gl.ActiveTexture(gl::TEXTURE0);
-            self.check_error("activating gl::TEXTURE0")?;
+            self.check_error("Failed to activate texture TEXTURE0")?;
             self.prev_wallpaper
                 .as_ref()
-                .expect("previous wallpaper to be set")
+                .expect("Previous wallpaper must always be set")
                 .bind()?;
 
             // current_wallpaper is already binded to TEXTURE1, as load_texture loads the image
@@ -251,27 +257,27 @@ impl Renderer {
             let loc = self
                 .gl
                 .GetUniformLocation(self.program, b"textureScale\0".as_ptr() as *const _);
-            self.check_error("getting the uniform location")?;
-            ensure!(loc > 0, "textureScale not found");
+            self.check_error("Failed to get the uniform location for textureScale")?;
+            ensure!(loc > 0, "Failed to find uniform textureScale");
             self.gl
                 .Uniform2fv(loc, 1, texture_scale.as_ptr() as *const _);
-            self.check_error("calling Uniform2fv on textureScale")?;
+            self.check_error("Failed to set uniform textureScale")?;
 
             let loc = self
                 .gl
                 .GetUniformLocation(self.program, b"prevTextureScale\0".as_ptr() as *const _);
-            self.check_error("getting the uniform location")?;
-            ensure!(loc > 0, "prevTextureScale not found");
+            self.check_error("Failed to get the uniform location for prevTextureScale")?;
+            ensure!(loc > 0, "Failed to find the uniform prevTextureScale");
             self.gl
                 .Uniform2fv(loc, 1, prev_texture_scale.as_ptr() as *const _);
-            self.check_error("calling Uniform2fv on prevTextureScale")?;
+            self.check_error("Failed to set the value for prevTextureScale")?;
 
             let loc = self
                 .gl
                 .GetUniformLocation(self.program, b"ratio\0".as_ptr() as *const _);
-            self.check_error("getting the uniform location")?;
+            self.check_error("Failed to get the uniform location for ratio")?;
             self.gl.Uniform1f(loc, display_ratio);
-            self.check_error("calling Uniform1f")?;
+            self.check_error("Failed to set the value for the uniform ratio")?;
 
             let offset = match (offset, mode) {
                 (
@@ -288,9 +294,9 @@ impl Renderer {
             let loc = self
                 .gl
                 .GetUniformLocation(self.program, b"texture_offset\0".as_ptr() as *const _);
-            self.check_error("getting the uniform location")?;
+            self.check_error("Failed to get the location for the uniform texture_offset")?;
             self.gl.Uniform1f(loc, offset);
-            self.check_error("calling Uniform1f")?;
+            self.check_error("Failed to set the value for the uniform texture_offset")?;
 
             let texture_wrap = match mode {
                 BackgroundMode::Stretch | BackgroundMode::Center | BackgroundMode::Fit => {
@@ -301,22 +307,22 @@ impl Renderer {
             } as i32;
 
             self.gl.ActiveTexture(gl::TEXTURE0);
-            self.check_error("activating gl::TEXTURE0")?;
+            self.check_error("Failed to activate texture TEXTURE0")?;
             self.gl
                 .TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_S, texture_wrap);
-            self.check_error("defining the texture wrap_s")?;
+            self.check_error("Failed to set the attribute TEXTURE_WRAP_S for TEXTURE0")?;
             self.gl
                 .TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_T, texture_wrap);
-            self.check_error("defining the texture wrap_t")?;
+            self.check_error("Failed to set the attribute TEXTURE_WRAP_T FOR TEXTURE0")?;
 
             self.gl.ActiveTexture(gl::TEXTURE1);
-            self.check_error("activating gl::TEXTURE1")?;
+            self.check_error("Failed to activate texture TEXTURE1")?;
             self.gl
                 .TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_S, texture_wrap);
-            self.check_error("defining the texture wrap_s")?;
+            self.check_error("Failed to set the attribute TEXTURE_WRAP_S for TEXTURE1")?;
             self.gl
                 .TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_T, texture_wrap);
-            self.check_error("defining the texture wrap_t")?;
+            self.check_error("Failed to set the attribute TEXTURE_WRAP_T for TEXTURE1")?;
         }
 
         Ok(())
@@ -339,9 +345,9 @@ impl Renderer {
             // self.gl.BindBuffer(gl::PIXEL_UNPACK_BUFFER, 0);
             // self.check_error("unbinding the unpack buffer")?;
             self.gl.BindFramebuffer(gl::FRAMEBUFFER, 0);
-            self.check_error("unbinding the framebuffer")?;
+            self.check_error("Failed to unbind the framebuffer")?;
             self.gl.BindRenderbuffer(gl::RENDERBUFFER, 0);
-            self.check_error("unbinding the render buffer")?;
+            self.check_error("Failed to unbind the renderbuffer")?;
         }
 
         Ok(())
@@ -352,7 +358,7 @@ impl Renderer {
         unsafe {
             self.gl
                 .Viewport(0, 0, info.adjusted_width(), info.adjusted_height());
-            self.check_error("resizing the viewport")
+            self.check_error("Failed to resize the openGL viewport")
         }
     }
 
@@ -393,7 +399,10 @@ impl Renderer {
                 }
                 self.program = program;
                 unsafe {
-                    if let Err(err) = self.set_projection_matrix(transform) {
+                    if let Err(err) = self
+                        .set_projection_matrix(transform)
+                        .wrap_err("Failed to set the projection matrix")
+                    {
                         error!("{err:?}");
                     }
                 }
@@ -415,8 +424,8 @@ impl Renderer {
         let loc = self
             .gl
             .GetUniformLocation(self.program, b"projection_matrix\0".as_ptr() as *const _);
-        self.check_error("getting the uniform location for projection_matrix")?;
-        ensure!(loc > 0, "projection_matrix not found");
+        self.check_error("Failed to get the uniform location for projection_matrix")?;
+        ensure!(loc > 0, "Failed to find uniform projection_matrix");
         self.gl
             .UniformMatrix2fv(loc, 1, 0, projection_matrix.as_ptr());
         //self.gl
@@ -431,44 +440,44 @@ impl Renderer {
 fn create_program(gl: &gl::Gl, transition: Transition) -> Result<gl::types::GLuint> {
     unsafe {
         let program = gl.CreateProgram();
-        gl_check!(gl, "calling CreateProgram");
+        gl_check!(gl, "Failed to create openGL program");
 
         let vertex_shader = create_shader(gl, gl::VERTEX_SHADER, &[VERTEX_SHADER_SOURCE.as_ptr()])
-            .expect("vertex shader creation succeed");
+            .expect("Failed to create vertices shader");
         let (uniform_callback, shader) = transition.clone().shader();
         let fragment_shader = create_shader(
             gl,
             gl::FRAGMENT_SHADER,
             &[FRAGMENT_SHADER_SOURCE.as_ptr(), shader.as_ptr()],
         )
-        .with_context(|| {
-            format!("unable to create fragment_shader with transisition {transition:?}")
+        .wrap_err_with(|| {
+            format!("Failed to create fragment shader for transisition {transition:?}")
         })?;
 
         gl.AttachShader(program, vertex_shader);
-        gl_check!(gl, "attach vertex shader");
+        gl_check!(gl, "Failed to attach vertices shader");
         gl.AttachShader(program, fragment_shader);
-        gl_check!(gl, "attach fragment shader");
+        gl_check!(gl, "Failed to attach fragment shader");
         gl.LinkProgram(program);
-        gl_check!(gl, "linking the program");
+        gl_check!(gl, "Failed to link the openGL program");
         gl.DeleteShader(vertex_shader);
-        gl_check!(gl, "deleting the vertex shader");
+        gl_check!(gl, "Failed to delete the vertices shader");
         gl.DeleteShader(fragment_shader);
-        gl_check!(gl, "deleting the fragment shader");
+        gl_check!(gl, "Failed to delete the fragment shader");
         gl.UseProgram(program);
-        gl_check!(gl, "calling UseProgram");
+        gl_check!(gl, "Failed to switch to the newly created openGL program");
 
         // We need to setup the uniform each time we create a program
         let loc = gl.GetUniformLocation(program, b"u_prev_texture\0".as_ptr() as *const _);
-        gl_check!(gl, "getting the uniform location for u_prev_texture");
-        ensure!(loc > 0, "u_prev_texture not found");
+        gl_check!(gl, "Failed to get the uniform location for u_prev_texture");
+        ensure!(loc > 0, "Failed to find the uniform u_prev_texture");
         gl.Uniform1i(loc, 0);
-        gl_check!(gl, "calling Uniform1i");
+        gl_check!(gl, "Failed to set the value for uniform u_prev_texture");
         let loc = gl.GetUniformLocation(program, b"u_texture\0".as_ptr() as *const _);
-        gl_check!(gl, "getting the uniform location for u_texture");
-        ensure!(loc > 0, "u_texture not found");
+        gl_check!(gl, "Failed to get the uniform location for u_texture");
+        ensure!(loc > 0, "Failed to find the uniform u_texture");
         gl.Uniform1i(loc, 1);
-        gl_check!(gl, "calling Uniform1i");
+        gl_check!(gl, "Failed to set the value for uniform u_texture");
 
         uniform_callback(gl, program)?;
 

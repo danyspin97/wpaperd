@@ -7,7 +7,7 @@ use std::io::{BufReader, BufWriter, Read, Write};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 
-use color_eyre::eyre::{ensure, Context};
+use color_eyre::eyre::{ensure, WrapErr};
 use color_eyre::{Result, Section};
 use smithay_client_toolkit::reexports::client::QueueHandle;
 use wpaperd_ipc::{IpcError, IpcMessage, IpcResponse};
@@ -20,12 +20,15 @@ use crate::Wpaperd;
 pub fn listen_on_ipc_socket(socket_path: &Path) -> Result<SocketSource> {
     // Try to delete the socket if it exists already.
     if socket_path.exists() {
-        fs::remove_file(socket_path)?;
+        fs::remove_file(socket_path)
+            .wrap_err_with(|| format!("Failed to remove file {socket_path:?}"))?;
     }
 
     // Spawn unix socket event source.
-    let listener = UnixListener::bind(socket_path)?;
-    let socket = SocketSource::new(listener)?;
+    let listener = UnixListener::bind(socket_path)
+        .wrap_err_with(|| format!("Failed to bind socket {socket_path:?}"))?;
+    let socket = SocketSource::new(listener)
+        .wrap_err_with(|| format!("Failed to create a socket in {socket_path:?}"))?;
     Ok(socket)
 }
 
@@ -71,16 +74,19 @@ pub fn handle_message(
     let mut stream = BufReader::new(&ustream);
     let n = stream
         .read(&mut buffer)
-        .context("error while reading line from IPC")?;
+        .wrap_err("Failed to read data from the IPC stream")?;
     // The message is empty
     if n == 0 {
         return Ok(());
     }
-    ensure!(n != SIZE, "The message received was too big");
+    ensure!(
+        n != SIZE,
+        "The message received was bigger than the buffer size"
+    );
 
     // Read pending events on socket.
     let message: IpcMessage = serde_json::from_slice(&buffer[..n])
-        .with_context(|| format!("error while deserializing message {:?}", &buffer[..n]))?;
+        .wrap_err_with(|| format!("Failed to deserialize message {:?}", &buffer[..n]))?;
 
     // Handle IPC events.
     let resp: Result<IpcResponse, IpcError> = match message {
@@ -179,8 +185,8 @@ pub fn handle_message(
     let mut stream = BufWriter::new(ustream);
     stream
         .write_all(&serde_json::to_vec(&resp).unwrap())
-        .context("unable to write response to the IPC client")
-        .suggestion("Probably the client died, try running it again")?;
+        .wrap_err("Failed to write response to the IPC client")
+        .suggestion("The client might have died, try running it again")?;
 
     Ok(())
 }

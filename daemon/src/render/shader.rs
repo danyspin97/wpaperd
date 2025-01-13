@@ -1,9 +1,6 @@
 use std::ffi::CStr;
 
-use color_eyre::{
-    eyre::{bail, ensure},
-    Result,
-};
+use color_eyre::Result;
 
 use crate::gl_check;
 
@@ -22,18 +19,21 @@ pub unsafe fn create_shader(
         sources.as_ptr().cast(),
         std::ptr::null(),
     );
-    gl_check!(gl, "calling Shadersource");
+    gl_check!(gl, "Failed to set the shader source");
     gl.CompileShader(shader);
-    gl_check!(gl, "calling CompileShader");
+    gl_check!(gl, "Failed to compile the shader");
 
     let mut status: i32 = 0;
     gl.GetShaderiv(shader, gl::COMPILE_STATUS, &mut status as *mut _);
-    gl_check!(gl, "calling GetShaderiv");
+    gl_check!(gl, "Failed to get the shader compile status");
     if status == 0 {
         let mut max_length: i32 = 0;
         let mut length: i32 = 0;
         gl.GetShaderiv(shader, gl::INFO_LOG_LENGTH, &mut max_length as *mut _);
-        gl_check!(gl, "calling GetShaderiv");
+        gl_check!(
+            gl,
+            "Failed to get the size of the information about the shader error"
+        );
         let mut log: Vec<u8> = vec![0; max_length as _];
         gl.GetShaderInfoLog(
             shader,
@@ -41,11 +41,11 @@ pub unsafe fn create_shader(
             &mut length as *mut _,
             log.as_mut_ptr() as _,
         );
-        gl_check!(gl, "calling GetShaderInfoLog");
+        gl_check!(gl, "Failed to get the information about the shader error");
         let res = String::from_utf8(log);
         match res {
-            Ok(log) => Err(color_eyre::eyre::anyhow!(log)),
-            Err(err) => Err(color_eyre::eyre::anyhow!(err)),
+            Ok(log) => Err(color_eyre::eyre::eyre!(log)),
+            Err(err) => Err(color_eyre::eyre::eyre!(err)),
         }
     } else {
         Ok(shader)

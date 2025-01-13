@@ -6,7 +6,7 @@ use std::{
     },
 };
 
-use color_eyre::eyre::{anyhow, Context, Result};
+use color_eyre::eyre::{eyre, Result, WrapErr};
 use hotwatch::Hotwatch;
 use log::error;
 use smithay_client_toolkit::reexports::calloop::{self, ping::Ping, LoopHandle};
@@ -71,7 +71,7 @@ impl FilelistCache {
         event_loop_handle: LoopHandle<Wpaperd>,
     ) -> Result<(Ping, Self)> {
         let (ping, ping_source) =
-            calloop::ping::make_ping().context("Unable to create a calloop::ping::Ping")?;
+            calloop::ping::make_ping().wrap_err("Failed to initialize a calloop::ping::Ping")?;
 
         let mut filelist_cache = Self { cache: Vec::new() };
         filelist_cache.update_paths(paths, hotwatch, ping.clone());
@@ -79,7 +79,8 @@ impl FilelistCache {
             .insert_source(ping_source, move |_, _, wpaperd| {
                 wpaperd.filelist_cache.borrow_mut().update_cache();
             })
-            .map_err(|e| anyhow!("inserting the filelist event listener in the event loop: {e}"))?;
+            .map_err(|e| eyre!("{e:?}"))
+            .wrap_err("Failed to insert the filelist cache watcher in the event loop")?;
 
         Ok((ping, filelist_cache))
     }
@@ -89,7 +90,7 @@ impl FilelistCache {
         self.cache
             .iter()
             .find(|filelist| filelist.path == path && filelist.recursive == recursive)
-            .expect("path passed to Filelist::get has been cached")
+            .expect("Path passed to Filelist::get must have been cached")
             .filelist
             .clone()
     }
@@ -113,8 +114,8 @@ impl FilelistCache {
                 // Stop watching paths that have been removed
                 // Check that it exists before
                 if path_exists {
-                    if let Err(err) = hotwatch.unwatch(&filelist.path).with_context(|| {
-                        format!("hotwatch unwatch error on path {:?}", &filelist.path)
+                    if let Err(err) = hotwatch.unwatch(&filelist.path).wrap_err_with(|| {
+                        format!("Failed to unwatch changes for file {:?}", &filelist.path)
                     }) {
                         error!("{err:?}");
                     }
@@ -149,7 +150,7 @@ impl FilelistCache {
                         }
                         _ => {}
                     })
-                    .with_context(|| format!("hotwatch watch error on path {:?}", &path))
+                    .wrap_err_with(|| format!("Failed to watch for changes for file {:?}", &path))
                 {
                     error!("{err:?}");
                 }

@@ -1,10 +1,8 @@
 use std::{ffi::CStr, rc::Rc};
 
-use color_eyre::{
-    eyre::{bail, ensure},
-    Result,
-};
+use color_eyre::Result;
 use image::DynamicImage;
+use log::warn;
 
 use crate::{gl_check, render::gl};
 
@@ -30,7 +28,7 @@ impl Wallpaper {
     pub fn bind(&self) -> Result<()> {
         unsafe {
             self.gl.BindTexture(gl::TEXTURE_2D, self.texture);
-            gl_check!(self.gl, "binding textures");
+            gl_check!(self.gl, "Failed to bind the texture");
         }
 
         Ok(())
@@ -45,8 +43,12 @@ impl Wallpaper {
         unsafe {
             // Delete from memory the previous texture
             self.gl.DeleteTextures(1, &self.texture);
+            self.texture = texture;
+            gl_check!(
+                self.gl,
+                "Failed to delete the previous texture (might make the memory full)"
+            );
         }
-        self.texture = texture;
 
         Ok(())
     }
@@ -63,5 +65,14 @@ impl Wallpaper {
 impl Drop for Wallpaper {
     fn drop(&mut self) {
         unsafe { self.gl.DeleteTextures(1, &self.texture) };
+        let check_err = || -> Result<()> {
+            unsafe {
+                gl_check!(self.gl, "Failed to delete the previous texture");
+            }
+            Ok(())
+        };
+        if let Err(err) = check_err() {
+            warn!("{:?}", err.wrap_err("Failed to drop the wallpaper"));
+        }
     }
 }

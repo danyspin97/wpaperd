@@ -10,7 +10,7 @@ use std::{
 };
 
 use color_eyre::{
-    eyre::{anyhow, ensure, Context},
+    eyre::{ensure, eyre, WrapErr},
     owo_colors::OwoColorize,
     Result, Section,
 };
@@ -75,13 +75,13 @@ impl SerializedWallpaperInfo {
                 path
             }
             (None, None) => {
-                return Err(anyhow!(
-                    "attribute {} is not set",
+                return Err(eyre!(
+                    "Attribute {} must be set",
                     "path".bold().italic().blue(),
                 ))
                 .with_suggestion(|| {
                     format!(
-                        "add attribute {} in the display section of the configuration:\npath = \"</path/to/image>\"",
+                        "Add attribute {} in the display section of the configuration:\npath = \"</path/to/image>\"",
                         "path".bold().italic().blue(),
                     )
                 });
@@ -90,8 +90,8 @@ impl SerializedWallpaperInfo {
         .to_path_buf();
         // Ensure that a path exists
         if !path.exists() {
-            return Err(anyhow!(
-                "path {} for attribute {}{} does not exist",
+            return Err(eyre!(
+                "Path {} for attribute {}{} must exist",
                 path.to_string_lossy().italic().yellow(),
                 "path".bold().italic().blue(),
                 if path_inherited {
@@ -105,7 +105,7 @@ impl SerializedWallpaperInfo {
             ))
             .with_suggestion(|| {
                 format!(
-                    "set attribute {} to an existing file or directory",
+                    "Set attribute {} to an existing file or directory",
                     "path".bold().italic().blue(),
                 )
             });
@@ -121,10 +121,10 @@ impl SerializedWallpaperInfo {
         // duration can only be set when path is a directory
         if duration.is_some() && !path.is_dir() {
             // Do no use bail! to add suggestion
-            return Err(anyhow!(
-                "Attribute {} is set to a file and attribute {} is also set.",
+            return Err(eyre!(
+                "{} cannot be set when {} points to a file",
+                "duration".bold().italic().blue(),
                 "path".bold().italic().blue(),
-                "duration".bold().italic().blue()
             )
             .with_suggestion(|| {
                 format!(
@@ -150,7 +150,7 @@ impl SerializedWallpaperInfo {
         // sorting and group can only be set when path is a directory
         if (sorting.is_some() || group.is_some()) && !path.is_dir() {
             // Do no use bail! to add suggestion
-            return Err(anyhow!(
+            return Err(eyre!(
                 "{} cannot be set when {} is a directory",
                 if sorting.is_some() {
                     "sorting"
@@ -265,7 +265,7 @@ pub struct Config {
 
 impl Config {
     pub fn new_from_path(path: &Path) -> Result<Self> {
-        ensure!(path.exists(), "File {path:?} does not exists");
+        ensure!(path.exists(), "File {path:?} does not exist");
         let mut config: Self = toml::from_str(&fs::read_to_string(path)?)?;
         config
             .data
@@ -283,10 +283,12 @@ impl Config {
             if info == &config.default {
                 true
             } else {
-                match info
-                    .apply_and_validate(&config.default)
-                    .with_context(|| format!("while validating display {}", name.bold().magenta()))
-                {
+                match info.apply_and_validate(&config.default).wrap_err_with(|| {
+                    format!(
+                        "Failed to validate configuration for display {}",
+                        name.bold().magenta()
+                    )
+                }) {
                     Ok(_) => true,
                     Err(err) => {
                         // We do not want to exit when error occurs, print it and go forward
@@ -378,7 +380,7 @@ impl Config {
                     ping.ping();
                 }
             })
-            .with_context(|| format!("watching file {:?}", &self.path))?;
+            .wrap_err_with(|| format!("Failed to watch file changes for {:?}", &self.path))?;
         Ok(())
     }
 
@@ -403,9 +405,9 @@ impl Config {
     /// Return true if the struct changed
     pub fn update(&mut self) -> bool {
         // When the config file has been written into
-        let new_config = Config::new_from_path(&self.path).with_context(|| {
+        let new_config = Config::new_from_path(&self.path).wrap_err_with(|| {
             format!(
-                "updating configuration from file {}",
+                "Failed to read the new configuration from {}",
                 self.path.to_string_lossy()
             )
         });

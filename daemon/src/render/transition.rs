@@ -1,9 +1,6 @@
 use std::ffi::CStr;
 
-use color_eyre::{
-    eyre::{bail, ensure},
-    Result,
-};
+use color_eyre::{eyre::ensure, Result};
 use serde::Deserialize;
 //use wpaperd_transitions_proc_macro::Transitions;
 
@@ -115,10 +112,10 @@ macro_rules! transition_shader {
                             $(
                                 unsafe {
                                     let loc = gl.GetUniformLocation(program, format_bytes!(b"{}\0", $glsl_name.as_bytes()).as_ptr() as *const _);
-                                    gl_check!(gl, format!("getting the uniform location for {}", $glsl_name));
-                                    ensure!(loc >= 0, "uniform {} cannot be found", $glsl_name);
+                                    gl_check!(gl, format!("Failed to get the uniform location for parameter {}", $glsl_name));
+                                    ensure!(loc >= 0, "Uniform {} does not exist in the shader", $glsl_name);
                                     $field_name.unwrap_or($default_value).set_uniform(gl, loc);
-                                    gl_check!(gl, format!("calling Uniform on {}", $glsl_name));
+                                    gl_check!(gl, format!("Failed to set the value of the uniform {}", $glsl_name));
                                 }
                             )*
                             Ok(())

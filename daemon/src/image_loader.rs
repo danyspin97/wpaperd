@@ -1,12 +1,15 @@
 use std::{collections::HashMap, path::PathBuf, thread::JoinHandle};
 
+use color_eyre::eyre::eyre;
 use image::{open, RgbaImage};
-use log::warn;
+use log::{error, warn};
 use smithay_client_toolkit::reexports::calloop::ping::Ping;
 
+type ImageData = Option<RgbaImage>;
+
 struct Image {
-    data: Option<RgbaImage>,
-    thread_handle: Option<JoinHandle<Option<RgbaImage>>>,
+    data: ImageData,
+    thread_handle: Option<JoinHandle<ImageData>>,
     requesters: Vec<String>,
 }
 
@@ -44,7 +47,7 @@ impl ImageLoader {
                             }
                         },
                         Err(err) => {
-                            warn!("{err:?}");
+                            error!("The thread handling the background_load for image {path:?} exited with {:?}", err);
                             self.images.remove(&path);
                             return ImageLoaderStatus::Error;
                         }
@@ -91,6 +94,7 @@ impl ImageLoader {
         // Start loading a new image in a new thread
         let path_clone = path.clone();
         let ping_clone = self.ping.clone();
+        let requester_clone = requester_name.clone();
         let handle = std::thread::spawn(move || match open(&path_clone) {
             Ok(image) => {
                 // Notify the event loop that the image has been loaded
@@ -104,7 +108,12 @@ impl ImageLoader {
                 Some(image)
             }
             Err(err) => {
-                warn!("{err:?}");
+                warn!(
+                    "{:?}",
+                    eyre!(err).wrap_err(format!(
+                        "Failed to read image {path_clone:?} needed for {requester_clone}"
+                    ))
+                );
                 None
             }
         });
