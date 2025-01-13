@@ -227,9 +227,6 @@ impl Surface {
                 if self.image_picker.current_image() == item.0 && !self.image_picker.is_reloading()
                 {
                     return Ok(true);
-                } else {
-                    // We are trying to load a new image
-                    self.loading_image = Some(item);
                 }
             } else {
                 // we don't need to load any image
