@@ -705,8 +705,6 @@ impl Surface {
             // Should pause, but timer is still currently running
             (true, EventSource::Running(registration_token, duration, instant)) => {
                 let remaining_duration = remaining_duration(*duration, *instant);
-                println!("duration: {:?}", duration);
-                println!("instant_elapsed: {:?}", instant.elapsed());
 
                 handle.remove(*registration_token);
                 // The remaining duration should never be 0
