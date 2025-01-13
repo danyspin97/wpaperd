@@ -201,6 +201,19 @@ impl Surface {
         Ok(())
     }
 
+    pub fn try_drawing(&mut self, qh: &QueueHandle<Wpaperd>, time: Option<u32>) -> bool {
+        match self.draw(qh, time) {
+            Ok(_) => true,
+            Err(err) => {
+                error!(
+                    "Error drawing surface on display {:?}: {err:?}",
+                    self.name()
+                );
+                false
+            }
+        }
+    }
+
     // Start loading a wallpaper with the image_loader.
     // Returns true when it is loaded, false when we need to wait
     // Call surface::frame when this return false
