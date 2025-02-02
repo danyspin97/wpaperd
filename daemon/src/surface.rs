@@ -463,12 +463,9 @@ impl Surface {
             // and the recursive mode is different
             && wallpaper_info.recursive.as_ref().zip(self.wallpaper_info.recursive.as_ref()).map(|(x, y)| x != y).unwrap_or(false);
         self.image_picker.update_sorting(
-            self.wallpaper_info.sorting,
-            &self.wallpaper_info.path,
-            self.wallpaper_info.recursive,
-            path_changed,
+            &self.wallpaper_info,
             &self.wl_surface,
-            wallpaper_info.drawn_images_queue_size,
+            path_changed,
             &wallpaper_groups,
         );
         if path_changed {

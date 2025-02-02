@@ -427,15 +427,12 @@ impl ImagePicker {
     /// Return true if the path changed
     pub fn update_sorting(
         &mut self,
-        new_sorting: Option<Sorting>,
-        path: &Path,
-        recursive: Option<Recursive>,
-        path_changed: bool,
+        wallpaper_info: &WallpaperInfo,
         wl_surface: &WlSurface,
-        drawn_images_queue_size: usize,
+        path_changed: bool,
         wallpaper_groups: &Rc<RefCell<WallpaperGroups>>,
     ) {
-        if let Some(new_sorting) = new_sorting {
+        if let Some(new_sorting) = wallpaper_info.sorting {
             match (&mut self.sorting, new_sorting) {
                 // If the the sorting stayed the same, do nothing
                 (ImagePickerSorting::Ascending(_), Sorting::Ascending)
@@ -446,7 +443,10 @@ impl ImagePicker {
                     self.sorting = ImagePickerSorting::new_ascending(
                         self.filelist_cache
                             .borrow()
-                            .get(path, recursive.unwrap())
+                            .get(
+                                &wallpaper_info.path,
+                                wallpaper_info.recursive.unwrap_or_default(),
+                            )
                             .len(),
                     );
                 }
@@ -464,12 +464,13 @@ impl ImagePicker {
                 // The path has changed, use a new random sorting, otherwise we reuse the current
                 // drawn_images
                 (_, Sorting::Random) if path_changed => {
-                    self.sorting = ImagePickerSorting::new_random(drawn_images_queue_size);
+                    self.sorting =
+                        ImagePickerSorting::new_random(wallpaper_info.drawn_images_queue_size);
                 }
                 (_, Sorting::Random) => {
                     // if the path was not changed, use the current image as the first image of
                     // the drawn_images
-                    let mut queue = Queue::with_capacity(drawn_images_queue_size);
+                    let mut queue = Queue::with_capacity(wallpaper_info.drawn_images_queue_size);
                     queue.push(self.current_image());
                     self.sorting = ImagePickerSorting::Random(queue);
                 }
@@ -478,7 +479,7 @@ impl ImagePicker {
                         wallpaper_groups.clone(),
                         group,
                         wl_surface,
-                        drawn_images_queue_size,
+                        wallpaper_info.drawn_images_queue_size,
                     ));
                 }
                 // If the group is the same
@@ -491,7 +492,7 @@ impl ImagePicker {
                         wallpaper_groups.clone(),
                         group,
                         wl_surface,
-                        drawn_images_queue_size,
+                        wallpaper_info.drawn_images_queue_size,
                     );
 
                     let mut group = grouped_random.group.borrow_mut();
@@ -507,7 +508,7 @@ impl ImagePicker {
                 }
             }
         } else {
-            self.sorting = ImagePickerSorting::new_random(drawn_images_queue_size);
+            self.sorting = ImagePickerSorting::new_random(wallpaper_info.drawn_images_queue_size);
         }
     }
 
