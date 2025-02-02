@@ -207,10 +207,10 @@ impl Surface {
     pub fn load_wallpaper(&mut self, handle: Option<&LoopHandle<Wpaperd>>) -> Result<bool> {
         // If we were not already trying to load an image
         if self.loading_image.is_none() {
-            if let Some(item) = self
-                .image_picker
-                .get_image_from_path(&self.wallpaper_info.path)
-            {
+            if let Some(item) = self.image_picker.get_image_from_path(
+                &self.wallpaper_info.path,
+                &self.wallpaper_info.recursive.clone(),
+            ) {
                 if self.image_picker.current_image() == item.0 && !self.image_picker.is_reloading()
                 {
                     return Ok(true);
@@ -451,11 +451,14 @@ impl Surface {
         // if the two paths are different and the new path is a directory but doesn't contain the
         // old image
         let path_changed = self.wallpaper_info.path != wallpaper_info.path
-            && (!self.wallpaper_info.path.is_dir()
-                || !wallpaper_info.path.starts_with(&self.wallpaper_info.path));
+            && self.wallpaper_info.path.is_dir()
+                && !wallpaper_info.path.starts_with(&self.wallpaper_info.path)
+            // and the recursive mode is different
+            && wallpaper_info.recursive.as_ref().zip(self.wallpaper_info.recursive.as_ref()).map(|(x, y)| x != y).unwrap_or(false);
         self.image_picker.update_sorting(
             self.wallpaper_info.sorting,
             &self.wallpaper_info.path,
+            self.wallpaper_info.recursive,
             path_changed,
             &self.wl_surface,
             wallpaper_info.drawn_images_queue_size,
@@ -463,7 +466,8 @@ impl Surface {
         );
         if path_changed {
             // ask the image_picker to pick a new a image
-            self.image_picker.next_image(&self.wallpaper_info.path);
+            self.image_picker
+                .next_image(&self.wallpaper_info.path, &self.wallpaper_info.recursive);
         }
         // Always queue draw to load changes (needed for GroupedRandom)
         self.queue_draw(qh);
@@ -547,7 +551,10 @@ impl Surface {
                         let saturating_sub = new_duration.saturating_sub(time_passed);
                         if saturating_sub.is_zero() {
                             // The image was on screen for the same time as the new duration
-                            self.image_picker.next_image(&self.wallpaper_info.path);
+                            self.image_picker.next_image(
+                                &self.wallpaper_info.path,
+                                &self.wallpaper_info.recursive,
+                            );
                             if let Err(err) = self.load_wallpaper(None) {
                                 warn!("{err:?}");
                             }
@@ -656,9 +663,10 @@ impl Surface {
                                     surface.renderer.transition_finished();
                                     surface.renderer.force_transition_end();
                                 }
-                                surface
-                                    .image_picker
-                                    .next_image(&surface.wallpaper_info.path);
+                                surface.image_picker.next_image(
+                                    &surface.wallpaper_info.path,
+                                    &surface.wallpaper_info.recursive,
+                                );
                                 surface.queue_draw(&qh);
                                 surface.wallpaper_info.duration.unwrap()
                             };

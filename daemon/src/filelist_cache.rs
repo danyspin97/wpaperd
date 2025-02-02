@@ -12,28 +12,36 @@ use log::error;
 use smithay_client_toolkit::reexports::calloop::{self, ping::Ping, LoopHandle};
 use walkdir::WalkDir;
 
-use crate::wpaperd::Wpaperd;
+use crate::{wallpaper_info::Recursive, wpaperd::Wpaperd};
 
 #[derive(Debug)]
 struct Filelist {
     path: PathBuf,
+    recursive: Recursive,
     filelist: Arc<Vec<PathBuf>>,
     outdated: Arc<AtomicBool>,
 }
 
 impl Filelist {
-    fn new(path: &Path) -> Self {
+    fn new(path: &Path, recursive: Recursive) -> Self {
         let mut res = Self {
             path: path.to_path_buf(),
+            recursive,
             filelist: Arc::new(Vec::new()),
             outdated: Arc::new(AtomicBool::new(true)),
         };
         res.populate();
         res
     }
+
     fn populate(&mut self) {
         self.filelist = Arc::new(
             WalkDir::new(&self.path)
+                .max_depth(if self.recursive == Recursive::Off {
+                    1
+                } else {
+                    usize::MAX
+                })
                 .follow_links(true)
                 .sort_by_file_name()
                 .into_iter()
@@ -58,7 +66,7 @@ pub struct FilelistCache {
 
 impl FilelistCache {
     pub fn new(
-        paths: Vec<PathBuf>,
+        paths: Vec<(PathBuf, Recursive)>,
         hotwatch: &mut Hotwatch,
         event_loop_handle: LoopHandle<Wpaperd>,
     ) -> Result<(Ping, Self)> {
@@ -76,11 +84,11 @@ impl FilelistCache {
         Ok((ping, filelist_cache))
     }
 
-    pub fn get(&self, path: &Path) -> Arc<Vec<PathBuf>> {
+    pub fn get(&self, path: &Path, recursive: Recursive) -> Arc<Vec<PathBuf>> {
         debug_assert!(path.is_dir());
         self.cache
             .iter()
-            .find(|filelist| filelist.path == path)
+            .find(|filelist| filelist.path == path && filelist.recursive == recursive)
             .expect("path passed to Filelist::get has been cached")
             .filelist
             .clone()
@@ -89,13 +97,17 @@ impl FilelistCache {
     /// paths must be sorted
     pub fn update_paths(
         &mut self,
-        paths: Vec<PathBuf>,
+        paths: Vec<(PathBuf, Recursive)>,
         hotwatch: &mut Hotwatch,
         event_loop_ping: Ping,
     ) {
         self.cache.retain(|filelist| {
             let path_exists = filelist.path.exists();
-            if paths.contains(&filelist.path) && path_exists {
+            if paths
+                .iter()
+                .any(|(path, recursive)| &filelist.path == path && filelist.recursive == *recursive)
+                && path_exists
+            {
                 true
             } else {
                 // Stop watching paths that have been removed
@@ -112,13 +124,13 @@ impl FilelistCache {
             }
         });
 
-        for path in paths {
+        for (path, recursive) in paths {
             if !self.cache.iter().any(|filelist| filelist.path == path) {
                 // Skip paths that don't exists and files
                 if !path.exists() || !path.is_dir() {
                     continue;
                 }
-                let filelist = Filelist::new(&path);
+                let filelist = Filelist::new(&path, recursive);
                 let outdated = filelist.outdated.clone();
                 self.cache.push(filelist);
                 let ping_clone = event_loop_ping.clone();

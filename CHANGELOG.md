@@ -1,3 +1,7 @@
+# 1.1.2
+## New features
+- Add a new `recursive` config option, enabled by default (fixes #112).
+
 # 1.1.1
 ## New features
 - Make jemalloc feature optional, enabled by default

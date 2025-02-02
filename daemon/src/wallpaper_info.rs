@@ -4,6 +4,23 @@ use serde::Deserialize;
 
 use crate::{image_picker::ImagePicker, render::Transition};
 
+#[derive(Debug, PartialEq, Default, Ord, Eq, PartialOrd, Clone, Copy)]
+pub enum Recursive {
+    #[default]
+    On,
+    Off,
+}
+
+impl From<bool> for Recursive {
+    fn from(b: bool) -> Self {
+        if b {
+            Recursive::On
+        } else {
+            Recursive::Off
+        }
+    }
+}
+
 #[derive(PartialEq, Debug)]
 pub struct WallpaperInfo {
     pub path: PathBuf,
@@ -23,6 +40,9 @@ pub struct WallpaperInfo {
     /// Determine the offset for the wallpaper to be drawn into the screen
     /// Must be from 0.0 to 1.0, by default is 0.0 in tile mode and 0.5 in all the others
     pub offset: Option<f32>,
+
+    /// Recursively iterate the directory set as path
+    pub recursive: Option<Recursive>,
 }
 
 impl Default for WallpaperInfo {
@@ -38,6 +58,7 @@ impl Default for WallpaperInfo {
             initial_transition: true,
             transition: Transition::Fade {},
             offset: None,
+            recursive: None,
         }
     }
 }

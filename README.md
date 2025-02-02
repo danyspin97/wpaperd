@@ -145,6 +145,8 @@ represents a different display and can contain the following keys:
 - `queue-size`, decide how big the queue should be when `path` is set a directory and `sorting` is
    set to `random`. (_Optional_, `10` by default)
 - `initial-transition`, enable the initial transition at wpaperd startup. (_Optional_, true by default)
+- `recursive`, recursively iterate the directory `path` when looking for available wallpapers;
+  it is only valid when `path` points to a directory. (_Optional_, true by default)
 
 The section `default` will be used as base for the all the display configuration; the section
 `any` will be used for all the displays that are not explictly listed. This allows to have a

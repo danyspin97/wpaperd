@@ -11,7 +11,7 @@ use smithay_client_toolkit::reexports::client::{protocol::wl_surface::WlSurface,
 use crate::{
     filelist_cache::FilelistCache,
     wallpaper_groups::{WallpaperGroup, WallpaperGroups},
-    wallpaper_info::{Sorting, WallpaperInfo},
+    wallpaper_info::{Recursive, Sorting, WallpaperInfo},
     wpaperd::Wpaperd,
 };
 
@@ -185,7 +185,10 @@ impl ImagePickerSorting {
                 let files_len = filelist_cache
                     .clone()
                     .borrow()
-                    .get(&wallpaper_info.path)
+                    .get(
+                        &wallpaper_info.path,
+                        *wallpaper_info.recursive.as_ref().unwrap(),
+                    )
                     .len();
                 Self::new_ascending(files_len)
             }
@@ -339,9 +342,16 @@ impl ImagePicker {
         }
     }
 
-    pub fn get_image_from_path(&mut self, path: &Path) -> Option<(PathBuf, usize)> {
+    pub fn get_image_from_path(
+        &mut self,
+        path: &Path,
+        recursive: &Option<Recursive>,
+    ) -> Option<(PathBuf, usize)> {
         if path.is_dir() {
-            let files = self.filelist_cache.borrow().get(path);
+            let files = self
+                .filelist_cache
+                .borrow()
+                .get(path, recursive.unwrap_or_default());
 
             // There are no images, forcefully break out of the loop
             if files.is_empty() {
@@ -405,9 +415,9 @@ impl ImagePicker {
     }
 
     /// Update wallpaper by going up 1 index through the cached image paths
-    pub fn next_image(&mut self, path: &Path) {
+    pub fn next_image(&mut self, path: &Path, recursive: &Option<Recursive>) {
         self.action = Some(ImagePickerAction::Next);
-        self.get_image_from_path(path);
+        self.get_image_from_path(path, recursive);
     }
 
     pub fn current_image(&self) -> PathBuf {
@@ -419,6 +429,7 @@ impl ImagePicker {
         &mut self,
         new_sorting: Option<Sorting>,
         path: &Path,
+        recursive: Option<Recursive>,
         path_changed: bool,
         wl_surface: &WlSurface,
         drawn_images_queue_size: usize,
@@ -433,7 +444,10 @@ impl ImagePicker {
                     if !path_changed => {}
                 (_, Sorting::Ascending) if path_changed => {
                     self.sorting = ImagePickerSorting::new_ascending(
-                        self.filelist_cache.borrow().get(path).len(),
+                        self.filelist_cache
+                            .borrow()
+                            .get(path, recursive.unwrap())
+                            .len(),
                     );
                 }
                 (_, Sorting::Descending) if path_changed => {

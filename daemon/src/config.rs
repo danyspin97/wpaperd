@@ -23,7 +23,7 @@ use smithay_client_toolkit::reexports::calloop::ping::Ping;
 use crate::{
     image_picker::ImagePicker,
     render::Transition,
-    wallpaper_info::{BackgroundMode, Sorting, WallpaperInfo},
+    wallpaper_info::{BackgroundMode, Recursive, Sorting, WallpaperInfo},
 };
 
 #[derive(Default, Deserialize, PartialEq, Debug, Clone)]
@@ -59,6 +59,10 @@ pub struct SerializedWallpaperInfo {
 
     /// Assign these displays to a group that shows the same wallpaper
     pub group: Option<u8>,
+
+    /// Recursively traverse the directory set as path
+    /// Set as true by default
+    pub recursive: Option<bool>,
 }
 
 impl SerializedWallpaperInfo {
@@ -222,6 +226,13 @@ impl SerializedWallpaperInfo {
             (None, None) => None,
         };
 
+        let recursive = match (&self.recursive, &default.recursive) {
+            (Some(recursive), _) | (None, Some(recursive)) => {
+                Some(std::convert::Into::<Recursive>::into(*recursive))
+            }
+            (None, None) => None,
+        };
+
         Ok(WallpaperInfo {
             path,
             duration,
@@ -233,6 +244,7 @@ impl SerializedWallpaperInfo {
             initial_transition,
             transition,
             offset,
+            recursive,
         })
     }
 }
@@ -370,11 +382,18 @@ impl Config {
         Ok(())
     }
 
-    pub fn paths(&self) -> Vec<PathBuf> {
+    pub fn paths(&self) -> Vec<(PathBuf, Recursive)> {
         let mut paths: Vec<_> = self
             .data
             .values()
-            .filter_map(|info| info.path.as_ref().map(|p| p.to_path_buf()))
+            .filter_map(|info| {
+                info.path.as_ref().map(|p| {
+                    (
+                        p.to_path_buf(),
+                        info.recursive.map(Recursive::from).unwrap_or_default(),
+                    )
+                })
+            })
             .collect();
         paths.sort_unstable();
         paths.dedup();
