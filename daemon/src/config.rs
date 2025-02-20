@@ -354,21 +354,46 @@ impl Config {
     }
 
     pub fn get_info_for_output(&self, name: &str, description: &str) -> Result<WallpaperInfo> {
-        let mut cleaned = String::from(description);
-
-        // Wayland may report an output description that includes
-        // information about the port and port type.  This information
-        // is *not* reported by sway so we need to strip it off so
-        // outputs are matched the way users expect.
-        if let Some(offset) = cleaned.rfind(" (") {
-            cleaned.truncate(offset);
+        use regex::Regex;
+        // Actually, wayland may report an output description in different
+        // formats as the compositors wants to. For example, niri reports
+        // description in format `<vendor name> - <monitor name> - <port name>`
+        // so, we can not handle here the all formats at once. But users
+        // can use a regex to match theirs' compositors outputs.
+        let mut matched = None;
+        for (k, v) in self.data.iter() {
+            if !k.starts_with("re:") {
+                continue;
+            }
+            // TODO(Shvedov): Better to compile re withing creation of
+            // WallpaperInfo, but adding field of type `Option<Regex>` breaks
+            // PatialEq macro.
+            let re = Regex::new(&k[3..]).unwrap();
+            if re.is_match(description) {
+                matched = Some(v);
+                break;
+            };
         }
 
-        self.data
-            .get(&cleaned)
-            .or_else(|| self.data.get(name))
-            .unwrap_or(&self.any)
-            .apply_and_validate(&self.default)
+        if let Some(info) = matched {
+            info.apply_and_validate(&self.default)
+        } else {
+            let mut cleaned = String::from(description);
+
+            // Wayland may report an output description that includes
+            // information about the port and port type.  This information
+            // is *not* reported by sway so we need to strip it off so
+            // outputs are matched the way users expect.
+            if let Some(offset) = cleaned.rfind(" (") {
+                cleaned.truncate(offset);
+            }
+
+            self.data
+                .get(&cleaned)
+                .or_else(|| self.data.get(name))
+                .unwrap_or(&self.any)
+                .apply_and_validate(&self.default)
+        }
     }
 
     pub fn listen_to_changes(&self, hotwatch: &mut Hotwatch, ping: Ping) -> Result<()> {
