@@ -81,28 +81,6 @@ impl DisplayInfo {
 
     pub fn change_transform(&mut self, transform: Transform) -> bool {
         if self.transform != transform {
-            // If the screen is rotated, i.e. from 90 degrees to 0 degrees, the width and the
-            // height need to be swapped. Otherwise, Renderer::set_mode() doesn't correctly
-            // render the image
-            match (self.transform, transform) {
-                (
-                    Transform::Normal
-                    | Transform::_180
-                    | Transform::Flipped
-                    | Transform::Flipped180,
-                    Transform::_90 | Transform::_270 | Transform::Flipped90 | Transform::Flipped270,
-                )
-                | (
-                    Transform::_90 | Transform::_270 | Transform::Flipped90 | Transform::Flipped270,
-                    Transform::Normal
-                    | Transform::_180
-                    | Transform::Flipped
-                    | Transform::Flipped180,
-                ) => {
-                    std::mem::swap(&mut self.height, &mut self.width);
-                }
-                _ => {}
-            }
             self.transform = transform;
             true
         } else {

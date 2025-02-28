@@ -413,12 +413,20 @@ impl Surface {
         let mut info = self.info.borrow_mut();
         if info.change_size(configure) {
             drop(info);
-            if let Err(err) = self.resize(qh).wrap_err_with(|| {
-                format!(
-                    "Failed to resize the surface for display {}",
-                    self.info.borrow().name
-                )
-            }) {
+            if let Err(err) = self
+                .resize(qh)
+                .wrap_err_with(|| {
+                    format!(
+                        "Failed to resize the surface for display {}",
+                        self.info.borrow().name
+                    )
+                })
+                .and_then(|_| {
+                    self.renderer
+                        .set_mode(self.wallpaper_info.mode, self.wallpaper_info.offset)
+                        .wrap_err("Failed to change wallpaper mode")
+                })
+            {
                 error!("{err:?}");
             }
         }

@@ -1,6 +1,8 @@
 # 1.1.2
 ## New features
 - Add a new `recursive` config option, enabled by default (fixes #112).
+## Bug fixes
+- Redraw wallpaper when the screen rotates
 
 # 1.1.1
 ## New features
