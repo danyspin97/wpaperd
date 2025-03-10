@@ -91,8 +91,8 @@ impl Surface {
         xdg_state_home: PathBuf,
     ) -> Result<Self> {
         let wl_surface = wl_layer.wl_surface().clone();
-        let egl_context =
-            EglContext::new(wpaperd.egl_display, &wl_surface).wrap_err_with(|| {
+        let egl_context = EglContext::new(wpaperd.egl_display, &wl_surface, &info.name)
+            .wrap_err_with(|| {
                 format!("Failed to initialize EGL context for display {}", info.name)
             })?;
         // Make the egl context as current to make the renderer creation work

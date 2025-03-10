@@ -1,10 +1,11 @@
+use log::warn;
 use smithay_client_toolkit::reexports::client::{protocol::wl_surface::WlSurface, Proxy};
 use wayland_egl::WlEglSurface;
 
 use egl::API as egl;
 
 use color_eyre::{
-    eyre::{Context, OptionExt},
+    eyre::{eyre, Context, OptionExt},
     Result,
 };
 
@@ -14,10 +15,15 @@ pub struct EglContext {
     pub config: egl::Config,
     wl_egl_surface: WlEglSurface,
     surface: khronos_egl::Surface,
+    display_name: String,
 }
 
 impl EglContext {
-    pub fn new(egl_display: egl::Display, wl_surface: &WlSurface) -> Result<Self> {
+    pub fn new(
+        egl_display: egl::Display,
+        wl_surface: &WlSurface,
+        display_name: &str,
+    ) -> Result<Self> {
         const ATTRIBUTES: [i32; 7] = [
             egl::RED_SIZE,
             8,
@@ -65,6 +71,7 @@ impl EglContext {
             config,
             surface,
             wl_egl_surface,
+            display_name: display_name.to_owned(),
         })
     }
 
@@ -108,5 +115,19 @@ impl EglContext {
         self.wl_egl_surface = wl_egl_surface;
 
         Ok(())
+    }
+}
+
+impl Drop for EglContext {
+    fn drop(&mut self) {
+        if let Err(err) = egl.destroy_surface(self.display, self.surface) {
+            warn!(
+                "{:?}",
+                eyre!(err).wrap_err(format!(
+                    "Failed to destroy surface for display {}",
+                    self.display_name
+                ))
+            );
+        }
     }
 }
