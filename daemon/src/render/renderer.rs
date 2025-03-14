@@ -1,4 +1,4 @@
-use std::{cell::RefCell, ffi::CStr, ops::Deref, rc::Rc};
+use std::{ffi::CStr, ops::Deref, rc::Rc};
 
 use color_eyre::{
     eyre::{ensure, OptionExt, WrapErr},
@@ -25,6 +25,10 @@ fn transparent_image() -> RgbaImage {
     RgbaImage::from_raw(1, 1, vec![0, 0, 0, 0]).unwrap()
 }
 
+fn black_image() -> RgbaImage {
+    RgbaImage::from_raw(1, 1, vec![0, 0, 0, 255]).unwrap()
+}
+
 #[derive(Debug)]
 pub enum TransitionStatus {
     Started,
@@ -39,7 +43,6 @@ pub struct Renderer {
     eab: gl::types::GLuint,
     // milliseconds time for the transition
     pub transition_time: u32,
-    pub display_info: Rc<RefCell<DisplayInfo>>,
     prev_wallpaper: Option<Wallpaper>,
     current_wallpaper: Wallpaper,
     transparent_texture: gl::types::GLuint,
@@ -49,11 +52,9 @@ pub struct Renderer {
 
 impl Renderer {
     pub unsafe fn new(
-        image: DynamicImage,
-        display_info: Rc<RefCell<DisplayInfo>>,
         transition_time: u32,
         transition: Transition,
-        transform: Transform,
+        display_info: &DisplayInfo,
     ) -> Result<Self> {
         let gl = Rc::new(gl::Gl::load_with(|name| {
             egl.get_proc_address(name)
@@ -79,16 +80,20 @@ impl Renderer {
             transition_time,
             prev_wallpaper: None,
             current_wallpaper,
-            display_info,
             transparent_texture,
             transition_status: TransitionStatus::Ended,
         };
 
         renderer
-            .load_wallpaper(image, BackgroundMode::Stretch, None)
+            .load_wallpaper(
+                black_image().into(),
+                BackgroundMode::Stretch,
+                None,
+                display_info,
+            )
             .wrap_err("Failed to query image loader")?;
         renderer
-            .set_projection_matrix(transform)
+            .set_projection_matrix(display_info.transform)
             .wrap_err("Failed to set projection matrix for openGL context")?;
 
         Ok(renderer)
@@ -139,12 +144,14 @@ impl Renderer {
                 started,
                 progress: _,
             } => started,
-            TransitionStatus::Ended => unreachable!(),
+            TransitionStatus::Ended => return false,
         };
         let progress =
             ((time.saturating_sub(started)) as f32 / self.transition_time as f32).min(1.0);
+        // Recalculate the current progress, the transition might end now
         if progress == 1.0 {
             self.transition_status = TransitionStatus::Ended;
+            self.transition_finished();
             false
         } else {
             self.transition_status = TransitionStatus::Running { started, progress };
@@ -157,6 +164,7 @@ impl Renderer {
         image: DynamicImage,
         mode: BackgroundMode,
         offset: Option<f32>,
+        display_info: &DisplayInfo,
     ) -> Result<()> {
         self.prev_wallpaper = Some(std::mem::replace(
             &mut self.current_wallpaper,
@@ -164,13 +172,18 @@ impl Renderer {
         ));
         self.current_wallpaper.load_image(image)?;
 
-        self.bind_wallpapers(mode, offset)?;
+        self.bind_wallpapers(mode, offset, display_info)?;
 
         Ok(())
     }
 
-    fn bind_wallpapers(&mut self, mode: BackgroundMode, offset: Option<f32>) -> Result<()> {
-        self.set_mode(mode, offset)?;
+    fn bind_wallpapers(
+        &mut self,
+        mode: BackgroundMode,
+        offset: Option<f32>,
+        display_info: &DisplayInfo,
+    ) -> Result<()> {
+        self.set_mode(mode, offset, display_info)?;
 
         unsafe {
             self.gl.ActiveTexture(gl::TEXTURE0);
@@ -187,8 +200,12 @@ impl Renderer {
         Ok(())
     }
 
-    pub fn set_mode(&mut self, mode: BackgroundMode, offset: Option<f32>) -> Result<()> {
-        let display_info = (*self.display_info).borrow();
+    pub fn set_mode(
+        &mut self,
+        mode: BackgroundMode,
+        offset: Option<f32>,
+        display_info: &DisplayInfo,
+    ) -> Result<()> {
         let display_width = display_info.scaled_width() as f32;
         let display_height = display_info.scaled_height() as f32;
         let display_ratio = display_width / display_height;
@@ -353,11 +370,14 @@ impl Renderer {
         Ok(())
     }
 
-    pub fn resize(&mut self) -> Result<()> {
-        let info = (*self.display_info).borrow();
+    pub fn resize(&mut self, display_info: &DisplayInfo) -> Result<()> {
         unsafe {
-            self.gl
-                .Viewport(0, 0, info.adjusted_width(), info.adjusted_height());
+            self.gl.Viewport(
+                0,
+                0,
+                display_info.adjusted_width(),
+                display_info.adjusted_height(),
+            );
             self.check_error("Failed to resize the openGL viewport")
         }
     }

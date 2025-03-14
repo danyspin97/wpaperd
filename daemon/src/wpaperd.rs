@@ -78,9 +78,9 @@ impl Wpaperd {
 
     pub fn update_surfaces(&mut self, ev_handle: LoopHandle<Wpaperd>, qh: &QueueHandle<Wpaperd>) {
         for surface in &mut self.surfaces {
-            let name = surface.name();
-            let description = surface.description();
-            let res = self.config.get_info_for_output(&name, &description);
+            let res = self
+                .config
+                .get_info_for_output(surface.name(), surface.description());
             match res {
                 Ok(wallpaper_info) => {
                     surface.update_wallpaper_info(

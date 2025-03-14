@@ -96,4 +96,8 @@ impl DisplayInfo {
             false
         }
     }
+
+    pub fn is_configured(&self) -> bool {
+        self.width != 0 && self.height != 0
+    }
 }

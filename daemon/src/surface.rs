@@ -11,7 +11,6 @@ use color_eyre::{
     eyre::{OptionExt, WrapErr},
     Result,
 };
-use image::RgbaImage;
 use log::{error, warn};
 use smithay_client_toolkit::{
     reexports::{
@@ -34,12 +33,8 @@ use smithay_client_toolkit::{
 };
 
 use crate::{
-    display_info::DisplayInfo,
-    image_loader::ImageLoader,
-    image_picker::ImagePicker,
-    render::{EglContext, Renderer},
-    wallpaper_groups::WallpaperGroups,
-    wallpaper_info::WallpaperInfo,
+    display_info::DisplayInfo, image_loader::ImageLoader, image_picker::ImagePicker,
+    render::EglContext, wallpaper_groups::WallpaperGroups, wallpaper_info::WallpaperInfo,
     wpaperd::Wpaperd,
 };
 
@@ -58,12 +53,11 @@ pub struct Surface {
     wl_surface: wl_surface::WlSurface,
     wl_output: WlOutput,
     layer: LayerSurface,
-    egl_context: EglContext,
-    renderer: Renderer,
+    context: EglContext,
     pub image_picker: ImagePicker,
     event_source: EventSource,
     pub wallpaper_info: WallpaperInfo,
-    info: Rc<RefCell<DisplayInfo>>,
+    display_info: DisplayInfo,
     image_loader: Rc<RefCell<ImageLoader>>,
     window_drawn: bool,
     pub loading_image: Option<(PathBuf, usize)>,
@@ -86,20 +80,11 @@ impl Surface {
         wpaperd: &Wpaperd,
         wl_layer: LayerSurface,
         wl_output: WlOutput,
-        info: DisplayInfo,
+        display_info: DisplayInfo,
         wallpaper_info: WallpaperInfo,
         xdg_state_home: PathBuf,
     ) -> Result<Self> {
         let wl_surface = wl_layer.wl_surface().clone();
-        let egl_context = EglContext::new(wpaperd.egl_display, &wl_surface, &info.name)
-            .wrap_err_with(|| {
-                format!("Failed to initialize EGL context for display {}", info.name)
-            })?;
-        // Make the egl context as current to make the renderer creation work
-        egl_context
-            .make_current()
-            .wrap_err("Failed to switch EGL context")?;
-
         // Commit the surface
         wl_surface.commit();
 
@@ -110,28 +95,26 @@ impl Surface {
             wpaperd.wallpaper_groups.clone(),
         );
 
-        let image = black_image();
-        let info = Rc::new(RefCell::new(info));
-
-        let renderer = unsafe {
-            Renderer::new(
-                image.into(),
-                info.clone(),
-                0,
-                wallpaper_info.transition.clone(),
-                info.borrow().transform,
-            )
-            .wrap_err("Failed to create the renderer")?
-        };
-
         let first_transition = !wallpaper_info.initial_transition;
+
+        let context = EglContext::new(
+            wpaperd.egl_display,
+            &wl_surface,
+            &wallpaper_info,
+            &display_info,
+        )
+        .wrap_err_with(|| {
+            format!(
+                "Failed to initialize EGL context for display {}",
+                display_info.name
+            )
+        })?;
         let mut surface = Self {
             wl_output,
             layer: wl_layer,
-            info,
+            display_info,
             wl_surface,
-            egl_context,
-            renderer,
+            context,
             image_picker,
             event_source: EventSource::NotSet,
             wallpaper_info,
@@ -151,7 +134,7 @@ impl Surface {
                 "{:?}",
                 err.wrap_err(format!(
                     "Failed to start loading the wallpaper in background for display {}",
-                    surface.info.borrow().name
+                    surface.name()
                 ))
             );
         }
@@ -161,27 +144,19 @@ impl Surface {
 
     /// Returns true if something has been drawn to the surface
     pub fn draw(&mut self, qh: &QueueHandle<Wpaperd>, time: Option<u32>) -> Result<()> {
-        let info = self.info.borrow();
-        let width = info.adjusted_width();
-        let height = info.adjusted_height();
-        // Drop the borrow to self
-        drop(info);
-
         // Use the correct context before drawing
-        self.egl_context
+        self.context
             .make_current()
             .wrap_err("Failed to switch EGL context")?;
 
-        if self.renderer.transition_running() {
-            // Recalculate the current progress, the transition might end now
-            let transition_running = self.renderer.update_transition_status(time.unwrap_or(0));
-            // If we don't have any time passed, just consider the transition to be ended
-            if transition_running {
-                // Don't call queue_draw as it calls load_wallpaper again
-                self.wl_surface.frame(qh, self.wl_surface.clone());
-            } else {
-                self.renderer.transition_finished();
-            }
+        if self
+            .context
+            .renderer
+            // If we don't have any time passed, just consider the transition to be ended by using 0
+            .update_transition_status(time.unwrap_or(0))
+        {
+            // Don't call queue_draw as it calls load_wallpaper again
+            self.wl_surface.frame(qh, self.wl_surface.clone());
             // We are waiting for an image to be loaded in memory
         } else if self.loading_image.is_some() {
             self.wl_surface.frame(qh, self.wl_surface.clone());
@@ -193,22 +168,17 @@ impl Surface {
             }
         }
 
-        unsafe { self.renderer.draw()? }
-
-        self.renderer
-            .clear_after_draw()
-            .wrap_err("Failed to unbind the buffer")?;
-        self.egl_context
-            .swap_buffers()
-            .wrap_err("Failed to swap EGL buffers")?;
-
-        // Reset the context
-        egl::API
-            .make_current(self.egl_context.display, None, None, None)
-            .wrap_err("Failed to reset the EGL context")?;
+        self.context
+            .draw()
+            .wrap_err("Failed to draw the wallpaper")?;
 
         // Mark the entire surface as damaged
-        self.wl_surface.damage_buffer(0, 0, width, height);
+        self.wl_surface.damage_buffer(
+            0,
+            0,
+            self.display_info.adjusted_width(),
+            self.display_info.adjusted_height(),
+        );
 
         // Finally, commit the surface
         self.wl_surface.commit();
@@ -224,7 +194,7 @@ impl Surface {
                     "{:?}",
                     err.wrap_err(format!(
                         "Failed to draw on display {}",
-                        self.info.borrow().name
+                        self.display_info.name
                     ))
                 );
                 false
@@ -259,25 +229,20 @@ impl Surface {
             .expect("loading image to be set")
             .clone();
 
-        if self.renderer.transition_running() {
+        if self.context.renderer.transition_running() {
             return Ok(true);
         }
 
         let res = self
             .image_loader
             .borrow_mut()
-            .background_load(image_path.to_owned(), self.name());
+            .background_load(image_path.to_owned(), self.name().to_owned());
         match res {
             crate::image_loader::ImageLoaderStatus::Loaded(data) => {
-                // Renderer::load_wallpaper load the wallpaper in a openGL texture
-                // Set the correct opengl context
-                self.egl_context
-                    .make_current()
-                    .wrap_err("Failed to switch EGL context")?;
-                self.renderer.load_wallpaper(
+                self.context.load_wallpaper(
                     data.into(),
-                    self.wallpaper_info.mode,
-                    self.wallpaper_info.offset,
+                    &self.wallpaper_info,
+                    &self.display_info,
                 )?;
 
                 if self.image_picker.is_reloading() {
@@ -287,7 +252,7 @@ impl Surface {
                 } else {
                     warn!(
                         "No handle to add transition timer for display {}",
-                        self.info.borrow().name
+                        self.display_info.name
                     );
                 }
                 // Restart the counter
@@ -328,7 +293,7 @@ impl Surface {
 
         self.update_wallpaper_link(&image_path);
         self.image_picker.update_current_image(image_path, index);
-        self.renderer.start_transition(transition_time);
+        self.context.renderer.start_transition(transition_time);
         self.add_transition_timer(handle);
         // Update the instant where we have drawn the image
         if let EventSource::Running(registration_token, duration, _) = self.event_source {
@@ -337,10 +302,11 @@ impl Surface {
     }
 
     pub fn add_transition_timer(&mut self, handle: &LoopHandle<Wpaperd>) {
-        let timer =
-            Timer::from_duration(Duration::from_millis(self.renderer.transition_time.into()));
+        let timer = Timer::from_duration(Duration::from_millis(
+            self.wallpaper_info.transition_time.into(),
+        ));
 
-        let name = self.name().clone();
+        let name = self.name().to_owned();
         if let Err(err) = handle.insert_source(
             timer,
             move |_deadline, _: &mut (), wpaperd: &mut Wpaperd| {
@@ -356,11 +322,12 @@ impl Surface {
 
                 if let EventSource::Running(_, _, instant) = surface.event_source {
                     // if the time we are drawing is past the transition_time
-                    let time_left = Duration::from_millis(surface.renderer.transition_time.into())
-                        .saturating_sub(instant.elapsed());
+                    let time_left =
+                        Duration::from_millis(surface.wallpaper_info.transition_time.into())
+                            .saturating_sub(instant.elapsed());
                     if time_left.is_zero() {
                         // skip the transition and draw the image directly
-                        surface.renderer.transition_finished();
+                        surface.context.renderer.transition_finished();
                         TimeoutAction::Drop
                     } else {
                         TimeoutAction::ToDuration(time_left)
@@ -374,33 +341,20 @@ impl Surface {
         }
     }
 
-    pub fn name(&self) -> String {
-        self.info.borrow().name.to_string()
+    pub fn name(&self) -> &str {
+        &self.display_info.name
     }
 
-    pub fn description(&self) -> String {
-        self.info.borrow().description.to_string()
+    pub fn description(&self) -> &str {
+        &self.display_info.description
     }
 
     /// Resize the surface
     pub fn resize(&mut self, qh: &QueueHandle<Wpaperd>) -> Result<()> {
-        let info = self.info.borrow();
-        let width = info.adjusted_width();
-        let height = info.adjusted_height();
-        // Drop the borrow to self
-        drop(info);
         // self.layer.set_size(width as u32, height as u32);
-        self.egl_context
-            .resize(&self.wl_surface, width, height)
+        self.context
+            .resize(&self.wl_surface, &self.display_info)
             .wrap_err("Failed to resize EGL window")?;
-        self.egl_context
-            .make_current()
-            .wrap_err("Failed to switch to the EGL context")?;
-        self.renderer
-            .resize()
-            .wrap_err("Failed to resize GL window")?;
-        // If we resize, stop immediately any lingering transition
-        self.renderer.force_transition_end();
 
         // Queue drawing for the next frame. We can directly draw here, but we would still
         // need to queue the draw for the next frame, otherwise wpaperd doesn't work at startup
@@ -410,20 +364,20 @@ impl Surface {
     }
 
     pub fn change_size(&mut self, configure: LayerSurfaceConfigure, qh: &QueueHandle<Wpaperd>) {
-        let mut info = self.info.borrow_mut();
-        if info.change_size(configure) {
-            drop(info);
+        if self.display_info.change_size(configure) {
             if let Err(err) = self
                 .resize(qh)
                 .wrap_err_with(|| {
-                    format!(
-                        "Failed to resize the surface for display {}",
-                        self.info.borrow().name
-                    )
+                    format!("Failed to resize the surface for display {}", self.name())
                 })
                 .and_then(|_| {
-                    self.renderer
-                        .set_mode(self.wallpaper_info.mode, self.wallpaper_info.offset)
+                    self.context
+                        .renderer
+                        .set_mode(
+                            self.wallpaper_info.mode,
+                            self.wallpaper_info.offset,
+                            &self.display_info,
+                        )
                         .wrap_err("Failed to change wallpaper mode")
                 })
             {
@@ -433,29 +387,28 @@ impl Surface {
     }
 
     pub fn change_transform(&mut self, transform: Transform, qh: &QueueHandle<Wpaperd>) {
-        let mut info = self.info.borrow_mut();
-        if info.change_transform(transform) {
-            drop(info);
+        if self.display_info.change_transform(transform) {
             self.wl_surface.set_buffer_transform(transform);
             if let Err(err) = self
                 .resize(qh)
                 .wrap_err("Failed to resize the surface")
                 .and_then(|_| {
-                    self.renderer
-                        .set_mode(self.wallpaper_info.mode, self.wallpaper_info.offset)
+                    self.context
+                        .renderer
+                        .set_mode(
+                            self.wallpaper_info.mode,
+                            self.wallpaper_info.offset,
+                            &self.display_info,
+                        )
                         .wrap_err("Failed to change wallpaper mode")
                 })
                 .and_then(|_| unsafe {
-                    self.renderer
+                    self.context
+                        .renderer
                         .set_projection_matrix(transform)
                         .wrap_err("Failed to change wallpaper mode")
                 })
-                .wrap_err_with(|| {
-                    format!(
-                        "Failed to change transform for display {}",
-                        self.info.borrow().name
-                    )
-                })
+                .wrap_err_with(|| format!("Failed to change transform for display {}", self.name()))
             {
                 error!("{err:?}");
             }
@@ -463,16 +416,11 @@ impl Surface {
     }
 
     pub fn change_scale_factor(&mut self, scale_factor: i32, qh: &QueueHandle<Wpaperd>) {
-        let mut info = self.info.borrow_mut();
-        if info.change_scale_factor(scale_factor) {
-            drop(info);
+        if self.display_info.change_scale_factor(scale_factor) {
             self.wl_surface.set_buffer_scale(scale_factor);
             // Resize the gl viewport
             if let Err(err) = self.resize(qh).wrap_err_with(|| {
-                format!(
-                    "Failed to resize the surface for display {}",
-                    self.info.borrow().name
-                )
+                format!("Failed to resize the surface for display {}", self.name())
             }) {
                 error!("{err:?}");
             }
@@ -481,8 +429,7 @@ impl Surface {
 
     /// Check that the dimensions are valid
     pub fn is_configured(&self) -> bool {
-        let info = self.info.borrow();
-        info.width != 0 && info.height != 0
+        self.display_info.is_configured()
     }
 
     pub fn has_been_drawn(&self) -> bool {
@@ -536,13 +483,18 @@ impl Surface {
         if self.wallpaper_info.mode != wallpaper_info.mode
             || self.wallpaper_info.offset != wallpaper_info.offset
         {
-            if let Err(err) = self.egl_context.make_current().and_then(|_| {
-                self.renderer
-                    .set_mode(self.wallpaper_info.mode, self.wallpaper_info.offset)
+            if let Err(err) = self.context.make_current().and_then(|_| {
+                self.context
+                    .renderer
+                    .set_mode(
+                        self.wallpaper_info.mode,
+                        self.wallpaper_info.offset,
+                        &self.display_info,
+                    )
                     .wrap_err_with(|| {
                         format!(
                             "Failed to change wallpaper mode for display {}",
-                            self.info.borrow().name
+                            self.name()
                         )
                     })
             }) {
@@ -554,15 +506,13 @@ impl Surface {
             }
         }
         if self.wallpaper_info.transition != wallpaper_info.transition {
-            match self.egl_context.make_current().wrap_err_with(|| {
-                format!(
-                    "Failed to switch EGL context for display {}",
-                    self.info.borrow().name
-                )
+            match self.context.make_current().wrap_err_with(|| {
+                format!("Failed to switch EGL context for display {}", self.name())
             }) {
                 Ok(_) => {
-                    let transform = self.renderer.display_info.borrow().transform;
-                    self.renderer
+                    let transform = self.display_info.transform;
+                    self.context
+                        .renderer
                         .update_transition(self.wallpaper_info.transition.clone(), transform);
                 }
                 Err(err) => {
@@ -575,7 +525,8 @@ impl Surface {
                 .update_queue_size(self.wallpaper_info.drawn_images_queue_size);
         }
         if self.wallpaper_info.transition_time != wallpaper_info.transition_time {
-            self.renderer
+            self.context
+                .renderer
                 .update_transition_time(self.wallpaper_info.transition_time);
         }
     }
@@ -627,7 +578,7 @@ impl Surface {
                             if let Err(err) = self.load_wallpaper(None).wrap_err_with(|| {
                                 format!(
                                     "Failed to query the image loader for display {}",
-                                    self.info.borrow().name
+                                    self.name()
                                 )
                             }) {
                                 warn!("{err:?}");
@@ -692,7 +643,7 @@ impl Surface {
 
         let timer = Timer::from_duration(duration);
 
-        let name = self.name().clone();
+        let name = self.name().to_owned();
         let registration_token = handle
             .insert_source(
                 timer,
@@ -727,14 +678,14 @@ impl Surface {
                                 // if it didn't, it means that the transition never ran.
                                 // It happens when there is a display with a fullscreen window
                                 // and wpaperd surface doesn't receive any frame event.
-                                if surface.renderer.transition_running() {
+                                if surface.context.renderer.transition_running() {
                                     // Mark the transition ended, so that we have simulated the
                                     // entire drawing of an image
                                     // This actually never gets called if the draw function can end
                                     // the transition itself. Still, this might be triggered with
                                     // other compositors, left as a safety measure.
-                                    surface.renderer.transition_finished();
-                                    surface.renderer.force_transition_end();
+                                    surface.context.renderer.transition_finished();
+                                    surface.context.renderer.force_transition_end();
                                 }
                                 surface.image_picker.next_image(
                                     &surface.wallpaper_info.path,
@@ -786,7 +737,7 @@ impl Surface {
         if let Err(err) = self.load_wallpaper(None).wrap_err_with(|| {
             format!(
                 "Failed to query the image loader for display {}",
-                self.info.borrow().name
+                self.name()
             )
         }) {
             warn!("{err:?}");
@@ -863,7 +814,7 @@ impl Surface {
 
     /// Add a symlink into .local/state that points to the current wallpaper
     fn update_wallpaper_link(&self, image_path: &Path) {
-        let link = self.xdg_state_home.join(&self.info.borrow().name);
+        let link = self.xdg_state_home.join(self.name());
         // remove the previous file if it exists, otherwise symlink() fails
         if link.exists() {
             if let Err(err) = fs::remove_file(&link)
@@ -885,7 +836,7 @@ impl Surface {
 impl Drop for Surface {
     fn drop(&mut self) {
         // Do not leave any symlink when a surface gets destroyed
-        let link = self.xdg_state_home.join(&self.info.borrow().name);
+        let link = self.xdg_state_home.join(self.name());
         if link.exists() {
             if let Err(err) = fs::remove_file(&link)
                 .wrap_err_with(|| format!("Failed to remove symlink {link:?}"))
@@ -894,10 +845,6 @@ impl Drop for Surface {
             }
         }
     }
-}
-
-fn black_image() -> RgbaImage {
-    RgbaImage::from_raw(1, 1, vec![0, 0, 0, 255]).unwrap()
 }
 
 fn remaining_duration(duration: Duration, image_changed: Instant) -> Option<Duration> {
