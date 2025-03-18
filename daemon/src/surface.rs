@@ -8,7 +8,7 @@ use std::{
 };
 
 use color_eyre::{
-    eyre::{OptionExt, WrapErr},
+    eyre::{eyre, OptionExt, WrapErr},
     Result,
 };
 use log::{error, warn};
@@ -53,7 +53,9 @@ pub struct Surface {
     wl_surface: wl_surface::WlSurface,
     wl_output: WlOutput,
     layer: LayerSurface,
-    context: EglContext,
+    /// Contains the EGL context and the renderer. The context is None when the previous one became
+    /// invalid
+    context: Option<EglContext>,
     pub image_picker: ImagePicker,
     event_source: EventSource,
     pub wallpaper_info: WallpaperInfo,
@@ -97,7 +99,7 @@ impl Surface {
 
         let first_transition = !wallpaper_info.initial_transition;
 
-        let context = EglContext::new(
+        let context = match EglContext::new(
             wpaperd.egl_display,
             &wl_surface,
             &wallpaper_info,
@@ -108,7 +110,14 @@ impl Surface {
                 "Failed to initialize EGL context for display {}",
                 display_info.name
             )
-        })?;
+        }) {
+            Ok(context) => Some(context),
+            Err(err) => {
+                error!("{err:?}");
+                None
+            }
+        };
+
         let mut surface = Self {
             wl_output,
             layer: wl_layer,
@@ -143,14 +152,15 @@ impl Surface {
     }
 
     /// Returns true if something has been drawn to the surface
-    pub fn draw(&mut self, qh: &QueueHandle<Wpaperd>, time: Option<u32>) -> Result<()> {
+    fn draw(&mut self, qh: &QueueHandle<Wpaperd>, time: Option<u32>) -> Result<()> {
+        let context = self.get_context()?;
+
         // Use the correct context before drawing
-        self.context
+        context
             .make_current()
             .wrap_err("Failed to switch EGL context")?;
 
-        if self
-            .context
+        if context
             .renderer
             // If we don't have any time passed, just consider the transition to be ended by using 0
             .update_transition_status(time.unwrap_or(0))
@@ -168,9 +178,7 @@ impl Surface {
             }
         }
 
-        self.context
-            .draw()
-            .wrap_err("Failed to draw the wallpaper")?;
+        context.draw().wrap_err("Failed to draw the wallpaper")?;
 
         // Mark the entire surface as damaged
         self.wl_surface.damage_buffer(
@@ -197,6 +205,10 @@ impl Surface {
                         self.display_info.name
                     ))
                 );
+                // The draw failed for some reason. Invalid the context and try to draw in the next
+                // frame
+                self.context = None;
+                self.wl_surface.frame(qh, self.wl_surface.clone());
                 false
             }
         }
@@ -830,6 +842,54 @@ impl Surface {
         {
             warn!("{err:?}");
         }
+    }
+
+    /// Check if the context is valid, and try to recreate it if needed
+    #[inline]
+    pub fn check_context(&mut self, egl_display: egl::Display, qh: &QueueHandle<Wpaperd>) {
+        // The context is still valid
+        if self.context.is_some() {
+            return;
+        }
+
+        self.context = match EglContext::new(
+            egl_display,
+            &self.wl_surface,
+            &self.wallpaper_info,
+            &self.display_info,
+        ) {
+            Ok(context) => {
+                // We were able to create a new context, so we can draw the wallpaper
+                // First we need to tell the image picker that we are not choosing a new image
+                self.image_picker.reload();
+                // Then we need to ask the background loader to load the image
+                let res = self.load_wallpaper(None);
+                match res {
+                    Ok(loaded) if loaded => {
+                        self.try_drawing(qh, None);
+                    }
+                    Ok(_) => {
+                        self.wl_surface.frame(qh, self.wl_surface.clone());
+                    }
+                    Err(err) => {
+                        self.wl_surface.frame(qh, self.wl_surface.clone());
+                        warn!("{:?}", err);
+                    }
+                }
+                Some(context)
+            }
+            Err(err) => {
+                error!("{err:?}");
+                self.wl_surface.frame(qh, self.wl_surface.clone());
+                None
+            }
+        };
+    }
+
+    pub fn get_context(&mut self) -> Result<&mut EglContext> {
+        self.context
+            .as_mut()
+            .ok_or_else(|| eyre!("EGL context is not available"))
     }
 }
 

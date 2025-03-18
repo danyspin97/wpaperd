@@ -251,6 +251,9 @@ fn run(opts: Opts, xdg_dirs: BaseDirectories) -> Result<()> {
                 return;
             };
 
+            // Check if we need to recreate the context
+            surface.check_context(wpaperd.egl_display, &qh);
+
             // This is only true once per surface at startup (or when a new display gets connected)
             if !surface.has_been_drawn() {
                 // Add the first timer, it will run endlessy or it will be updated in
