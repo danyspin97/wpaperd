@@ -10,7 +10,10 @@ use color_eyre::{
     Result,
 };
 
-use crate::{display_info::DisplayInfo, wallpaper_info::WallpaperInfo};
+use crate::{
+    display_info::DisplayInfo,
+    wallpaper_info::{BackgroundMode, WallpaperInfo},
+};
 
 use super::Renderer;
 
@@ -153,19 +156,16 @@ impl EglContext {
     pub fn load_wallpaper(
         &mut self,
         image: DynamicImage,
-        wallpaper_info: &WallpaperInfo,
+        background_mode: BackgroundMode,
+        offset: Option<f32>,
         display_info: &DisplayInfo,
     ) -> Result<()> {
         // Renderer::load_wallpaper load the wallpaper in a openGL texture
         // Set the correct opengl context
         self.make_current()
             .wrap_err("Failed to switch EGL context")?;
-        self.renderer.load_wallpaper(
-            image,
-            wallpaper_info.mode,
-            wallpaper_info.offset,
-            display_info,
-        )
+        self.renderer
+            .load_wallpaper(image, background_mode, offset, display_info)
     }
 
     pub fn draw(&mut self) -> Result<()> {

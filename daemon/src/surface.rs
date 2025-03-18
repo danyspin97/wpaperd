@@ -8,7 +8,7 @@ use std::{
 };
 
 use color_eyre::{
-    eyre::{OptionExt, WrapErr},
+    eyre::{eyre, OptionExt, WrapErr},
     Result,
 };
 use log::{error, warn};
@@ -53,7 +53,9 @@ pub struct Surface {
     wl_surface: wl_surface::WlSurface,
     wl_output: WlOutput,
     layer: LayerSurface,
-    context: EglContext,
+    /// Contains the EGL context and the renderer. The context is None when the previous one became
+    /// invalid
+    context: Option<EglContext>,
     pub image_picker: ImagePicker,
     event_source: EventSource,
     pub wallpaper_info: WallpaperInfo,
@@ -97,7 +99,7 @@ impl Surface {
 
         let first_transition = !wallpaper_info.initial_transition;
 
-        let context = EglContext::new(
+        let context = match EglContext::new(
             wpaperd.egl_display,
             &wl_surface,
             &wallpaper_info,
@@ -108,7 +110,14 @@ impl Surface {
                 "Failed to initialize EGL context for display {}",
                 display_info.name
             )
-        })?;
+        }) {
+            Ok(context) => Some(context),
+            Err(err) => {
+                error!("{err:?}");
+                None
+            }
+        };
+
         let mut surface = Self {
             wl_output,
             layer: wl_layer,
@@ -143,14 +152,14 @@ impl Surface {
     }
 
     /// Returns true if something has been drawn to the surface
-    pub fn draw(&mut self, qh: &QueueHandle<Wpaperd>, time: Option<u32>) -> Result<()> {
+    fn draw(&mut self, qh: &QueueHandle<Wpaperd>, time: Option<u32>) -> Result<()> {
         // Use the correct context before drawing
-        self.context
+        self.get_context()?
             .make_current()
             .wrap_err("Failed to switch EGL context")?;
 
         if self
-            .context
+            .get_context()?
             .renderer
             // If we don't have any time passed, just consider the transition to be ended by using 0
             .update_transition_status(time.unwrap_or(0))
@@ -168,7 +177,7 @@ impl Surface {
             }
         }
 
-        self.context
+        self.get_context()?
             .draw()
             .wrap_err("Failed to draw the wallpaper")?;
 
@@ -197,6 +206,10 @@ impl Surface {
                         self.display_info.name
                     ))
                 );
+                // The draw failed for some reason. Invalid the context and try to draw in the next
+                // frame
+                self.context = None;
+                self.wl_surface.frame(qh, self.wl_surface.clone());
                 false
             }
         }
@@ -229,7 +242,7 @@ impl Surface {
             .expect("loading image to be set")
             .clone();
 
-        if self.context.renderer.transition_running() {
+        if self.get_context()?.renderer.transition_running() {
             return Ok(true);
         }
 
@@ -239,11 +252,12 @@ impl Surface {
             .background_load(image_path.to_owned(), self.name().to_owned());
         match res {
             crate::image_loader::ImageLoaderStatus::Loaded(data) => {
-                self.context.load_wallpaper(
-                    data.into(),
-                    &self.wallpaper_info,
-                    &self.display_info,
-                )?;
+                let background_mode = self.wallpaper_info.mode;
+                let offset = self.wallpaper_info.offset;
+                self.context
+                    .as_mut()
+                    .ok_or_else(|| eyre!("EGL context is not available"))?
+                    .load_wallpaper(data.into(), background_mode, offset, &self.display_info)?;
 
                 if self.image_picker.is_reloading() {
                     self.image_picker.reloaded();
@@ -293,7 +307,10 @@ impl Surface {
 
         self.update_wallpaper_link(&image_path);
         self.image_picker.update_current_image(image_path, index);
-        self.context.renderer.start_transition(transition_time);
+        self.get_context()
+            .unwrap()
+            .renderer
+            .start_transition(transition_time);
         self.add_transition_timer(handle);
         // Update the instant where we have drawn the image
         if let EventSource::Running(registration_token, duration, _) = self.event_source {
@@ -321,13 +338,16 @@ impl Surface {
                 };
 
                 if let EventSource::Running(_, _, instant) = surface.event_source {
-                    // if the time we are drawing is past the transition_time
                     let time_left =
                         Duration::from_millis(surface.wallpaper_info.transition_time.into())
                             .saturating_sub(instant.elapsed());
+                    // if the time we are drawing is past the transition_time
                     if time_left.is_zero() {
-                        // skip the transition and draw the image directly
-                        surface.context.renderer.transition_finished();
+                        if let Err(err) = surface.get_context().map(|context| {
+                            context.renderer.transition_finished();
+                        }) {
+                            error!("{err:?}");
+                        }
                         TimeoutAction::Drop
                     } else {
                         TimeoutAction::ToDuration(time_left)
@@ -353,6 +373,8 @@ impl Surface {
     pub fn resize(&mut self, qh: &QueueHandle<Wpaperd>) -> Result<()> {
         // self.layer.set_size(width as u32, height as u32);
         self.context
+            .as_mut()
+            .ok_or_else(|| eyre!("EGL context is not available"))?
             .resize(&self.wl_surface, &self.display_info)
             .wrap_err("Failed to resize EGL window")?;
 
@@ -372,6 +394,8 @@ impl Surface {
                 })
                 .and_then(|_| {
                     self.context
+                        .as_mut()
+                        .ok_or_else(|| eyre!("EGL context is not available"))?
                         .renderer
                         .set_mode(
                             self.wallpaper_info.mode,
@@ -394,6 +418,8 @@ impl Surface {
                 .wrap_err("Failed to resize the surface")
                 .and_then(|_| {
                     self.context
+                        .as_mut()
+                        .ok_or_else(|| eyre!("EGL context is not available"))?
                         .renderer
                         .set_mode(
                             self.wallpaper_info.mode,
@@ -404,6 +430,8 @@ impl Surface {
                 })
                 .and_then(|_| unsafe {
                     self.context
+                        .as_mut()
+                        .ok_or_else(|| eyre!("EGL context is not available"))?
                         .renderer
                         .set_projection_matrix(transform)
                         .wrap_err("Failed to change wallpaper mode")
@@ -480,21 +508,30 @@ impl Surface {
         if self.wallpaper_info.mode != wallpaper_info.mode
             || self.wallpaper_info.offset != wallpaper_info.offset
         {
-            if let Err(err) = self.context.make_current().and_then(|_| {
-                self.context
-                    .renderer
-                    .set_mode(
-                        self.wallpaper_info.mode,
-                        self.wallpaper_info.offset,
-                        &self.display_info,
+            if let Err(err) = self
+                .context
+                .as_mut()
+                .ok_or_else(|| eyre!("EGL context is not available"))
+                .and_then(|context| context.make_current())
+            {
+                error!("{err:?}");
+            } else if let Err(err) = self
+                .context
+                .as_mut()
+                .unwrap()
+                .renderer
+                .set_mode(
+                    self.wallpaper_info.mode,
+                    self.wallpaper_info.offset,
+                    &self.display_info,
+                )
+                .wrap_err_with(|| {
+                    format!(
+                        "Failed to change wallpaper mode for display {}",
+                        self.name()
                     )
-                    .wrap_err_with(|| {
-                        format!(
-                            "Failed to change wallpaper mode for display {}",
-                            self.name()
-                        )
-                    })
-            }) {
+                })
+            {
                 error!("{err:?}");
             }
             if !path_changed {
@@ -503,18 +540,19 @@ impl Surface {
             }
         }
         if self.wallpaper_info.transition != wallpaper_info.transition {
-            match self.context.make_current().wrap_err_with(|| {
-                format!("Failed to switch EGL context for display {}", self.name())
-            }) {
-                Ok(_) => {
-                    let transform = self.display_info.transform;
-                    self.context
-                        .renderer
-                        .update_transition(self.wallpaper_info.transition.clone(), transform);
-                }
-                Err(err) => {
-                    error!("{err:?}");
-                }
+            if let Err(err) = self
+                .get_context()
+                .and_then(|context| context.make_current())
+                .wrap_err_with(|| {
+                    format!("Failed to switch EGL context for display {}", self.name())
+                })
+            {
+                error!("{err:?}");
+            } else {
+                self.context.as_mut().unwrap().renderer.update_transition(
+                    self.wallpaper_info.transition.clone(),
+                    self.display_info.transform,
+                );
             }
         }
         if self.wallpaper_info.drawn_images_queue_size != wallpaper_info.drawn_images_queue_size {
@@ -522,9 +560,10 @@ impl Surface {
                 .update_queue_size(self.wallpaper_info.drawn_images_queue_size);
         }
         if self.wallpaper_info.transition_time != wallpaper_info.transition_time {
-            self.context
-                .renderer
-                .update_transition_time(self.wallpaper_info.transition_time);
+            let transition_time = self.wallpaper_info.transition_time;
+            if let Ok(context) = self.get_context() {
+                context.renderer.update_transition_time(transition_time);
+            }
         }
     }
 
@@ -675,14 +714,16 @@ impl Surface {
                                 // if it didn't, it means that the transition never ran.
                                 // It happens when there is a display with a fullscreen window
                                 // and wpaperd surface doesn't receive any frame event.
-                                if surface.context.renderer.transition_running() {
-                                    // Mark the transition ended, so that we have simulated the
-                                    // entire drawing of an image
-                                    // This actually never gets called if the draw function can end
-                                    // the transition itself. Still, this might be triggered with
-                                    // other compositors, left as a safety measure.
-                                    surface.context.renderer.transition_finished();
-                                    surface.context.renderer.force_transition_end();
+                                if let Ok(context) = &mut surface.get_context() {
+                                    if context.renderer.transition_running() {
+                                        // Mark the transition ended, so that we have simulated the
+                                        // entire drawing of an image
+                                        // This actually never gets called if the draw function can end
+                                        // the transition itself. Still, this might be triggered with
+                                        // other compositors, left as a safety measure.
+                                        context.renderer.transition_finished();
+                                        context.renderer.force_transition_end();
+                                    }
                                 }
                                 surface.image_picker.next_image(
                                     &surface.wallpaper_info.path,
@@ -827,6 +868,54 @@ impl Surface {
         {
             warn!("{err:?}");
         }
+    }
+
+    /// Check if the context is valid, and try to recreate it if needed
+    #[inline]
+    pub fn check_context(&mut self, egl_display: egl::Display, qh: &QueueHandle<Wpaperd>) {
+        // The context is still valid
+        if self.context.is_some() {
+            return;
+        }
+
+        self.context = match EglContext::new(
+            egl_display,
+            &self.wl_surface,
+            &self.wallpaper_info,
+            &self.display_info,
+        ) {
+            Ok(context) => {
+                // We were able to create a new context, so we can draw the wallpaper
+                // First we need to tell the image picker that we are not choosing a new image
+                self.image_picker.reload();
+                // Then we need to ask the background loader to load the image
+                let res = self.load_wallpaper(None);
+                match res {
+                    Ok(loaded) if loaded => {
+                        self.try_drawing(qh, None);
+                    }
+                    Ok(_) => {
+                        self.wl_surface.frame(qh, self.wl_surface.clone());
+                    }
+                    Err(err) => {
+                        self.wl_surface.frame(qh, self.wl_surface.clone());
+                        warn!("{:?}", err);
+                    }
+                }
+                Some(context)
+            }
+            Err(err) => {
+                error!("{err:?}");
+                self.wl_surface.frame(qh, self.wl_surface.clone());
+                None
+            }
+        };
+    }
+
+    pub fn get_context(&mut self) -> Result<&mut EglContext> {
+        self.context
+            .as_mut()
+            .ok_or_else(|| eyre!("EGL context is not available"))
     }
 }
 
