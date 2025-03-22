@@ -187,7 +187,7 @@ impl ImagePickerSorting {
                     .borrow()
                     .get(
                         &wallpaper_info.path,
-                        *wallpaper_info.recursive.as_ref().unwrap(),
+                        wallpaper_info.recursive.unwrap_or_default(),
                     )
                     .len();
                 Self::new_ascending(files_len)
