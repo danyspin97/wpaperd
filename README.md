@@ -182,6 +182,16 @@ path = "/home/danyspin97/Wallpapers"
 path = "/home/danyspin97/Wallpapers/1080p"
 ```
 
+Another way to match a section to one or more displays is by using regex:
+
+```toml
+# Matches all displays that have the string "LG" in their description
+["re:LG"]
+
+# Matches all displays that are connected through display port (e.g. DP-1, DP-2)
+["re:DP-\\d"]
+```
+
 If you're running sway, you can look for the available outputs and
 their ID (or description) by running:
 

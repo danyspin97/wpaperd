@@ -1,8 +1,11 @@
 # 1.1.2
 ## New features
 - Add a new `recursive` config option, enabled by default (fixes #112).
+- Add support for regex (thanks to [@ein-shived], #108)
 ## Bug fixes
 - Redraw wallpaper when the screen rotates
+
+[@ein-shived](https://github.com/ein-shved)
 
 # 1.1.1
 ## New features
