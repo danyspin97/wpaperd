@@ -7,6 +7,8 @@ use std::{
     time::{Duration, Instant},
 };
 
+use std::process::Command;
+
 use color_eyre::{
     eyre::{eyre, OptionExt, WrapErr},
     Result,
@@ -252,6 +254,12 @@ impl Surface {
             .background_load(image_path.to_owned(), self.name().to_owned());
         match res {
             crate::image_loader::ImageLoaderStatus::Loaded(data) => {
+                
+                // Exec Script on wallpaper change
+                if self.wallpaper_info.exec.is_some() {
+                    self.run_exec_script(&self.wallpaper_info);
+                }
+                           
                 let background_mode = self.wallpaper_info.mode;
                 let offset = self.wallpaper_info.offset;
                 self.context
@@ -263,6 +271,8 @@ impl Surface {
                     self.image_picker.reloaded();
                 } else if let Some(handle) = handle {
                     self.setup_drawing_image(image_path, index, handle);
+                    
+
                 } else {
                     warn!(
                         "No handle to add transition timer for display {}",
@@ -285,10 +295,34 @@ impl Surface {
                 self.loading_image = None;
                 // If we have tried too many times, stop
                 if self.loading_image_tries != 5 {
+
                     return self.load_wallpaper(handle);
                 }
                 Ok(false)
             }
+        }
+    }
+
+    // Executing script function.
+    pub fn run_exec_script(&self, wallpaper_info: &WallpaperInfo) {
+        if let Some(exec_path) = &wallpaper_info.exec {
+            let exec_path = exec_path.clone(); // Clone to move into the thread
+            std::thread::spawn(move || {
+                match Command::new(exec_path).status() {
+                    Ok(status) if status.success() => {
+                        // Log success if needed
+                    }
+                    Ok(status) => {
+                        error!(
+                            "Script exited with non-zero status: {}",
+                            status
+                        );
+                    }
+                    Err(err) => {
+                        error!("Failed to execute script: {:?}", err);
+                    }
+                }
+            });
         }
     }
 

@@ -26,6 +26,8 @@ use crate::{
     wallpaper_info::{BackgroundMode, Recursive, Sorting, WallpaperInfo},
 };
 
+use std::os::unix::fs::PermissionsExt;
+
 #[derive(Default, Deserialize, PartialEq, Debug, Clone)]
 #[serde(deny_unknown_fields)]
 pub struct SerializedWallpaperInfo {
@@ -63,6 +65,10 @@ pub struct SerializedWallpaperInfo {
     /// Recursively traverse the directory set as path
     /// Set as true by default
     pub recursive: Option<bool>,
+
+    // Path to bash script.
+    #[serde(default, deserialize_with = "tilde_expansion_deserialize")]
+    pub exec: Option<PathBuf>,
 }
 
 impl SerializedWallpaperInfo {
@@ -233,6 +239,24 @@ impl SerializedWallpaperInfo {
             (None, None) => None,
         };
 
+        if let Some(exec_path) = &self.exec {
+            ensure!(
+                exec_path.exists(),
+                "Exec script {} must exist",
+                exec_path.to_string_lossy().italic().yellow()
+            );
+            ensure!(
+                exec_path.is_file(),
+                "Exec path {} must be a file",
+                exec_path.to_string_lossy().italic().yellow()
+            );
+            ensure!(
+                std::fs::metadata(exec_path)?.permissions().mode() & 0o111 != 0,
+                "Exec script {} must be executable",
+                exec_path.to_string_lossy().italic().yellow()
+            );
+        }
+
         Ok(WallpaperInfo {
             path,
             duration,
@@ -245,6 +269,7 @@ impl SerializedWallpaperInfo {
             transition,
             offset,
             recursive,
+            exec: self.exec.clone(),
         })
     }
 }
