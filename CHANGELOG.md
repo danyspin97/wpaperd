@@ -4,6 +4,8 @@
 - Add support for regex (thanks to [@ein-shived], #108)
 ## Bug fixes
 - Redraw wallpaper when the screen rotates
+- Calculate the transition time when it's happening in background
+  (i.e. the wallpaper is not currently focused).
 
 [@ein-shived](https://github.com/ein-shved)
 
