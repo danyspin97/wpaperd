@@ -6,7 +6,6 @@ use std::{
 };
 
 use log::warn;
-use randomize::Gen32;
 use smithay_client_toolkit::reexports::client::{protocol::wl_surface::WlSurface, QueueHandle};
 
 use crate::{
