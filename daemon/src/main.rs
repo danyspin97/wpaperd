@@ -273,11 +273,10 @@ fn run(opts: Opts, xdg_dirs: BaseDirectories) -> Result<()> {
                     // surface.image_picker.handle_grouped_sorting();
                 }
             };
-
-            #[cfg(debug_assertions)]
-            wpaperd.image_loader.borrow_mut().check_lingering_threads();
         });
 
+        #[cfg(debug_assertions)]
+        wpaperd.image_loader.borrow_mut().check_lingering_threads();
         event_loop
             .dispatch(None, &mut wpaperd)
             .wrap_err("Failed to dispatch the event loop")?;
