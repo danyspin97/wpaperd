@@ -147,6 +147,8 @@ represents a different display and can contain the following keys:
 - `initial-transition`, enable the initial transition at wpaperd startup. (_Optional_, true by default)
 - `recursive`, recursively iterate the directory `path` when looking for available wallpapers;
   it is only valid when `path` points to a directory. (_Optional_, true by default)
+- `exec`, path to a script that will be executed every time the wallpaper changes; the script
+  will be called with the display and the new wallpaper as argument. (_Optional_)
 
 The section `default` will be used as base for the all the display configuration; the section
 `any` will be used for all the displays that are not explictly listed. This allows to have a
@@ -216,6 +218,26 @@ wallpaper used. This is useful to integrate the current status with other compon
 ```bash
 ~ $ ls ~/.local/state/wpaperd/wallpapers
 DP-3@      DP-4@
+```
+
+### Exec script
+
+With the `exec` config parameter, wpaperd will execute a script every time the wallpaper changes.
+This is an example script that can be used with pywal:
+
+```bash
+#!/bin/bash
+
+display=$1
+wallpaper=$2
+
+echo "Display is : $display"
+echo "Wallpaper path is: $wallpaper"
+
+# Update Pywal
+echo ":: Applying pywal with $wallpaper"
+wal -q -i "$wallpaper"
+source "$HOME/.cache/wal/colors.sh"
 ```
 
 ### Transitions
