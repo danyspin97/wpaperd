@@ -13,5 +13,5 @@ categories = ["command-line-utilities", "multimedia"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-serde = { version = "1.0.215", features = ["derive"] }
+serde = { version = "1.0.219", features = ["derive"] }
 xdg = "2.5.2"
