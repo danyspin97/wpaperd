@@ -2363,6 +2363,7 @@ dependencies = [
  "new_mime_guess",
  "nix",
  "rand",
+ "rayon",
  "regex",
  "serde",
  "serde_json",

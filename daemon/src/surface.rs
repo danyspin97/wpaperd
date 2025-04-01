@@ -307,7 +307,7 @@ impl Surface {
             let name = self.name().to_owned();
             let image_path_str = image_path.to_string_lossy().to_string();
             let args = vec![name, image_path_str];
-            std::thread::spawn(move || {
+            rayon::spawn(move || {
                 match Command::new(exec_path).args(&args).status() {
                     Ok(status) if status.success() => {
                         // Script executed successfully.

@@ -1,15 +1,19 @@
-use std::{collections::HashMap, path::PathBuf, thread::JoinHandle};
+use std::{
+    collections::HashMap,
+    path::PathBuf,
+    sync::mpsc::{Receiver, TryRecvError},
+};
 
 use color_eyre::eyre::eyre;
 use image::{open, RgbaImage};
-use log::{error, warn};
+use log::warn;
 use smithay_client_toolkit::reexports::calloop::ping::Ping;
 
 type ImageData = Option<RgbaImage>;
 
 struct Image {
     data: ImageData,
-    thread_handle: Option<JoinHandle<ImageData>>,
+    thread_handle: Option<Receiver<ImageData>>,
     requesters: Vec<String>,
 }
 
@@ -34,33 +38,25 @@ impl ImageLoader {
 
     pub fn background_load(&mut self, path: PathBuf, requester_name: String) -> ImageLoaderStatus {
         if let Some(image) = self.images.get_mut(&path) {
-            if let Some(handle) = image.thread_handle.take() {
-                if handle.is_finished() {
-                    match handle.join() {
-                        Ok(thread_result) => match thread_result {
-                            Some(image_data) => {
-                                image.data = Some(image_data);
-                            }
-                            None => {
-                                self.images.remove(&path);
-                                return ImageLoaderStatus::Error;
-                            }
-                        },
-                        Err(err) => {
-                            error!("The thread handling the background_load for image {path:?} exited with {:?}", err);
-                            self.images.remove(&path);
-                            return ImageLoaderStatus::Error;
+            if let Some(rx) = image.thread_handle.take() {
+                match rx.try_recv() {
+                    Ok(Some(image_data)) => {
+                        image.data = Some(image_data);
+                    }
+                    Ok(None) | Err(TryRecvError::Disconnected) => {
+                        self.images.remove(&path);
+                        return ImageLoaderStatus::Error;
+                    }
+                    Err(TryRecvError::Empty) => {
+                        // the thread is still running
+                        // reassign the handle
+                        image.thread_handle = Some(rx);
+                        // if this is a new requester, add it to the list
+                        if !image.requesters.contains(&requester_name) {
+                            image.requesters.push(requester_name);
                         }
+                        return ImageLoaderStatus::Waiting;
                     }
-                } else {
-                    // the thread is still running
-                    // reassign the handle
-                    image.thread_handle = Some(handle);
-                    // if this is a new requester, add it to the list
-                    if !image.requesters.contains(&requester_name) {
-                        image.requesters.push(requester_name);
-                    }
-                    return ImageLoaderStatus::Waiting;
                 }
             }
             if let Some(data) = &image.data {
@@ -95,7 +91,8 @@ impl ImageLoader {
         let path_clone = path.clone();
         let ping_clone = self.ping.clone();
         let requester_clone = requester_name.clone();
-        let handle = std::thread::spawn(move || match open(&path_clone) {
+        let (tx, rx) = std::sync::mpsc::channel();
+        rayon::spawn(move || match open(&path_clone) {
             Ok(image) => {
                 // Notify the event loop that the image has been loaded
                 // We need this so that Surface::load_wallpaper is called even if
@@ -104,8 +101,8 @@ impl ImageLoader {
                 // Do the conversion first, then the ping, otherwise we will have a race
                 // condition
                 let image = image.into_rgba8();
+                tx.send(Some(image)).unwrap();
                 ping_clone.ping();
-                Some(image)
             }
             Err(err) => {
                 warn!(
@@ -114,12 +111,12 @@ impl ImageLoader {
                         "Failed to read image {path_clone:?} needed for {requester_clone}"
                     ))
                 );
-                None
+                tx.send(None).unwrap();
             }
         });
         let image = Image {
             requesters: vec![requester_name],
-            thread_handle: Some(handle),
+            thread_handle: Some(rx),
             data: None,
         };
         self.images.insert(path, image);
