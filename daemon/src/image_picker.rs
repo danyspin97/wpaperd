@@ -6,6 +6,7 @@ use std::{
 };
 
 use log::warn;
+use randomize::Gen32;
 use smithay_client_toolkit::reexports::client::{protocol::wl_surface::WlSurface, QueueHandle};
 
 use crate::{
@@ -582,7 +583,7 @@ fn next_random_image(
     // that the queue is bigger than the amount of available wallpapers
     let mut tries = 5;
     loop {
-        let index = rand::random::<usize>() % files.len();
+        let index = fastrand::usize(..files.len());
         // search for an image that has not been drawn yet
         // fail after 5 tries
         if !queue.contains(&files[index]) {
@@ -594,7 +595,7 @@ fn next_random_image(
         // the current one. We also know that there is more than one image
         if tries == 0 {
             break loop {
-                let index = rand::random::<usize>() % files.len();
+                let index = fastrand::usize(..files.len());
                 if files[index] != current_image {
                     break (index, files[index].to_path_buf());
                 }
