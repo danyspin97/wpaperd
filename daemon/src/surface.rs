@@ -257,7 +257,7 @@ impl Surface {
                 
                 // Exec Script on wallpaper change
                 if self.wallpaper_info.exec.is_some() {
-                    self.run_exec_script(&self.wallpaper_info);
+                    self.run_exec_script(&self.wallpaper_info, image_path.clone());
                 }
                            
                 let background_mode = self.wallpaper_info.mode;
@@ -271,8 +271,6 @@ impl Surface {
                     self.image_picker.reloaded();
                 } else if let Some(handle) = handle {
                     self.setup_drawing_image(image_path, index, handle);
-                    
-
                 } else {
                     warn!(
                         "No handle to add transition timer for display {}",
@@ -295,7 +293,6 @@ impl Surface {
                 self.loading_image = None;
                 // If we have tried too many times, stop
                 if self.loading_image_tries != 5 {
-
                     return self.load_wallpaper(handle);
                 }
                 Ok(false)
@@ -303,14 +300,21 @@ impl Surface {
         }
     }
 
-    // Executing script function.
-    pub fn run_exec_script(&self, wallpaper_info: &WallpaperInfo) {
+    // Execute bash script function. 
+    // Provides bash script with name of display and path to wallpaper as arguments
+    pub fn run_exec_script(&self, wallpaper_info: &WallpaperInfo, image_path: PathBuf) {
         if let Some(exec_path) = &wallpaper_info.exec {
-            let exec_path = exec_path.clone(); // Clone to move into the thread
+            let exec_path = exec_path.clone();
+            let name = self.name().to_owned();
+            let image_path_str = image_path.to_string_lossy().to_string();
+            let args = vec![name, image_path_str];
             std::thread::spawn(move || {
-                match Command::new(exec_path).status() {
+                match Command::new(exec_path)
+                    .args(&args) 
+                    .status()
+                {
                     Ok(status) if status.success() => {
-                        // Log success if needed
+                        // Script executed successfully.
                     }
                     Ok(status) => {
                         error!(
