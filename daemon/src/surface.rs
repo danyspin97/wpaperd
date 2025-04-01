@@ -7,6 +7,8 @@ use std::{
     time::{Duration, Instant},
 };
 
+use std::process::Command;
+
 use color_eyre::{
     eyre::{eyre, OptionExt, WrapErr},
     Result,
@@ -252,6 +254,12 @@ impl Surface {
             .background_load(image_path.to_owned(), self.name().to_owned());
         match res {
             crate::image_loader::ImageLoaderStatus::Loaded(data) => {
+                
+                // Exec Script on wallpaper change
+                if self.wallpaper_info.exec.is_some() {
+                    self.run_exec_script(&self.wallpaper_info, image_path.clone());
+                }
+                           
                 let background_mode = self.wallpaper_info.mode;
                 let offset = self.wallpaper_info.offset;
                 self.context
@@ -289,6 +297,36 @@ impl Surface {
                 }
                 Ok(false)
             }
+        }
+    }
+
+    // Execute bash script function. 
+    // Provides bash script with name of display and path to wallpaper as arguments
+    pub fn run_exec_script(&self, wallpaper_info: &WallpaperInfo, image_path: PathBuf) {
+        if let Some(exec_path) = &wallpaper_info.exec {
+            let exec_path = exec_path.clone();
+            let name = self.name().to_owned();
+            let image_path_str = image_path.to_string_lossy().to_string();
+            let args = vec![name, image_path_str];
+            std::thread::spawn(move || {
+                match Command::new(exec_path)
+                    .args(&args) 
+                    .status()
+                {
+                    Ok(status) if status.success() => {
+                        // Script executed successfully.
+                    }
+                    Ok(status) => {
+                        error!(
+                            "Script exited with non-zero status: {}",
+                            status
+                        );
+                    }
+                    Err(err) => {
+                        error!("Failed to execute script: {:?}", err);
+                    }
+                }
+            });
         }
     }
 

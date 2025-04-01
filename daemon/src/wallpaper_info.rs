@@ -43,6 +43,7 @@ pub struct WallpaperInfo {
 
     /// Recursively iterate the directory set as path
     pub recursive: Option<Recursive>,
+    pub exec: Option<PathBuf>,
 }
 
 impl Default for WallpaperInfo {
@@ -59,6 +60,7 @@ impl Default for WallpaperInfo {
             transition: Transition::Fade {},
             offset: None,
             recursive: None,
+            exec: None,
         }
     }
 }
