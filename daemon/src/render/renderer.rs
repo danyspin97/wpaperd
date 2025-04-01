@@ -150,7 +150,6 @@ impl Renderer {
             ((time.saturating_sub(started)) as f32 / self.transition_time as f32).min(1.0);
         // Recalculate the current progress, the transition might end now
         if progress == 1.0 {
-            self.transition_status = TransitionStatus::Ended;
             self.transition_finished();
             false
         } else {
@@ -389,6 +388,7 @@ impl Renderer {
 
     #[inline]
     pub fn transition_finished(&mut self) {
+        self.transition_status = TransitionStatus::Ended;
         // By binding transparent pixel into the old wallpaper, we can delete the texture,
         // freeing space from the GPU
         unsafe {
