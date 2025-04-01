@@ -1,15 +1,12 @@
 # 1.1.2
 ## New features
 - Add a new `recursive` config option, enabled by default (fixes #112).
-- Add support for regex (thanks to [@ein-shived], #108)
-- Add support for running scripts every time the wallpaper change (thanks to [@Primitheus], #121)
+- Add support for regex (thanks to [@ein-shived](https://github.com/ein-shved), #108)
+- Add support for running scripts every time the wallpaper change (thanks to [@Primitheus](https://github.com/Primitheus), #121)
 ## Bug fixes
 - Redraw wallpaper when the screen rotates
 - Skip the transition when it's happening in background
   (i.e. the wallpaper is not currently focused).
-
-@ein-shived: https://github.com/ein-shved
-@Primitheus: https://github.com/Primitheus
 
 # 1.1.1
 ## New features
