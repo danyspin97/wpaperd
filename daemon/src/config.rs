@@ -239,7 +239,12 @@ impl SerializedWallpaperInfo {
             (None, None) => None,
         };
 
-        if let Some(exec_path) = &self.exec {
+        let exec = match (&self.exec, &default.exec) {
+            (Some(exec), _) | (None, Some(exec)) => Some(exec.to_path_buf()),
+            (None, None) => None,
+        };
+
+        if let Some(exec_path) = &exec {
             ensure!(
                 exec_path.exists(),
                 "Exec script {} must exist",
@@ -269,7 +274,7 @@ impl SerializedWallpaperInfo {
             transition,
             offset,
             recursive,
-            exec: self.exec.clone(),
+            exec,
         })
     }
 }

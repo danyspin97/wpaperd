@@ -1,3 +1,7 @@
+# 1.2.1
+## Bux fixes
+- Load `exec` value from default (fixes #123).
+
 # 1.2.0
 ## New features
 - Add a new `recursive` config option, enabled by default (fixes #112).
