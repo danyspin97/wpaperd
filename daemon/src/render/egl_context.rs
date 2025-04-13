@@ -151,7 +151,7 @@ impl EglContext {
             .resize(display_info)
             .wrap_err("Failed to resize GL window")?;
         // If we resize, stop immediately any lingering transition
-        self.renderer.force_transition_end();
+        self.renderer.transition_finished();
 
         Ok(())
     }

@@ -753,7 +753,6 @@ impl Surface {
                                         // the transition itself. Still, this might be triggered with
                                         // other compositors, left as a safety measure.
                                         context.renderer.transition_finished();
-                                        context.renderer.force_transition_end();
                                     }
                                 }
                                 surface.image_picker.next_image(

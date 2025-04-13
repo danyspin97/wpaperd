@@ -401,12 +401,6 @@ impl Renderer {
     }
 
     #[inline]
-    pub fn force_transition_end(&mut self) {
-        // Force the transition to end
-        self.transition_status = TransitionStatus::Ended;
-    }
-
-    #[inline]
     pub fn update_transition(&mut self, transition: Transition, transform: Transform) {
         match create_program(&self.gl, transition) {
             Ok(program) => {
@@ -415,7 +409,7 @@ impl Renderer {
                 }
                 // Stop the transition immediately
                 if self.transition_running() {
-                    self.force_transition_end();
+                    self.transition_finished();
                 }
                 self.program = program;
                 unsafe {
