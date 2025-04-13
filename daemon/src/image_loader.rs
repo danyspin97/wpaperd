@@ -13,7 +13,7 @@ type ImageData = Option<RgbaImage>;
 
 struct Image {
     data: ImageData,
-    thread_handle: Option<Receiver<ImageData>>,
+    receiver: Option<Receiver<ImageData>>,
     requesters: Vec<String>,
 }
 
@@ -38,7 +38,7 @@ impl ImageLoader {
 
     pub fn background_load(&mut self, path: PathBuf, requester_name: String) -> ImageLoaderStatus {
         if let Some(image) = self.images.get_mut(&path) {
-            if let Some(rx) = image.thread_handle.take() {
+            if let Some(rx) = image.receiver.take() {
                 match rx.try_recv() {
                     Ok(Some(image_data)) => {
                         image.data = Some(image_data);
@@ -50,7 +50,7 @@ impl ImageLoader {
                     Err(TryRecvError::Empty) => {
                         // the thread is still running
                         // reassign the handle
-                        image.thread_handle = Some(rx);
+                        image.receiver = Some(rx);
                         // if this is a new requester, add it to the list
                         if !image.requesters.contains(&requester_name) {
                             image.requesters.push(requester_name);
@@ -116,7 +116,7 @@ impl ImageLoader {
         });
         let image = Image {
             requesters: vec![requester_name],
-            thread_handle: Some(rx),
+            receiver: Some(rx),
             data: None,
         };
         self.images.insert(path, image);
