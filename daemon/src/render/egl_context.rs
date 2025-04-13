@@ -107,7 +107,10 @@ impl EglContext {
             Some(self.surface),
             Some(self.context),
         )
-        .wrap_err("Failed to set the current EGL context")
+        .wrap_err("Failed to set the current EGL context")?;
+
+        egl.swap_interval(self.display, 0)
+            .wrap_err("Failed to disable vsync for the EGL context")
     }
 
     // Swap the buffers of the surface
