@@ -170,13 +170,12 @@ impl Surface {
             self.wl_surface.frame(qh, self.wl_surface.clone());
             // We are waiting for an image to be loaded in memory
         } else if self.loading_image.is_some() {
-            self.wl_surface.frame(qh, self.wl_surface.clone());
-            // We need to draw the first time, do not exit this function
             if self.window_drawn {
-                // We need to call commit, otherwise the call to frame above doesn't work
-                self.wl_surface().commit();
                 return Ok(());
             }
+            self.wl_surface.frame(qh, self.wl_surface.clone());
+            // We need to call commit, otherwise the call to frame above doesn't work
+            self.wl_surface().commit();
         }
 
         self.get_context()?
@@ -197,9 +196,9 @@ impl Surface {
         Ok(())
     }
 
-    pub fn try_drawing(&mut self, qh: &QueueHandle<Wpaperd>, time: Option<u32>) -> bool {
+    pub fn try_drawing(&mut self, qh: &QueueHandle<Wpaperd>, time: Option<u32>) {
         match self.draw(qh, time) {
-            Ok(_) => true,
+            Ok(_) => {}
             Err(err) => {
                 error!(
                     "{:?}",
@@ -212,7 +211,6 @@ impl Surface {
                 // frame
                 self.context = None;
                 self.wl_surface.frame(qh, self.wl_surface.clone());
-                false
             }
         }
     }
@@ -232,6 +230,10 @@ impl Surface {
                     return Ok(true);
                 }
                 self.loading_image = Some(item);
+                if self.get_context()?.renderer.transition_running() {
+                    // A new image is ready, load it and end the current transition abruptly
+                    self.get_context()?.renderer.transition_finished();
+                }
             } else {
                 // we don't need to load any image
                 return Ok(true);
@@ -243,10 +245,6 @@ impl Surface {
             .as_ref()
             .expect("loading image to be set")
             .clone();
-
-        if self.get_context()?.renderer.transition_running() {
-            return Ok(true);
-        }
 
         let res = self
             .image_loader
@@ -271,7 +269,7 @@ impl Surface {
                 } else if let Some(handle) = handle {
                     self.setup_drawing_image(image_path, index, handle);
                 } else {
-                    warn!(
+                    error!(
                         "No handle to add transition timer for display {}",
                         self.display_info.name
                     );
@@ -330,11 +328,11 @@ impl Surface {
         handle: &LoopHandle<Wpaperd>,
     ) {
         let transition_time = if self.skip_next_transition {
+            self.skip_next_transition = false;
             0
         } else {
             self.wallpaper_info.transition_time
         };
-        self.skip_next_transition = false;
 
         self.update_wallpaper_link(&image_path);
         self.image_picker.update_current_image(image_path, index);
@@ -493,10 +491,6 @@ impl Surface {
 
     pub fn has_been_drawn(&self) -> bool {
         self.window_drawn
-    }
-
-    pub fn drawn(&mut self) {
-        self.window_drawn = true;
     }
 
     /// Update the wallpaper_info of this Surface
