@@ -193,6 +193,8 @@ impl Surface {
         // Finally, commit the surface
         self.wl_surface.commit();
 
+        self.window_drawn = true;
+
         Ok(())
     }
 
