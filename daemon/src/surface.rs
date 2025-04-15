@@ -35,8 +35,12 @@ use smithay_client_toolkit::{
 };
 
 use crate::{
-    display_info::DisplayInfo, image_loader::ImageLoader, image_picker::ImagePicker,
-    render::EglContext, wallpaper_groups::WallpaperGroups, wallpaper_info::WallpaperInfo,
+    display_info::DisplayInfo,
+    image_loader::ImageLoader,
+    image_picker::ImagePicker,
+    render::EglContext,
+    wallpaper_groups::WallpaperGroups,
+    wallpaper_info::{Sorting, WallpaperInfo},
     wpaperd::Wpaperd,
 };
 
@@ -140,7 +144,7 @@ impl Surface {
 
         // Start loading the wallpaper as soon as possible (i.e. surface creation)
         // It will still be loaded as a texture when we have an openGL context
-        if let Err(err) = surface.load_wallpaper(None) {
+        if let Err(err) = surface.load_wallpaper() {
             warn!(
                 "{:?}",
                 err.wrap_err(format!(
@@ -166,16 +170,10 @@ impl Surface {
             // If we don't have any time passed, just consider the transition to be ended by using 0
             .update_transition_status(time.unwrap_or(0))
         {
-            // Don't call queue_draw as it calls load_wallpaper again
-            self.wl_surface.frame(qh, self.wl_surface.clone());
+            self.queue_draw(qh);
             // We are waiting for an image to be loaded in memory
-        } else if self.loading_image.is_some() {
-            if self.window_drawn {
-                return Ok(());
-            }
-            self.wl_surface.frame(qh, self.wl_surface.clone());
-            // We need to call commit, otherwise the call to frame above doesn't work
-            self.wl_surface().commit();
+        } else if self.loading_image.is_some() && self.window_drawn {
+            return Ok(());
         }
 
         self.get_context()?
@@ -220,7 +218,7 @@ impl Surface {
     // Start loading a wallpaper with the image_loader.
     // Returns true when it is loaded, false when we need to wait
     // Call surface::frame when this return false
-    pub fn load_wallpaper(&mut self, handle: Option<&LoopHandle<Wpaperd>>) -> Result<bool> {
+    pub fn load_wallpaper(&mut self) -> Result<bool> {
         // If we were not already trying to load an image
         if self.loading_image.is_none() {
             if let Some(item) = self.image_picker.get_image_from_path(
@@ -268,13 +266,8 @@ impl Surface {
 
                 if self.image_picker.is_reloading() {
                     self.image_picker.reloaded();
-                } else if let Some(handle) = handle {
-                    self.setup_drawing_image(image_path, index, handle);
                 } else {
-                    error!(
-                        "No handle to add transition timer for display {}",
-                        self.display_info.name
-                    );
+                    self.setup_drawing_image(image_path, index);
                 }
                 // Restart the counter
                 self.loading_image_tries = 0;
@@ -292,7 +285,7 @@ impl Surface {
                 self.loading_image = None;
                 // If we have tried too many times, stop
                 if self.loading_image_tries != 5 {
-                    return self.load_wallpaper(handle);
+                    return self.load_wallpaper();
                 }
                 Ok(false)
             }
@@ -323,12 +316,7 @@ impl Surface {
         }
     }
 
-    pub fn setup_drawing_image(
-        &mut self,
-        image_path: PathBuf,
-        index: usize,
-        handle: &LoopHandle<Wpaperd>,
-    ) {
+    pub fn setup_drawing_image(&mut self, image_path: PathBuf, index: usize) {
         let transition_time = if self.skip_next_transition {
             self.skip_next_transition = false;
             0
@@ -342,53 +330,9 @@ impl Surface {
             .unwrap()
             .renderer
             .start_transition(transition_time);
-        self.add_transition_timer(handle);
         // Update the instant where we have drawn the image
         if let EventSource::Running(registration_token, duration, _) = self.event_source {
             self.event_source = EventSource::Running(registration_token, duration, Instant::now());
-        }
-    }
-
-    pub fn add_transition_timer(&mut self, handle: &LoopHandle<Wpaperd>) {
-        let timer = Timer::from_duration(Duration::from_millis(
-            self.wallpaper_info.transition_time.into(),
-        ));
-
-        let name = self.name().to_owned();
-        if let Err(err) = handle.insert_source(
-            timer,
-            move |_deadline, _: &mut (), wpaperd: &mut Wpaperd| {
-                let surface = match wpaperd.surface_from_name(&name).ok_or_eyre(format!(
-                    "Surface for display {name} is not available available in wpaperd registry"
-                )) {
-                    Ok(surface) => surface,
-                    Err(err) => {
-                        error!("{err:?}");
-                        return TimeoutAction::Drop;
-                    }
-                };
-
-                if let EventSource::Running(_, _, instant) = surface.event_source {
-                    let time_left =
-                        Duration::from_millis(surface.wallpaper_info.transition_time.into())
-                            .saturating_sub(instant.elapsed());
-                    // if the time we are drawing is past the transition_time
-                    if time_left.is_zero() {
-                        if let Err(err) = surface.get_context().map(|context| {
-                            context.renderer.transition_finished();
-                        }) {
-                            error!("{err:?}");
-                        }
-                        TimeoutAction::Drop
-                    } else {
-                        TimeoutAction::ToDuration(time_left)
-                    }
-                } else {
-                    TimeoutAction::Drop
-                }
-            },
-        ) {
-            error!("{err:?}");
         }
     }
 
@@ -527,9 +471,11 @@ impl Surface {
             // ask the image_picker to pick a new a image
             self.image_picker
                 .next_image(&self.wallpaper_info.path, &self.wallpaper_info.recursive);
+            self.load_new_wallpaper();
+        } else if let Some(Sorting::GroupedRandom { .. }) = self.wallpaper_info.sorting {
+            // Always queue draw to load changes (needed for GroupedRandom)
+            self.queue_draw(qh);
         }
-        // Always queue draw to load changes (needed for GroupedRandom)
-        self.queue_draw(qh);
         self.handle_new_duration(&wallpaper_info, handle, path_changed, qh);
 
         if self.wallpaper_info.mode != wallpaper_info.mode
@@ -638,7 +584,7 @@ impl Surface {
                                 &self.wallpaper_info.path,
                                 &self.wallpaper_info.recursive,
                             );
-                            if let Err(err) = self.load_wallpaper(None).wrap_err_with(|| {
+                            if let Err(err) = self.load_wallpaper().wrap_err_with(|| {
                                 format!(
                                     "Failed to query the image loader for display {}",
                                     self.name()
@@ -755,7 +701,7 @@ impl Surface {
                                     &surface.wallpaper_info.path,
                                     &surface.wallpaper_info.recursive,
                                 );
-                                surface.queue_draw(&qh);
+                                surface.load_new_wallpaper();
                                 surface.wallpaper_info.duration.unwrap()
                             };
                             surface.event_source =
@@ -798,7 +744,13 @@ impl Surface {
 
     #[inline]
     pub fn queue_draw(&mut self, qh: &QueueHandle<Wpaperd>) {
-        if let Err(err) = self.load_wallpaper(None).wrap_err_with(|| {
+        self.wl_surface.frame(qh, self.wl_surface.clone());
+        self.wl_surface.commit();
+    }
+
+    #[inline]
+    pub fn load_new_wallpaper(&mut self) {
+        if let Err(err) = self.load_wallpaper().wrap_err_with(|| {
             format!(
                 "Failed to query the image loader for display {}",
                 self.name()
@@ -806,8 +758,6 @@ impl Surface {
         }) {
             warn!("{err:?}");
         }
-        self.wl_surface.frame(qh, self.wl_surface.clone());
-        self.wl_surface.commit();
     }
 
     /// Indicate to the main event loop that the automatic wallpaper sequence for this [`Surface`]
@@ -915,7 +865,7 @@ impl Surface {
                 // First we need to tell the image picker that we are not choosing a new image
                 self.image_picker.reload();
                 // Then we need to ask the background loader to load the image
-                let res = self.load_wallpaper(None);
+                let res = self.load_wallpaper();
                 match res {
                     Ok(loaded) if loaded => {
                         self.try_drawing(qh, None);

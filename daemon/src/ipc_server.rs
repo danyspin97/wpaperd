@@ -114,7 +114,7 @@ pub fn handle_message(
             check_monitors(wpaperd, &monitors).map(|_| {
                 for surface in collect_surfaces(wpaperd, monitors) {
                     surface.image_picker.previous_image();
-                    surface.queue_draw(&qh);
+                    surface.load_new_wallpaper();
                 }
 
                 IpcResponse::Ok
@@ -127,7 +127,7 @@ pub fn handle_message(
                     &surface.wallpaper_info.path,
                     &surface.wallpaper_info.recursive,
                 );
-                surface.queue_draw(&qh);
+                surface.load_new_wallpaper();
             }
 
             IpcResponse::Ok
@@ -136,6 +136,7 @@ pub fn handle_message(
         IpcMessage::ReloadWallpaper { monitors } => check_monitors(wpaperd, &monitors).map(|_| {
             for surface in collect_surfaces(wpaperd, monitors) {
                 surface.image_picker.reload();
+                surface.load_new_wallpaper();
                 surface.queue_draw(&qh);
             }
 
