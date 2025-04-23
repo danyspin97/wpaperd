@@ -605,7 +605,7 @@ impl Surface {
                             // Remove the previous timer and add a new one
                             handle.remove(registration_token);
                             self.event_source = EventSource::NotSet;
-                            self.add_timer(handle, qh.clone(), Some(duration));
+                            self.add_timer(handle, Some(duration));
                         }
                         EventSource::Paused(_) => {
                             // Add a new paused timer
@@ -616,9 +616,7 @@ impl Surface {
                 }
                 _ => {
                     self.add_timer(
-                        handle,
-                        qh.clone(),
-                        // The new duration will be picked by add_timer
+                        handle, // The new duration will be picked by add_timer
                         None,
                     );
                 }
@@ -628,12 +626,7 @@ impl Surface {
 
     /// Add a new timer in the event_loop for the current duration
     /// Stop if there is already a timer added
-    pub fn add_timer(
-        &mut self,
-        handle: &LoopHandle<Wpaperd>,
-        qh: QueueHandle<Wpaperd>,
-        duration_left: Option<Duration>,
-    ) {
+    pub fn add_timer(&mut self, handle: &LoopHandle<Wpaperd>, duration_left: Option<Duration>) {
         // Timer is already running
         if matches!(self.event_source, EventSource::Running(_, _, _)) {
             return;
@@ -721,7 +714,7 @@ impl Surface {
     /// Handle updating the timer based on the pause state of the automatic wallpaper sequence.
     /// Remove the timer if pausing, and add a new timer with the remaining duration of the old
     /// timer when resuming.
-    pub fn handle_pause_state(&mut self, handle: &LoopHandle<Wpaperd>, qh: QueueHandle<Wpaperd>) {
+    pub fn handle_pause_state(&mut self, handle: &LoopHandle<Wpaperd>) {
         match (self.should_pause, &self.event_source) {
             // Should pause, but timer is still currently running
             (true, EventSource::Running(registration_token, duration, instant)) => {
@@ -735,7 +728,7 @@ impl Surface {
             }
             // Should resume, but timer is not currently running
             (false, EventSource::Paused(duration)) => {
-                self.add_timer(handle, qh.clone(), Some(*duration));
+                self.add_timer(handle, Some(*duration));
             }
             // Otherwise no update is necessary
             (_, _) => {}

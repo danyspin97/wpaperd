@@ -258,12 +258,12 @@ fn run(opts: Opts, xdg_dirs: BaseDirectories) -> Result<()> {
             if !surface.has_been_drawn() {
                 // Add the first timer, it will run endlessy or it will be updated in
                 // Surface::handle_new_duration
-                surface.add_timer(&event_loop.handle(), qh.clone(), None);
+                surface.add_timer(&event_loop.handle(), None);
                 surface.try_drawing(&qh, None);
             } else {
                 // If the surface has already been drawn for the first time, then handle pausing/resuming
                 // the automatic wallpaper sequence.
-                surface.handle_pause_state(&event_loop.handle(), qh.clone());
+                surface.handle_pause_state(&event_loop.handle());
                 if matches!(
                     surface.wallpaper_info.sorting,
                     Some(Sorting::GroupedRandom { .. })
