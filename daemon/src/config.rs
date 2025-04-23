@@ -214,7 +214,7 @@ impl SerializedWallpaperInfo {
         };
         let initial_transition = match (&self.initial_transition, &default.initial_transition) {
             (Some(initial_transition), _) | (None, Some(initial_transition)) => *initial_transition,
-            (None, None) => true,
+            (None, None) => false,
         };
 
         let transition = match (&self.transition, &default.transition) {

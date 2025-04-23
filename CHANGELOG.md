@@ -1,4 +1,6 @@
 # 1.2.2
+## Breaking changes
+- `initial-transition` is now set to false by default
 ## Bugfixes
 - Fix leak by reusing memory for loading wallpapers (fixes #131).
 - Fix binding previous wallpaper to properly show transitions.
