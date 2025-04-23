@@ -126,15 +126,8 @@ fn initialize_objects(gl: &gl::Gl) -> Result<(gl::types::GLuint, gl::types::GLui
     }
 }
 
-fn load_texture(gl: &gl::Gl, image: DynamicImage) -> Result<gl::types::GLuint> {
-    Ok(unsafe {
-        let mut texture = 0;
-        gl.GenTextures(1, &mut texture);
-        gl_check!(gl, "Failed to generate a texture");
-        gl.ActiveTexture(gl::TEXTURE1);
-        gl_check!(gl, "Failed to activate the texture TEXTURE1");
-        gl.BindTexture(gl::TEXTURE_2D, texture);
-        gl_check!(gl, "Failed to bind the texture TEXTURE1");
+fn load_texture(gl: &gl::Gl, image: DynamicImage) -> Result<()> {
+    unsafe {
         gl.TexImage2D(
             gl::TEXTURE_2D,
             0,
@@ -153,7 +146,7 @@ fn load_texture(gl: &gl::Gl, image: DynamicImage) -> Result<gl::types::GLuint> {
         gl_check!(gl, "Failed to define the texture min filter");
         gl.TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, gl::LINEAR as i32);
         gl_check!(gl, "Failed to define the texture mag filter");
+    }
 
-        texture
-    })
+    Ok(())
 }

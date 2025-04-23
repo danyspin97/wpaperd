@@ -1,3 +1,8 @@
+# 1.2.2
+## Bugfixes
+- Fix leak by reusing memory for loading wallpapers (fixes #131).
+- Fix binding previous wallpaper to properly show transitions.
+
 # 1.2.1
 ## Bux fixes
 - Load `exec` value from default (fixes #123).

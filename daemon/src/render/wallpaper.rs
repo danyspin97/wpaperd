@@ -16,13 +16,37 @@ pub struct Wallpaper {
 }
 
 impl Wallpaper {
-    pub const fn new(gl: Rc<gl::Gl>) -> Self {
-        Self {
-            gl,
-            texture: 0,
-            image_width: 10,
-            image_height: 10,
+    pub fn new(gl: Rc<gl::Gl>, image: DynamicImage, current: bool) -> Result<Self> {
+        let image_width = image.width();
+        let image_height = image.height();
+        let mut texture = 0;
+        unsafe {
+            gl.GenTextures(1, &mut texture);
+            gl.ActiveTexture(if current { gl::TEXTURE1 } else { gl::TEXTURE0 });
+            gl_check!(
+                gl,
+                format!(
+                    "Failed to activate the texture TEXTURE{}",
+                    if current { 1 } else { 0 }
+                )
+            );
+            gl.BindTexture(gl::TEXTURE_2D, texture);
+            gl_check!(
+                gl,
+                format!(
+                    "Failed to bind the texture TEXTURE{}",
+                    if current { 1 } else { 0 }
+                )
+            );
         }
+        load_texture(&gl, image)?;
+
+        Ok(Self {
+            gl,
+            texture,
+            image_width,
+            image_height,
+        })
     }
 
     pub fn bind(&self) -> Result<()> {
@@ -34,31 +58,31 @@ impl Wallpaper {
         Ok(())
     }
 
-    pub fn load_image(&mut self, image: DynamicImage) -> Result<()> {
-        self.image_width = image.width();
-        self.image_height = image.height();
-
-        let texture = load_texture(&self.gl, image)?;
-
-        unsafe {
-            // Delete from memory the previous texture
-            self.gl.DeleteTextures(1, &self.texture);
-            self.texture = texture;
-            gl_check!(
-                self.gl,
-                "Failed to delete the previous texture (might make the memory full)"
-            );
-        }
-
-        Ok(())
-    }
-
     pub fn get_image_height(&self) -> u32 {
         self.image_height
     }
 
     pub fn get_image_width(&self) -> u32 {
         self.image_width
+    }
+
+    pub fn load_image(&mut self, image: DynamicImage, current: bool) -> Result<()> {
+        self.image_width = image.width();
+        self.image_height = image.height();
+
+        unsafe {
+            self.gl
+                .ActiveTexture(if current { gl::TEXTURE1 } else { gl::TEXTURE0 });
+            gl_check!(
+                self.gl,
+                format!(
+                    "Failed to activate the texture TEXTURE{}",
+                    if current { 1 } else { 0 }
+                )
+            );
+            self.bind()?;
+        }
+        load_texture(&self.gl, image)
     }
 }
 

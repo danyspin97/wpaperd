@@ -13,17 +13,13 @@ use crate::{
     display_info::DisplayInfo,
     gl_check,
     render::{
-        initialize_objects, load_texture,
+        initialize_objects,
         shader::{create_shader, FRAGMENT_SHADER_SOURCE, VERTEX_SHADER_SOURCE},
     },
     wallpaper_info::BackgroundMode,
 };
 
 use super::{gl, wallpaper::Wallpaper, Transition};
-
-fn transparent_image() -> RgbaImage {
-    RgbaImage::from_raw(1, 1, vec![0, 0, 0, 0]).unwrap()
-}
 
 fn black_image() -> RgbaImage {
     RgbaImage::from_raw(1, 1, vec![0, 0, 0, 255]).unwrap()
@@ -43,9 +39,9 @@ pub struct Renderer {
     eab: gl::types::GLuint,
     // milliseconds time for the transition
     pub transition_time: u32,
-    prev_wallpaper: Option<Wallpaper>,
+    prev_wallpaper: Wallpaper,
     current_wallpaper: Wallpaper,
-    transparent_texture: gl::types::GLuint,
+    //transparent_texture: gl::types::GLuint,
     /// contains the progress of the current animation
     transition_status: TransitionStatus,
 }
@@ -67,31 +63,20 @@ impl Renderer {
 
         let (vbo, eab) = initialize_objects(&gl).wrap_err("Failed to initialize openGL objects")?;
 
-        let current_wallpaper = Wallpaper::new(gl.clone());
+        let current_wallpaper = Wallpaper::new(gl.clone(), black_image().into(), true)?;
+        let prev_wallpaper = Wallpaper::new(gl.clone(), black_image().into(), false)?;
 
-        let transparent_texture = load_texture(&gl, transparent_image().into())
-            .wrap_err("Failed to load transparent image into a texture")?;
-
-        let mut renderer = Self {
+        let renderer = Self {
             gl,
             program,
             vbo,
             eab,
             transition_time,
-            prev_wallpaper: None,
+            prev_wallpaper,
             current_wallpaper,
-            transparent_texture,
             transition_status: TransitionStatus::Ended,
         };
 
-        renderer
-            .load_wallpaper(
-                black_image().into(),
-                BackgroundMode::Stretch,
-                None,
-                display_info,
-            )
-            .wrap_err("Failed to query image loader")?;
         renderer
             .set_projection_matrix(display_info.transform)
             .wrap_err("Failed to set projection matrix for openGL context")?;
@@ -165,36 +150,17 @@ impl Renderer {
         offset: Option<f32>,
         display_info: &DisplayInfo,
     ) -> Result<()> {
-        self.prev_wallpaper = Some(std::mem::replace(
-            &mut self.current_wallpaper,
-            Wallpaper::new(self.gl.clone()),
-        ));
-        self.current_wallpaper.load_image(image)?;
-
-        self.bind_wallpapers(mode, offset, display_info)?;
-
-        Ok(())
-    }
-
-    fn bind_wallpapers(
-        &mut self,
-        mode: BackgroundMode,
-        offset: Option<f32>,
-        display_info: &DisplayInfo,
-    ) -> Result<()> {
-        self.set_mode(mode, offset, display_info)?;
-
+        std::mem::swap(&mut self.prev_wallpaper, &mut self.current_wallpaper);
         unsafe {
             self.gl.ActiveTexture(gl::TEXTURE0);
             self.check_error("Failed to activate texture TEXTURE0")?;
-            self.prev_wallpaper
-                .as_ref()
-                .expect("Previous wallpaper must always be set")
-                .bind()?;
-
-            // current_wallpaper is already binded to TEXTURE1, as load_texture loads the image
-            // there
         }
+        self.prev_wallpaper.bind()?;
+
+        // Load image into TEXTURE1
+        self.current_wallpaper.load_image(image, true)?;
+
+        self.set_mode(mode, offset, display_info)?;
 
         Ok(())
     }
@@ -258,14 +224,10 @@ impl Renderer {
             self.current_wallpaper.get_image_width() as f32,
             self.current_wallpaper.get_image_height() as f32,
         );
-        let (prev_image_width, prev_image_height) = if let Some(prev_wp) = &self.prev_wallpaper {
-            (
-                prev_wp.get_image_width() as f32,
-                prev_wp.get_image_height() as f32,
-            )
-        } else {
-            (1.0, 1.0)
-        };
+        let (prev_image_width, prev_image_height) = (
+            self.prev_wallpaper.get_image_width() as f32,
+            self.prev_wallpaper.get_image_height() as f32,
+        );
 
         let prev_texture_scale = gen_texture_scale(prev_image_width, prev_image_height);
 
@@ -389,15 +351,6 @@ impl Renderer {
     #[inline]
     pub fn transition_finished(&mut self) {
         self.transition_status = TransitionStatus::Ended;
-        // By binding transparent pixel into the old wallpaper, we can delete the texture,
-        // freeing space from the GPU
-        unsafe {
-            // The previous wallpaper is always binding in TEXTURE0
-            self.gl.ActiveTexture(gl::TEXTURE0);
-            self.gl
-                .BindTexture(gl::TEXTURE_2D, self.transparent_texture);
-            self.prev_wallpaper.take();
-        }
     }
 
     #[inline]
