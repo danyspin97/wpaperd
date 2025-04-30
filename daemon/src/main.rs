@@ -65,15 +65,15 @@ fn run(opts: Opts, xdg_dirs: BaseDirectories) -> Result<()> {
         config
     } else {
         // Read the new config or the legacy file
-        let legacy_config_file = xdg_dirs
-            .place_config_file("wallpaper.toml")
-            .wrap_err("Failed to locate legacy config file wallpaper.toml")?;
-        if legacy_config_file.exists() {
+        if let Some(legacy_config_file) = xdg_dirs.find_config_file("wallpaper.toml") {
             legacy_config_file
+        } else if let Some(config_file) = xdg_dirs.find_config_file("config.toml") {
+            config_file
         } else {
-            xdg_dirs
-                .place_config_file("config.toml")
-                .wrap_err("Failed to locate config file config.toml")?
+            return Err(
+                eyre!("No configuration file found at wallpaper.toml or config.toml")
+                    .wrap_err("Failed to locate any config file"),
+            );
         }
     };
 
