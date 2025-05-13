@@ -45,7 +45,6 @@ use smithay_client_toolkit::reexports::{
     calloop_wayland_source::WaylandSource,
     client::{globals::registry_queue_init, Connection, Proxy},
 };
-use wallpaper_groups::WallpaperGroups;
 use wallpaper_info::Sorting;
 use wpaperd_ipc::socket_path;
 use xdg::BaseDirectories;
@@ -135,8 +134,6 @@ fn run(opts: Opts, xdg_dirs: BaseDirectories) -> Result<()> {
             .wrap_err("Failed to create FilelistCache")?;
     let filelist_cache = Rc::new(RefCell::new(filelist_cache));
 
-    let groups = Rc::new(RefCell::new(WallpaperGroups::new()));
-
     let (image_loader_ping, ping_source) = calloop::ping::make_ping()
         .wrap_err("Failed to create a calloop::ping::Ping for the image loader")?;
     let qh_clone = qh.clone();
@@ -168,7 +165,6 @@ fn run(opts: Opts, xdg_dirs: BaseDirectories) -> Result<()> {
         config,
         egl_display,
         filelist_cache.clone(),
-        groups,
         image_loader,
         xdg_dirs,
     )

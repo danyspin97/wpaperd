@@ -52,7 +52,6 @@ impl Wpaperd {
         config: Config,
         egl_display: egl::Display,
         filelist_cache: Rc<RefCell<FilelistCache>>,
-        wallpaper_groups: Rc<RefCell<WallpaperGroups>>,
         image_loader: Rc<RefCell<ImageLoader>>,
         xdg_dirs: BaseDirectories,
     ) -> Result<Self> {
@@ -71,7 +70,7 @@ impl Wpaperd {
             egl_display,
             filelist_cache,
             image_loader,
-            wallpaper_groups,
+            wallpaper_groups: Rc::new(RefCell::new(WallpaperGroups::new())),
             xdg_dirs,
         })
     }
