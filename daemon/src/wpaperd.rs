@@ -205,7 +205,7 @@ impl OutputHandler for Wpaperd {
             qh,
             surface.clone(),
             Layer::Background,
-            Some(format!("wpaperd-{}", name)),
+            Some(format!("wpaperd-{name}")),
             Some(&output),
         );
         layer.set_anchor(Anchor::TOP | Anchor::LEFT | Anchor::RIGHT | Anchor::BOTTOM);

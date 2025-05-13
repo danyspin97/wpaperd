@@ -306,10 +306,10 @@ impl Surface {
                         // Script executed successfully.
                     }
                     Ok(status) => {
-                        error!("Script exited with non-zero status: {}", status);
+                        error!("Script exited with non-zero status: {status}");
                     }
                     Err(err) => {
-                        error!("Failed to execute script: {:?}", err);
+                        error!("Failed to execute script: {err:?}");
                     }
                 }
             });
@@ -868,7 +868,7 @@ impl Surface {
                     }
                     Err(err) => {
                         self.wl_surface.frame(qh, self.wl_surface.clone());
-                        warn!("{:?}", err);
+                        warn!("{err:?}");
                     }
                 }
                 Some(context)

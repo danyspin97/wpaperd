@@ -183,7 +183,7 @@ fn run(opts: Opts, xdg_dirs: BaseDirectories) -> Result<()> {
         .handle()
         .insert_source(socket, |stream, _, wpaperd| {
             if let Err(err) = handle_message(stream, qh.clone(), wpaperd) {
-                error!("{:?}", err);
+                error!("{err:?}");
             }
         })?;
 
