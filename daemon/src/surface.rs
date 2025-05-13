@@ -476,7 +476,7 @@ impl Surface {
             // Always queue draw to load changes (needed for GroupedRandom)
             self.queue_draw(qh);
         }
-        self.handle_new_duration(&wallpaper_info, handle, path_changed, qh);
+        self.handle_new_duration(&wallpaper_info, handle, path_changed);
 
         if self.wallpaper_info.mode != wallpaper_info.mode
             || self.wallpaper_info.offset != wallpaper_info.offset
@@ -545,7 +545,6 @@ impl Surface {
         wallpaper_info: &WallpaperInfo,
         handle: &LoopHandle<Wpaperd>,
         path_changed: bool,
-        qh: &QueueHandle<Wpaperd>,
     ) {
         if self.wallpaper_info.duration != wallpaper_info.duration {
             match (self.wallpaper_info.duration, wallpaper_info.duration) {
