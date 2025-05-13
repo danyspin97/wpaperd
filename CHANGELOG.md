@@ -4,6 +4,8 @@
 ## Bugfixes
 - Fix leak by reusing memory for loading wallpapers (fixes #131).
 - Fix binding previous wallpaper to properly show transitions.
+- Disable vsync to let the event loop handle the transitions.
+- Do not create empty config directory (`$XDG_CONFIG_HOME/wpaperd`) (#132).
 
 # 1.2.1
 ## Bux fixes
