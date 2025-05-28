@@ -408,18 +408,8 @@ impl Config {
         if let Some(info) = matched {
             info.apply_and_validate(&self.default)
         } else {
-            let mut cleaned = String::from(description);
-
-            // Wayland may report an output description that includes
-            // information about the port and port type.  This information
-            // is *not* reported by sway so we need to strip it off so
-            // outputs are matched the way users expect.
-            if let Some(offset) = cleaned.rfind(" (") {
-                cleaned.truncate(offset);
-            }
-
             self.data
-                .get(&cleaned)
+                .get(clean_monitor_description(description))
                 .or_else(|| self.data.get(name))
                 .unwrap_or(&self.any)
                 .apply_and_validate(&self.default)
@@ -502,4 +492,48 @@ where
         path.strip_prefix("~")
             .map_or(path.to_path_buf(), |p| home_dir().unwrap().join(p)),
     ))
+}
+
+/// Clean a monitor description so that the value reported by Wayland matches the one reported by
+/// Sway/Hyprland.
+///
+/// Wayland may report an output description that includes information about the port and port type.
+/// This information is *not* reported by Sway or Hyprland so we need to strip it off so outputs are
+/// matched the way users expect.
+fn clean_monitor_description(desc: &str) -> &str {
+    desc.split_once(" (")
+        .map(|(s, _)| s)
+        .unwrap_or(desc)
+        // Some monitors descriptions contain more than a single space before the port information.
+        // See <https://github.com/danyspin97/wpaperd/issues/113>.
+        .trim_end()
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_clean_monitor_description() {
+        assert_eq!(
+            clean_monitor_description("Microstep MPG321UX OLED 0x01010101"),
+            "Microstep MPG321UX OLED 0x01010101"
+        );
+        assert_eq!(
+            clean_monitor_description("Ancor Communications Inc ASUS PB258 GBLMTJ022271 (DP-9)"),
+            "Ancor Communications Inc ASUS PB258 GBLMTJ022271"
+        );
+        assert_eq!(
+            clean_monitor_description("Ancor Communications Inc ASUS PB258 G1LMTJ002598 (DP-10)"),
+            "Ancor Communications Inc ASUS PB258 G1LMTJ002598"
+        );
+        assert_eq!(
+            clean_monitor_description("BOE 0x095F  (eDP-1)"),
+            "BOE 0x095F"
+        );
+        assert_eq!(
+            clean_monitor_description("GIGA-BYTE TECHNOLOGY CO. LTD. G34WQC A  (DP-8)"),
+            "GIGA-BYTE TECHNOLOGY CO. LTD. G34WQC A"
+        );
+    }
 }
