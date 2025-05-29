@@ -396,9 +396,7 @@ impl ImagePicker {
             (Some(ImagePickerAction::Next), ImagePickerSorting::GroupedRandom(group)) => {
                 let mut group = group.group.borrow_mut();
                 let queue = &mut group.queue;
-                if queue.has_reached_end() || queue.buffer.get(index).is_none() {
-                    queue.push(img_path.clone());
-                }
+                queue.push(img_path.clone());
                 group.loading_image = None;
                 group.current_image.clone_from(&img_path);
                 group.index = index;
