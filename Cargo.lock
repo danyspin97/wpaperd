@@ -2479,7 +2479,7 @@ dependencies = [
 
 [[package]]
 name = "wpaperctl"
-version = "1.2.1"
+version = "1.2.3"
 dependencies = [
  "clap",
  "clap_complete",
@@ -2493,7 +2493,7 @@ dependencies = [
 
 [[package]]
 name = "wpaperd"
-version = "1.2.1"
+version = "1.2.3"
 dependencies = [
  "clap",
  "clap_complete",
@@ -2527,7 +2527,7 @@ dependencies = [
 
 [[package]]
 name = "wpaperd-ipc"
-version = "1.2.1"
+version = "1.2.3"
 dependencies = [
  "serde",
  "xdg",
