@@ -5,7 +5,7 @@ use std::{
 };
 
 use color_eyre::eyre::eyre;
-use image::{open, RgbaImage};
+use image::{DynamicImage, ImageDecoder, ImageReader, RgbaImage};
 use log::warn;
 use smithay_client_toolkit::reexports::calloop::ping::Ping;
 
@@ -92,7 +92,7 @@ impl ImageLoader {
         let ping_clone = self.ping.clone();
         let requester_clone = requester_name.clone();
         let (tx, rx) = std::sync::mpsc::channel();
-        rayon::spawn(move || match open(&path_clone) {
+        rayon::spawn(move || match ImageReader::open(&path_clone) {
             Ok(image) => {
                 // Notify the event loop that the image has been loaded
                 // We need this so that Surface::load_wallpaper is called even if
@@ -100,6 +100,10 @@ impl ImageLoader {
                 // fullscreen)
                 // Do the conversion first, then the ping, otherwise we will have a race
                 // condition
+                let mut decoder = image.into_decoder().unwrap();
+                let orientation = decoder.orientation().unwrap();
+                let mut image = DynamicImage::from_decoder(decoder).unwrap();
+                image.apply_orientation(orientation);
                 let image = image.into_rgba8();
                 tx.send(Some(image)).unwrap();
                 ping_clone.ping();
