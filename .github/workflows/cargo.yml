@@ -87,6 +87,21 @@ jobs:
           sarif_file: rust-clippy-results.sarif
           wait-for-processing: true
 
+  update:
+    name: Check Cargo.lock
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+
+      - uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+
+      - name: Check if Cargo.lock needs to be updated
+        run: cargo update -w --locked
+
   audit:
     name: Audit
     runs-on: ubuntu-latest
