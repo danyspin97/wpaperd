@@ -125,7 +125,5 @@ jobs:
       - name: Install cargo-audit binary crate
         uses: taiki-e/install-action@cargo-audit
 
-      - name: Security audit
-        uses: actions-rs/audit-check@v1
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Audit
+        run: cargo audit
