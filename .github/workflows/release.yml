@@ -13,7 +13,7 @@ jobs:
       matrix:
         target:  [x86_64-unknown-linux-gnu]
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
       - name: Install dependencies
         run:
           sudo apt-get install --yes libwayland-dev libegl1-mesa-dev
