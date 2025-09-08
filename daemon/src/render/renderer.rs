@@ -195,6 +195,16 @@ impl Renderer {
                         (display_height / height).max(1.0),
                     ]
                 }
+                BackgroundMode::Cover => {
+                    // Cover mode scales image to fill screen while maintaining aspect ratio
+                    // Use min() scaling to ensure entire screen is covered (opposite of Fit)
+                    let width = display_height * image_ratio;
+                    let height = display_width / image_ratio;
+                    [
+                        (display_width / width).min(1.0),
+                        (display_height / height).min(1.0),
+                    ]
+                }
                 BackgroundMode::Tile => {
                     let width_proportion = display_width / image_width * display_ratio;
                     let height_proportion = display_height / image_height * display_ratio;
@@ -263,7 +273,8 @@ impl Renderer {
                     BackgroundMode::Stretch
                     | BackgroundMode::Center
                     | BackgroundMode::Fit
-                    | BackgroundMode::FitBorderColor,
+                    | BackgroundMode::FitBorderColor
+                    | BackgroundMode::Cover,
                 ) => 0.5,
                 (None, BackgroundMode::Tile) => 0.0,
                 (Some(offset), _) => offset,
@@ -277,9 +288,10 @@ impl Renderer {
             self.check_error("Failed to set the value for the uniform texture_offset")?;
 
             let texture_wrap = match mode {
-                BackgroundMode::Stretch | BackgroundMode::Center | BackgroundMode::Fit => {
-                    gl::CLAMP_TO_BORDER_EXT
-                }
+                BackgroundMode::Stretch
+                | BackgroundMode::Center
+                | BackgroundMode::Fit
+                | BackgroundMode::Cover => gl::CLAMP_TO_BORDER_EXT,
                 BackgroundMode::Tile => gl::REPEAT,
                 BackgroundMode::FitBorderColor => gl::CLAMP_TO_EDGE,
             } as i32;

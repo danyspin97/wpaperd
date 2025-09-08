@@ -135,6 +135,8 @@ represents a different display and can contain the following keys:
   - `fit` shows the entire image with black corners covering the empty space left
   - `fit-border-color` works like `fit`, but fill the empty space with the color of the border
     of the image; suggested for images that have a solid color in their border
+  - `cover` scales the image to fill the entire screen while maintaining aspect ratio, potentially
+    cropping parts of the image
   - `center` centers the image on the screen, leaving out the corners of the image that couldn't fit
   - `stretch` shows the entire image stretching it to fit the entire screen without leaving any
     black corner, changing the aspect ratio
