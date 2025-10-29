@@ -87,4 +87,5 @@ pub enum BackgroundMode {
     Fit,
     Tile,
     FitBorderColor,
+    Cover,
 }
