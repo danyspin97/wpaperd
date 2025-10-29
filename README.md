@@ -180,7 +180,7 @@ path = "/home/danyspin97/default_wallpaper.png"
 [DP-3]
 path = "/home/danyspin97/Wallpapers"
 
-[Dell Inc. DELL U2419H GY1VSS2]
+["Dell Inc. DELL U2419H GY1VSS2"]
 path = "/home/danyspin97/Wallpapers/1080p"
 ```
 
