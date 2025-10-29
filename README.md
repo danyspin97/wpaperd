@@ -57,7 +57,7 @@ $ scdoc < man/wpaperd-output.5.scd > man/wpaperd-output.5
 
 You can install both the daemon (`wpaperd`) and cli (`wpaperctl`) using **rinstall**:
 ```bash
-$ rinstall --yes
+$ rinstall install --yes
 ```
 
 To run _wpaperd_, run the **daemon**:
