@@ -14,6 +14,7 @@ pub enum IpcMessage {
     AllWallpapers,
     ReloadWallpaper { monitors: Vec<String> },
     GetStatus { monitors: Vec<String> },
+    SetWallpaper { path: PathBuf, monitors: Vec<String> },
 }
 
 #[derive(Serialize, Deserialize)]

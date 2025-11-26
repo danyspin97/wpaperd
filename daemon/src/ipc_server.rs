@@ -181,6 +181,29 @@ pub fn handle_message(
                     .collect(),
             })
         }
+
+        IpcMessage::SetWallpaper { path, monitors } => {
+            if !path.exists() {
+                Err(IpcError::DrawErrors(vec![(
+                    String::new(),
+                    format!("File not found: {}", path.display()),
+                )]))
+            } else if !path.is_file() {
+                Err(IpcError::DrawErrors(vec![(
+                    String::new(),
+                    format!("Path is not a file: {}", path.display()),
+                )]))
+            } else {
+                check_monitors(wpaperd, &monitors).map(|_| {
+                    for surface in collect_surfaces(wpaperd, monitors) {
+                        surface.image_picker.set_image(path.clone());
+                        surface.pause();
+                        surface.load_new_wallpaper();
+                    }
+                    IpcResponse::Ok
+                })
+            }
+        }
     };
 
     let mut stream = BufWriter::new(ustream);

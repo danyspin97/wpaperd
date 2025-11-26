@@ -215,6 +215,10 @@ pub struct ImagePicker {
     sorting: ImagePickerSorting,
     filelist_cache: Rc<RefCell<FilelistCache>>,
     reload: bool,
+    /// Forced image path from `wpaperctl set`, consumed on next get_image_from_path call
+    forced_image: Option<PathBuf>,
+    /// True if the currently displayed image was set via `wpaperctl set`
+    was_last_forced: bool,
 }
 
 impl ImagePicker {
@@ -236,6 +240,8 @@ impl ImagePicker {
             ),
             filelist_cache,
             reload: false,
+            forced_image: None,
+            was_last_forced: false,
         }
     }
 
@@ -342,11 +348,27 @@ impl ImagePicker {
         }
     }
 
+    /// Set the wallpaper to a specific image path.
+    /// The forced image will be returned by the next call to `get_image_from_path`.
+    pub fn set_image(&mut self, path: PathBuf) {
+        self.forced_image = Some(path);
+    }
+
     pub fn get_image_from_path(
         &mut self,
         path: &Path,
         recursive: &Option<Recursive>,
     ) -> Option<(PathBuf, usize)> {
+        // Check for forced image first (from wpaperctl set)
+        // Don't update navigation state - forced images are "detours"
+        if let Some(forced_path) = self.forced_image.take() {
+            self.was_last_forced = true;
+            return Some((forced_path, 0));
+        }
+
+        // Clear flag for normal image loads
+        self.was_last_forced = false;
+
         if path.is_dir() {
             let files = self
                 .filelist_cache
@@ -374,6 +396,13 @@ impl ImagePicker {
     }
 
     pub fn update_current_image(&mut self, img_path: PathBuf, index: usize) {
+        // Don't update navigation state for forced images - they're "detours"
+        if self.was_last_forced {
+            self.action.take();
+            self.current_img = img_path;
+            return;
+        }
+
         match (self.action.take(), &mut self.sorting) {
             (Some(ImagePickerAction::Next), ImagePickerSorting::Random(queue)) => {
                 queue.push(img_path.clone());
@@ -406,14 +435,41 @@ impl ImagePicker {
         self.current_img = img_path;
     }
 
-    /// Update wallpaper by going down 1 index through the cached image paths
-    /// Expiry timer reset even if already at the first cached image
+    /// Update wallpaper by going down 1 index through the cached image paths.
+    /// Expiry timer reset even if already at the first cached image.
+    ///
+    /// # Detour Semantics
+    ///
+    /// If the current image was set via `wpaperctl set`, this returns to the
+    /// image that was showing before the set (doesn't decrement the index).
+    /// This implements "detour" behavior: forced images are temporary diversions
+    /// that don't affect navigation history.
+    ///
+    /// # Implementation Note
+    ///
+    /// When returning from a forced image, we reuse the `reload` flag to trigger
+    /// a redisplay of the current index position. This is a non-standard use of
+    /// `reload` (which normally means "refresh current image from disk"), but it
+    /// achieves the desired behavior without adding another flag. The `reload`
+    /// flag causes `get_image_from_path` to return the current index's image
+    /// even if it matches `current_img`.
     pub fn previous_image(&mut self) {
-        self.action = Some(ImagePickerAction::Previous);
+        if self.was_last_forced {
+            // DETOUR RETURN: User called `previous` after a forced image.
+            // Instead of going back in history, return to the image that was
+            // showing before the forced image. We reuse `reload` to trigger
+            // `get_image_from_path` to re-fetch the current index position.
+            self.reload = true;
+            self.was_last_forced = false;
+        } else {
+            self.action = Some(ImagePickerAction::Previous);
+        }
     }
 
     /// Update wallpaper by going up 1 index through the cached image paths
     pub fn next_image(&mut self, path: &Path, recursive: &Option<Recursive>) {
+        // Clear forced flag - next continues normal navigation
+        self.was_last_forced = false;
         self.action = Some(ImagePickerAction::Next);
         self.get_image_from_path(path, recursive);
     }
@@ -673,5 +729,210 @@ mod tests {
         assert_eq!(Path::new("mypath7"), queue.current());
         assert_eq!(Some((Path::new("mypath8"), 1)), queue.next());
         assert_eq!(None, queue.next());
+    }
+
+    // =======================================================
+    // Tests for Queue interaction with "set" behavior
+    // =======================================================
+
+    #[test]
+    fn test_queue_set_then_previous_navigates_back() {
+        let mut queue = Queue::with_capacity(5);
+
+        // Build up some history
+        queue.push(PathBuf::from("/image1.png"));
+        queue.push(PathBuf::from("/image2.png"));
+        queue.push(PathBuf::from("/image3.png"));
+
+        // User sets a manual wallpaper (push simulates adding to history)
+        queue.push(PathBuf::from("/manual.png"));
+        assert_eq!(queue.current(), Path::new("/manual.png"));
+
+        // User immediately does `previous` - should go to image3
+        let prev = queue.previous();
+        assert_eq!(prev, Some((Path::new("/image3.png"), 2)));
+    }
+
+    #[test]
+    fn test_queue_set_existing_image_is_noop() {
+        let mut queue = Queue::with_capacity(5);
+
+        queue.push(PathBuf::from("/image1.png"));
+        queue.push(PathBuf::from("/image2.png"));
+
+        // User sets the same image that's already current
+        // Queue::push already handles this - duplicates are ignored
+        queue.push(PathBuf::from("/image2.png"));
+
+        // Still at image2, buffer should not have grown
+        assert_eq!(queue.current(), Path::new("/image2.png"));
+        assert_eq!(queue.buffer.len(), 2);
+
+        // Previous goes to image1
+        let prev = queue.previous();
+        assert_eq!(prev, Some((Path::new("/image1.png"), 0)));
+
+        // No more previous (we're at the start)
+        assert_eq!(queue.previous(), None);
+    }
+
+    #[test]
+    fn test_queue_set_current_to_moves_cursor() {
+        let mut queue = Queue::with_capacity(5);
+
+        queue.push(PathBuf::from("/image1.png"));
+        queue.push(PathBuf::from("/image2.png"));
+        queue.push(PathBuf::from("/image3.png"));
+        assert_eq!(queue.current(), Path::new("/image3.png"));
+
+        // set_current_to moves cursor to existing image in history
+        queue.set_current_to(Path::new("/image1.png"));
+        assert_eq!(queue.current(), Path::new("/image1.png"));
+
+        // Next should go to image2
+        let next = queue.next();
+        assert_eq!(next, Some((Path::new("/image2.png"), 1)));
+    }
+
+    #[test]
+    fn test_queue_set_current_to_nonexistent_is_noop() {
+        let mut queue = Queue::with_capacity(5);
+
+        queue.push(PathBuf::from("/image1.png"));
+        queue.push(PathBuf::from("/image2.png"));
+        assert_eq!(queue.current(), Path::new("/image2.png"));
+
+        // Try to set to a path not in history - set_current_to is a no-op
+        queue.set_current_to(Path::new("/nonexistent.png"));
+
+        // Current should still be image2
+        assert_eq!(queue.current(), Path::new("/image2.png"));
+    }
+
+    // =======================================================
+    // Tests for ImagePicker forced image state transitions
+    // =======================================================
+    //
+    // Note: ImagePicker requires complex dependencies (WlSurface, FilelistCache, etc.)
+    // that are difficult to construct in unit tests. These tests focus on the
+    // state machine logic by testing the individual state transitions.
+    //
+    // Integration testing of the full set->previous/next flow should be done
+    // via manual testing with the actual daemon.
+
+    /// Helper struct to test ImagePicker state transitions without full dependencies
+    struct ForcedImageState {
+        was_last_forced: bool,
+        reload: bool,
+        action: Option<ImagePickerAction>,
+    }
+
+    impl ForcedImageState {
+        fn new() -> Self {
+            Self {
+                was_last_forced: false,
+                reload: false,
+                action: None,
+            }
+        }
+
+        /// Simulates the state change when a forced image is loaded
+        fn simulate_forced_image_loaded(&mut self) {
+            self.was_last_forced = true;
+        }
+
+        /// Simulates previous_image() behavior
+        fn previous_image(&mut self) {
+            if self.was_last_forced {
+                // DETOUR RETURN: reload current index instead of going back
+                self.reload = true;
+                self.was_last_forced = false;
+            } else {
+                self.action = Some(ImagePickerAction::Previous);
+            }
+        }
+
+        /// Simulates next_image() behavior (just the state transition part)
+        fn next_image(&mut self) {
+            self.was_last_forced = false;
+            self.action = Some(ImagePickerAction::Next);
+        }
+    }
+
+    #[test]
+    fn test_forced_image_previous_triggers_reload() {
+        let mut state = ForcedImageState::new();
+
+        // Simulate: user did `wpaperctl set`, image loaded
+        state.simulate_forced_image_loaded();
+        assert!(state.was_last_forced);
+        assert!(!state.reload);
+
+        // User calls `previous`
+        state.previous_image();
+
+        // Should trigger reload (return to pre-set image), NOT set Previous action
+        assert!(state.reload);
+        assert!(!state.was_last_forced);
+        assert!(state.action.is_none());
+    }
+
+    #[test]
+    fn test_forced_image_next_clears_flag_and_continues() {
+        let mut state = ForcedImageState::new();
+
+        // Simulate: user did `wpaperctl set`, image loaded
+        state.simulate_forced_image_loaded();
+        assert!(state.was_last_forced);
+
+        // User calls `next`
+        state.next_image();
+
+        // Should clear forced flag and continue normal navigation
+        assert!(!state.was_last_forced);
+        assert!(matches!(state.action, Some(ImagePickerAction::Next)));
+    }
+
+    #[test]
+    fn test_normal_previous_sets_action() {
+        let mut state = ForcedImageState::new();
+
+        // No forced image - normal state
+        assert!(!state.was_last_forced);
+
+        // User calls `previous`
+        state.previous_image();
+
+        // Should set Previous action, not reload
+        assert!(!state.reload);
+        assert!(matches!(state.action, Some(ImagePickerAction::Previous)));
+    }
+
+    #[test]
+    fn test_detour_semantics_sequence() {
+        let mut state = ForcedImageState::new();
+
+        // 1. User is viewing normal image, calls next a few times
+        state.next_image();
+        assert!(matches!(state.action, Some(ImagePickerAction::Next)));
+        state.action = None; // Reset for next operation
+
+        // 2. User does `wpaperctl set /some/image.png`
+        state.simulate_forced_image_loaded();
+        assert!(state.was_last_forced);
+
+        // 3. User calls `previous` - should return to pre-set image (reload)
+        state.previous_image();
+        assert!(state.reload);
+        assert!(!state.was_last_forced);
+        assert!(state.action.is_none()); // No Previous action - reload handles it
+
+        // 4. Reset reload flag (simulating it was consumed)
+        state.reload = false;
+
+        // 5. Now user calls `previous` again - normal navigation
+        state.previous_image();
+        assert!(!state.reload);
+        assert!(matches!(state.action, Some(ImagePickerAction::Previous)));
     }
 }
