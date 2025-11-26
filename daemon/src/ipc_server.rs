@@ -13,7 +13,7 @@ use smithay_client_toolkit::reexports::client::QueueHandle;
 use wpaperd_ipc::{IpcError, IpcMessage, IpcResponse};
 
 use crate::socket::SocketSource;
-use crate::surface::Surface;
+use crate::surface::{PauseReason, Surface};
 use crate::Wpaperd;
 
 /// Create an IPC socket.
@@ -113,6 +113,10 @@ pub fn handle_message(
         IpcMessage::PreviousWallpaper { monitors } => {
             check_monitors(wpaperd, &monitors).map(|_| {
                 for surface in collect_surfaces(wpaperd, monitors) {
+                    // Only auto-resume if paused by set, not explicit user pause
+                    if surface.pause_reason() == Some(PauseReason::Set) {
+                        surface.resume();
+                    }
                     surface.image_picker.previous_image();
                     surface.load_new_wallpaper();
                 }
@@ -123,6 +127,10 @@ pub fn handle_message(
 
         IpcMessage::NextWallpaper { monitors } => check_monitors(wpaperd, &monitors).map(|_| {
             for surface in collect_surfaces(wpaperd, monitors) {
+                // Only auto-resume if paused by set, not explicit user pause
+                if surface.pause_reason() == Some(PauseReason::Set) {
+                    surface.resume();
+                }
                 surface.image_picker.next_image(
                     &surface.wallpaper_info.path,
                     &surface.wallpaper_info.recursive,
@@ -197,7 +205,7 @@ pub fn handle_message(
                 check_monitors(wpaperd, &monitors).map(|_| {
                     for surface in collect_surfaces(wpaperd, monitors) {
                         surface.image_picker.set_image(path.clone());
-                        surface.pause();
+                        surface.pause_for_set();
                         surface.load_new_wallpaper();
                     }
                     IpcResponse::Ok

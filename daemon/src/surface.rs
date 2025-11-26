@@ -44,6 +44,15 @@ use crate::{
     wpaperd::Wpaperd,
 };
 
+/// Reason for pausing automatic wallpaper cycling
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PauseReason {
+    /// Explicit pause via `wpaperctl pause`
+    User,
+    /// Automatic pause from `wpaperctl set`
+    Set,
+}
+
 #[derive(Debug)]
 pub enum EventSource {
     NotSet,
@@ -76,9 +85,8 @@ pub struct Surface {
     /// See [crate::wallpaper_info::WallpaperInfo]'s `initial_transition` field
     skip_next_transition: bool,
     /// Pause state of the automatic wallpaper sequence.
-    /// Setting this to true will mean only an explicit next/previous wallpaper command will change
-    /// the wallpaper.
-    should_pause: bool,
+    /// When Some, only an explicit next/previous wallpaper command will change the wallpaper.
+    pause_reason: Option<PauseReason>,
     /// Contains the value of XDG_STATE_HOME, given by wapaperd at struct creation
     xdg_state_home: PathBuf,
 }
@@ -134,7 +142,7 @@ impl Surface {
             event_source: EventSource::NotSet,
             wallpaper_info,
             window_drawn: false,
-            should_pause: false,
+            pause_reason: None,
             image_loader: wpaperd.image_loader.clone(),
             loading_image: None,
             loading_image_tries: 0,
@@ -714,7 +722,7 @@ impl Surface {
     /// Remove the timer if pausing, and add a new timer with the remaining duration of the old
     /// timer when resuming.
     pub fn handle_pause_state(&mut self, handle: &LoopHandle<Wpaperd>) {
-        match (self.should_pause, &self.event_source) {
+        match (self.pause_reason.is_some(), &self.event_source) {
             // Should pause, but timer is still currently running
             (true, EventSource::Running(registration_token, duration, instant)) => {
                 let remaining_duration = remaining_duration(*duration, *instant);
@@ -753,18 +761,29 @@ impl Surface {
     }
 
     /// Indicate to the main event loop that the automatic wallpaper sequence for this [`Surface`]
-    /// should be paused.
+    /// should be paused (explicit user request).
     /// The actual pausing/resuming is handled in [`Surface::handle_pause_state`]
     #[inline]
     pub fn pause(&mut self) {
-        self.should_pause = true;
+        self.pause_reason = Some(PauseReason::User);
     }
+
+    /// Pause cycling due to `wpaperctl set` - will be auto-resumed by next/previous.
+    /// Does NOT override an explicit user pause (PauseReason::User).
+    /// The actual pausing/resuming is handled in [`Surface::handle_pause_state`]
+    #[inline]
+    pub fn pause_for_set(&mut self) {
+        if self.pause_reason.is_none() {
+            self.pause_reason = Some(PauseReason::Set);
+        }
+    }
+
     /// Indicate to the main event loop that the automatic wallpaper sequence for this [`Surface`]
     /// should be resumed.
     /// The actual pausing/resuming is handled in [`Surface::handle_pause_state`]
     #[inline]
     pub fn resume(&mut self) {
-        self.should_pause = false;
+        self.pause_reason = None;
     }
 
     /// Toggle the pause state for this [`Surface`], which is responsible for indicating to the main
@@ -783,7 +802,13 @@ impl Surface {
     /// loop that its automatic wallpaper sequence should be paused.
     #[inline]
     pub fn should_pause(&self) -> bool {
-        self.should_pause
+        self.pause_reason.is_some()
+    }
+
+    /// Returns the reason for pausing, if any.
+    #[inline]
+    pub fn pause_reason(&self) -> Option<PauseReason> {
+        self.pause_reason
     }
 
     pub fn wl_surface(&self) -> &wl_surface::WlSurface {
@@ -800,7 +825,7 @@ impl Surface {
 
     pub fn status(&self) -> &'static str {
         if self.wallpaper_info.path.is_dir() {
-            if self.should_pause {
+            if self.pause_reason.is_some() {
                 "paused"
             } else {
                 "running"
