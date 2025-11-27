@@ -115,6 +115,21 @@ $ wpaperctl resume
 $ wpaperctl toggle-pause
 ```
 
+## Setting a specific wallpaper
+
+You can set a wallpaper to a specific image using _wpaperctl_:
+
+```bash
+$ wpaperctl set /path/to/image.png
+$ wpaperctl set /path/to/image.png DP-1  # specific monitor
+```
+
+When you set a wallpaper:
+- Automatic cycling is paused
+- Calling `next` or `previous` resumes cycling
+- The `previous` command returns to the wallpaper that was showing before the set (it doesn't go back in history)
+- If you explicitly called `pause` before `set`, cycling remains paused until you call `resume` or `toggle-pause`
+
 ## Wallpaper Configuration
 
 The configuration file for *wpaperd* is located in `XDG_CONFIG_HOME/wpaperd/config.toml`
