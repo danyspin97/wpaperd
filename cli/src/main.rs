@@ -59,6 +59,16 @@ fn main() {
                 monitors: monitors.into_iter().map(unquote).collect(),
             }
         }
+        SubCmd::SetWallpaper { path, monitors } => {
+            let path = path.canonicalize().unwrap_or_else(|e| {
+                eprintln!("Invalid path '{}': {e}", path.display());
+                std::process::exit(1);
+            });
+            IpcMessage::SetWallpaper {
+                path,
+                monitors: monitors.into_iter().map(unquote).collect(),
+            }
+        }
     };
 
     conn.write_all(&serde_json::to_vec(&msg).unwrap()).unwrap();
@@ -151,6 +161,9 @@ fn main() {
                 for (monitor, err) in errors {
                     eprintln!("Wallpaper could not be drawn for monitor {monitor}: {err}")
                 }
+            }
+            IpcError::ValidationError(msg) => {
+                eprintln!("{msg}")
             }
         },
     }
