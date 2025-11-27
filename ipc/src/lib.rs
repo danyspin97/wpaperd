@@ -35,6 +35,8 @@ pub enum IpcResponse {
 pub enum IpcError {
     MonitorNotFound { monitor: String },
     DrawErrors(Vec<(String, String)>),
+    /// Validation error for invalid input (e.g., file not found, not an image)
+    ValidationError(String),
 }
 
 pub fn socket_path() -> Result<PathBuf, BaseDirectoriesError> {

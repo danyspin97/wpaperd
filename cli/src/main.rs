@@ -162,6 +162,9 @@ fn main() {
                     eprintln!("Wallpaper could not be drawn for monitor {monitor}: {err}")
                 }
             }
+            IpcError::ValidationError(msg) => {
+                eprintln!("{msg}")
+            }
         },
     }
 }

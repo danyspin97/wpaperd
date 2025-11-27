@@ -192,15 +192,23 @@ pub fn handle_message(
 
         IpcMessage::SetWallpaper { path, monitors } => {
             if !path.exists() {
-                Err(IpcError::DrawErrors(vec![(
-                    String::new(),
-                    format!("File not found: {}", path.display()),
-                )]))
+                Err(IpcError::ValidationError(format!(
+                    "File not found: {}",
+                    path.display()
+                )))
             } else if !path.is_file() {
-                Err(IpcError::DrawErrors(vec![(
-                    String::new(),
-                    format!("Path is not a file: {}", path.display()),
-                )]))
+                Err(IpcError::ValidationError(format!(
+                    "Path is not a file: {}",
+                    path.display()
+                )))
+            } else if !new_mime_guess::from_path(&path)
+                .first()
+                .is_some_and(|mime| mime.type_() == "image")
+            {
+                Err(IpcError::ValidationError(format!(
+                    "Not a supported image format: {}",
+                    path.display()
+                )))
             } else {
                 check_monitors(wpaperd, &monitors).map(|_| {
                     for surface in collect_surfaces(wpaperd, monitors) {
