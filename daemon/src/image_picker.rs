@@ -15,6 +15,25 @@ use crate::{
     wpaperd::Wpaperd,
 };
 
+/// Result from `get_image_from_path` - distinguishes forced images from list-based images.
+/// This makes the contract explicit: forced images have no meaningful index.
+#[derive(Debug, Clone)]
+pub enum ImageResult {
+    /// Image was forced via `wpaperctl set` - not part of normal navigation
+    Forced(PathBuf),
+    /// Image from the configured directory/list with its index
+    FromList { path: PathBuf, index: usize },
+}
+
+impl ImageResult {
+    pub fn path(&self) -> &Path {
+        match self {
+            ImageResult::Forced(p) => p,
+            ImageResult::FromList { path, .. } => path,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct Queue {
     buffer: VecDeque<PathBuf>,
@@ -358,12 +377,12 @@ impl ImagePicker {
         &mut self,
         path: &Path,
         recursive: &Option<Recursive>,
-    ) -> Option<(PathBuf, usize)> {
+    ) -> Option<ImageResult> {
         // Check for forced image first (from wpaperctl set)
         // Don't update navigation state - forced images are "detours"
         if let Some(forced_path) = self.forced_image.take() {
             self.was_last_forced = true;
-            return Some((forced_path, 0));
+            return Some(ImageResult::Forced(forced_path));
         }
 
         // Clear flag for normal image loads
@@ -384,55 +403,57 @@ impl ImagePicker {
                 if img_path == self.current_img && !self.reload {
                     None
                 } else {
-                    Some((img_path, index))
+                    Some(ImageResult::FromList { path: img_path, index })
                 }
             }
         } else if path == self.current_img && !self.reload {
             None
         } else {
             // path is not a directory, also it's not the current image or we need to reload
-            Some((path.to_path_buf(), 0))
+            Some(ImageResult::FromList { path: path.to_path_buf(), index: 0 })
         }
     }
 
-    pub fn update_current_image(&mut self, img_path: PathBuf, index: usize) {
-        // Don't update navigation state for forced images - they're "detours"
-        if self.was_last_forced {
-            self.action.take();
-            self.current_img = img_path;
-            return;
+    pub fn update_current_image(&mut self, result: ImageResult) {
+        match result {
+            ImageResult::Forced(img_path) => {
+                // Don't update navigation state for forced images - they're "detours"
+                // Clear action without updating state
+                self.action.take();
+                self.current_img = img_path;
+            }
+            ImageResult::FromList { path: img_path, index } => {
+                match (self.action.take(), &mut self.sorting) {
+                    (Some(ImagePickerAction::Next), ImagePickerSorting::Random(queue)) => {
+                        queue.push(img_path.clone());
+                    }
+                    (None | Some(ImagePickerAction::Previous), ImagePickerSorting::Random { .. }) => {}
+                    (
+                        None | Some(ImagePickerAction::Previous),
+                        ImagePickerSorting::GroupedRandom(group),
+                    ) => {
+                        let mut group = group.group.borrow_mut();
+                        group.loading_image = None;
+                        group.current_image.clone_from(&img_path);
+                        group.index = index;
+                    }
+                    (
+                        _,
+                        ImagePickerSorting::Ascending(current_index)
+                        | ImagePickerSorting::Descending(current_index),
+                    ) => *current_index = index,
+                    (Some(ImagePickerAction::Next), ImagePickerSorting::GroupedRandom(group)) => {
+                        let mut group = group.group.borrow_mut();
+                        let queue = &mut group.queue;
+                        queue.push(img_path.clone());
+                        group.loading_image = None;
+                        group.current_image.clone_from(&img_path);
+                        group.index = index;
+                    }
+                }
+                self.current_img = img_path;
+            }
         }
-
-        match (self.action.take(), &mut self.sorting) {
-            (Some(ImagePickerAction::Next), ImagePickerSorting::Random(queue)) => {
-                queue.push(img_path.clone());
-            }
-            (None | Some(ImagePickerAction::Previous), ImagePickerSorting::Random { .. }) => {}
-            (
-                None | Some(ImagePickerAction::Previous),
-                ImagePickerSorting::GroupedRandom(group),
-            ) => {
-                let mut group = group.group.borrow_mut();
-                group.loading_image = None;
-                group.current_image.clone_from(&img_path);
-                group.index = index;
-            }
-            (
-                _,
-                ImagePickerSorting::Ascending(current_index)
-                | ImagePickerSorting::Descending(current_index),
-            ) => *current_index = index,
-            (Some(ImagePickerAction::Next), ImagePickerSorting::GroupedRandom(group)) => {
-                let mut group = group.group.borrow_mut();
-                let queue = &mut group.queue;
-                queue.push(img_path.clone());
-                group.loading_image = None;
-                group.current_image.clone_from(&img_path);
-                group.index = index;
-            }
-        }
-
-        self.current_img = img_path;
     }
 
     /// Update wallpaper by going down 1 index through the cached image paths.
@@ -807,6 +828,43 @@ mod tests {
 
         // Current should still be image2
         assert_eq!(queue.current(), Path::new("/image2.png"));
+    }
+
+    // =======================================================
+    // Tests for ImageResult enum
+    // =======================================================
+
+    #[test]
+    fn test_image_result_path_returns_correct_path() {
+        let forced = ImageResult::Forced(PathBuf::from("/forced.png"));
+        assert_eq!(forced.path(), Path::new("/forced.png"));
+
+        let from_list = ImageResult::FromList {
+            path: PathBuf::from("/list.png"),
+            index: 42,
+        };
+        assert_eq!(from_list.path(), Path::new("/list.png"));
+    }
+
+    #[test]
+    fn test_image_result_forced_variant() {
+        let result = ImageResult::Forced(PathBuf::from("/test.png"));
+        assert!(matches!(result, ImageResult::Forced(_)));
+    }
+
+    #[test]
+    fn test_image_result_from_list_variant() {
+        let result = ImageResult::FromList {
+            path: PathBuf::from("/test.png"),
+            index: 5,
+        };
+        match result {
+            ImageResult::FromList { path, index } => {
+                assert_eq!(path, PathBuf::from("/test.png"));
+                assert_eq!(index, 5);
+            }
+            _ => panic!("Expected FromList variant"),
+        }
     }
 
     // =======================================================

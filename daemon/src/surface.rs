@@ -37,7 +37,7 @@ use smithay_client_toolkit::{
 use crate::{
     display_info::DisplayInfo,
     image_loader::ImageLoader,
-    image_picker::ImagePicker,
+    image_picker::{ImagePicker, ImageResult},
     render::EglContext,
     wallpaper_groups::WallpaperGroups,
     wallpaper_info::{Sorting, WallpaperInfo},
@@ -77,7 +77,7 @@ pub struct Surface {
     display_info: DisplayInfo,
     image_loader: Rc<RefCell<ImageLoader>>,
     window_drawn: bool,
-    pub loading_image: Option<(PathBuf, usize)>,
+    pub loading_image: Option<ImageResult>,
     loading_image_tries: u8,
     /// Determines whether we should skip the next transition. Used to skip
     /// the first transition when starting up.
@@ -233,7 +233,7 @@ impl Surface {
                 &self.wallpaper_info.path,
                 &self.wallpaper_info.recursive.clone(),
             ) {
-                if self.image_picker.current_image() == item.0 && !self.image_picker.is_reloading()
+                if self.image_picker.current_image() == *item.path() && !self.image_picker.is_reloading()
                 {
                     return Ok(true);
                 }
@@ -248,16 +248,17 @@ impl Surface {
             }
         }
 
-        let (image_path, index) = self
+        let loading = self
             .loading_image
             .as_ref()
             .expect("loading image to be set")
             .clone();
+        let image_path = loading.path().to_path_buf();
 
         let res = self
             .image_loader
             .borrow_mut()
-            .background_load(image_path.to_owned(), self.name().to_owned());
+            .background_load(image_path.clone(), self.name().to_owned());
         match res {
             crate::image_loader::ImageLoaderStatus::Loaded(data) => {
                 // Exec Script on wallpaper change
@@ -275,7 +276,7 @@ impl Surface {
                 if self.image_picker.is_reloading() {
                     self.image_picker.reloaded();
                 } else {
-                    self.setup_drawing_image(image_path, index);
+                    self.setup_drawing_image(loading);
                 }
                 // Restart the counter
                 self.loading_image_tries = 0;
@@ -324,7 +325,7 @@ impl Surface {
         }
     }
 
-    pub fn setup_drawing_image(&mut self, image_path: PathBuf, index: usize) {
+    pub fn setup_drawing_image(&mut self, result: ImageResult) {
         let transition_time = if self.skip_next_transition {
             self.skip_next_transition = false;
             0
@@ -332,8 +333,8 @@ impl Surface {
             self.wallpaper_info.transition_time
         };
 
-        self.update_wallpaper_link(&image_path);
-        self.image_picker.update_current_image(image_path, index);
+        self.update_wallpaper_link(result.path());
+        self.image_picker.update_current_image(result);
         self.get_context()
             .unwrap()
             .renderer
