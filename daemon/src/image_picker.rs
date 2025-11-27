@@ -403,14 +403,20 @@ impl ImagePicker {
                 if img_path == self.current_img && !self.reload {
                     None
                 } else {
-                    Some(ImageResult::FromList { path: img_path, index })
+                    Some(ImageResult::FromList {
+                        path: img_path,
+                        index,
+                    })
                 }
             }
         } else if path == self.current_img && !self.reload {
             None
         } else {
             // path is not a directory, also it's not the current image or we need to reload
-            Some(ImageResult::FromList { path: path.to_path_buf(), index: 0 })
+            Some(ImageResult::FromList {
+                path: path.to_path_buf(),
+                index: 0,
+            })
         }
     }
 
@@ -422,12 +428,18 @@ impl ImagePicker {
                 self.action.take();
                 self.current_img = img_path;
             }
-            ImageResult::FromList { path: img_path, index } => {
+            ImageResult::FromList {
+                path: img_path,
+                index,
+            } => {
                 match (self.action.take(), &mut self.sorting) {
                     (Some(ImagePickerAction::Next), ImagePickerSorting::Random(queue)) => {
                         queue.push(img_path.clone());
                     }
-                    (None | Some(ImagePickerAction::Previous), ImagePickerSorting::Random { .. }) => {}
+                    (
+                        None | Some(ImagePickerAction::Previous),
+                        ImagePickerSorting::Random { .. },
+                    ) => {}
                     (
                         None | Some(ImagePickerAction::Previous),
                         ImagePickerSorting::GroupedRandom(group),

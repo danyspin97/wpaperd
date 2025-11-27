@@ -233,7 +233,8 @@ impl Surface {
                 &self.wallpaper_info.path,
                 &self.wallpaper_info.recursive.clone(),
             ) {
-                if self.image_picker.current_image() == *item.path() && !self.image_picker.is_reloading()
+                if self.image_picker.current_image() == *item.path()
+                    && !self.image_picker.is_reloading()
                 {
                     return Ok(true);
                 }
