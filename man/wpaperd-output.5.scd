@@ -43,6 +43,8 @@ represents a different display and can contain the following keys:
 - `mode`, choose how to display the wallpaper when the size is different than the display
   resolution:
   - `fit` shows the entire image with black corners covering the empty space left
+  - `cover` scales the image to fill the entire screen while maintaining aspect ratio, potentially
+    cropping parts of the image
   - `center` centers the image on the screen, leaving out the corners of the image that couldn't fit
   - `stretch` shows the entire image stretching it to fit the entire screen without leaving any
     black corner, changing the aspect ratio
@@ -51,7 +53,7 @@ represents a different display and can contain the following keys:
 - `queue_size`, decide how big the queue should be when `path` is set a directory and `sorting` is
    set to `random`. (_Optional_, `10` by default)
 - `initial_transition`, whether or not to transition from the initial black screen (_Optional_, `true` by default)
-  
+
 
 ## DEFAULT SECTION
 
