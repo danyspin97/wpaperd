@@ -162,7 +162,9 @@ fn warn_if_queue_too_large(queue_size: usize, files_count: usize) {
             "queue-size ({}) is greater than or equal to available images ({}). \
              This degrades randomization and blocks navigation. \
              Recommended: reduce queue-size to {} or less (half of image count).",
-            queue_size, files_count, files_count / 2
+            queue_size,
+            files_count,
+            files_count / 2
         );
     }
 }
@@ -200,18 +202,17 @@ impl ImagePickerSorting {
     ) -> Self {
         match wallpaper_info.sorting {
             None | Some(Sorting::Random) => {
-                let (queue_size, files_count) = get_queue_and_file_count(wallpaper_info, &filelist_cache);
+                let (queue_size, files_count) =
+                    get_queue_and_file_count(wallpaper_info, &filelist_cache);
                 warn_if_queue_too_large(queue_size, files_count);
                 Self::new_random(queue_size)
             }
             Some(Sorting::GroupedRandom { group }) => {
-                let (queue_size, files_count) = get_queue_and_file_count(wallpaper_info, &filelist_cache);
+                let (queue_size, files_count) =
+                    get_queue_and_file_count(wallpaper_info, &filelist_cache);
                 warn_if_queue_too_large(queue_size, files_count);
                 ImagePickerSorting::GroupedRandom(GroupedRandom::new(
-                    groups,
-                    group,
-                    wl_surface,
-                    queue_size,
+                    groups, group, wl_surface, queue_size,
                 ))
             }
             Some(Sorting::Ascending) => {
@@ -496,21 +497,24 @@ impl ImagePicker {
                 // The path has changed, use a new random sorting, otherwise we reuse the current
                 // drawn_images
                 (_, Sorting::Random) if path_changed => {
-                    let (queue_size, files_count) = get_queue_and_file_count(wallpaper_info, &self.filelist_cache);
+                    let (queue_size, files_count) =
+                        get_queue_and_file_count(wallpaper_info, &self.filelist_cache);
                     warn_if_queue_too_large(queue_size, files_count);
                     self.sorting = ImagePickerSorting::new_random(queue_size);
                 }
                 (_, Sorting::Random) => {
                     // if the path was not changed, use the current image as the first image of
                     // the drawn_images
-                    let (queue_size, files_count) = get_queue_and_file_count(wallpaper_info, &self.filelist_cache);
+                    let (queue_size, files_count) =
+                        get_queue_and_file_count(wallpaper_info, &self.filelist_cache);
                     warn_if_queue_too_large(queue_size, files_count);
                     let mut queue = Queue::with_capacity(queue_size);
                     queue.push(self.current_image());
                     self.sorting = ImagePickerSorting::Random(queue);
                 }
                 (_, Sorting::GroupedRandom { group }) if path_changed => {
-                    let (queue_size, files_count) = get_queue_and_file_count(wallpaper_info, &self.filelist_cache);
+                    let (queue_size, files_count) =
+                        get_queue_and_file_count(wallpaper_info, &self.filelist_cache);
                     warn_if_queue_too_large(queue_size, files_count);
                     self.sorting = ImagePickerSorting::GroupedRandom(GroupedRandom::new(
                         wallpaper_groups.clone(),
@@ -525,15 +529,12 @@ impl ImagePicker {
                     Sorting::GroupedRandom { group },
                 ) if grouped_random.group.borrow().group == group => {}
                 (_, Sorting::GroupedRandom { group }) => {
-                    let (queue_size, files_count) = get_queue_and_file_count(wallpaper_info, &self.filelist_cache);
+                    let (queue_size, files_count) =
+                        get_queue_and_file_count(wallpaper_info, &self.filelist_cache);
                     warn_if_queue_too_large(queue_size, files_count);
 
-                    let grouped_random = GroupedRandom::new(
-                        wallpaper_groups.clone(),
-                        group,
-                        wl_surface,
-                        queue_size,
-                    );
+                    let grouped_random =
+                        GroupedRandom::new(wallpaper_groups.clone(), group, wl_surface, queue_size);
 
                     let mut group = grouped_random.group.borrow_mut();
                     // If there are no other surfaces, we must reuse the current wallpaper
@@ -548,7 +549,8 @@ impl ImagePicker {
                 }
             }
         } else {
-            let (queue_size, files_count) = get_queue_and_file_count(wallpaper_info, &self.filelist_cache);
+            let (queue_size, files_count) =
+                get_queue_and_file_count(wallpaper_info, &self.filelist_cache);
             warn_if_queue_too_large(queue_size, files_count);
             self.sorting = ImagePickerSorting::new_random(queue_size);
         }
