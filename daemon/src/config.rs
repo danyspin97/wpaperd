@@ -284,6 +284,7 @@ pub struct Config {
     #[serde(flatten)]
     data: HashMap<String, SerializedWallpaperInfo>,
     pub layer_namespace: Option<String>,
+    pub socket_name: Option<String>,
     #[serde(skip)]
     default: SerializedWallpaperInfo,
     #[serde(skip)]

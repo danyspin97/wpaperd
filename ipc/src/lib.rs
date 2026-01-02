@@ -36,7 +36,10 @@ pub enum IpcError {
     DrawErrors(Vec<(String, String)>),
 }
 
-pub fn socket_path() -> Result<PathBuf, BaseDirectoriesError> {
-    let xdg_dirs = BaseDirectories::with_prefix("wpaperd")?;
-    Ok(xdg_dirs.get_runtime_directory()?.join("wpaperd.sock"))
+pub fn socket_path(name: Option<&str>) -> Result<PathBuf, BaseDirectoriesError> {
+    let name = name.unwrap_or("wpaperd");
+    let xdg_dirs = BaseDirectories::with_prefix(name)?;
+    Ok(xdg_dirs
+        .get_runtime_directory()?
+        .join(format!("{name}.sock")))
 }

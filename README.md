@@ -123,6 +123,7 @@ The configuration file for *wpaperd* is located in `XDG_CONFIG_HOME/wpaperd/conf
 There are some top-level options for configuring general wpaperd behavior, and sections for configuring the wallpapers. The top-level options are:
 
 - `layer_namespace`, the prefix for the `wlr_layer_shell` layer surface's namespace. _Optional_, defaults to `wpaperd`
+- `socket_name`, the name used for the IPC socket. Can be specified in `wpaperctl` with the `-s` flag. _Optional_, defaults to `wpaperd`
 
 Each section represents a different display and can contain the following keys:
 
