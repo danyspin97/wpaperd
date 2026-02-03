@@ -5,15 +5,35 @@ use xdg::{BaseDirectories, BaseDirectoriesError};
 
 #[derive(Serialize, Deserialize)]
 pub enum IpcMessage {
-    CurrentWallpaper { monitor: String },
-    NextWallpaper { monitors: Vec<String> },
-    PreviousWallpaper { monitors: Vec<String> },
-    PauseWallpaper { monitors: Vec<String> },
-    ResumeWallpaper { monitors: Vec<String> },
-    TogglePauseWallpaper { monitors: Vec<String> },
+    CurrentWallpaper {
+        monitor: String,
+    },
+    NextWallpaper {
+        monitors: Vec<String>,
+    },
+    PreviousWallpaper {
+        monitors: Vec<String>,
+    },
+    PauseWallpaper {
+        monitors: Vec<String>,
+    },
+    ResumeWallpaper {
+        monitors: Vec<String>,
+    },
+    TogglePauseWallpaper {
+        monitors: Vec<String>,
+    },
     AllWallpapers,
-    ReloadWallpaper { monitors: Vec<String> },
-    GetStatus { monitors: Vec<String> },
+    ReloadWallpaper {
+        monitors: Vec<String>,
+    },
+    GetStatus {
+        monitors: Vec<String>,
+    },
+    SetWallpaper {
+        path: PathBuf,
+        monitors: Vec<String>,
+    },
 }
 
 #[derive(Serialize, Deserialize)]
@@ -32,8 +52,12 @@ pub enum IpcResponse {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum IpcError {
-    MonitorNotFound { monitor: String },
+    MonitorNotFound {
+        monitor: String,
+    },
     DrawErrors(Vec<(String, String)>),
+    /// Validation error for invalid input (e.g., file not found, not an image)
+    ValidationError(String),
 }
 
 pub fn socket_path() -> Result<PathBuf, BaseDirectoriesError> {

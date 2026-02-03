@@ -37,12 +37,21 @@ use smithay_client_toolkit::{
 use crate::{
     display_info::DisplayInfo,
     image_loader::ImageLoader,
-    image_picker::ImagePicker,
+    image_picker::{ImagePicker, ImageResult},
     render::EglContext,
     wallpaper_groups::WallpaperGroups,
     wallpaper_info::{Sorting, WallpaperInfo},
     wpaperd::Wpaperd,
 };
+
+/// Reason for pausing automatic wallpaper cycling
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PauseReason {
+    /// Explicit pause via `wpaperctl pause`
+    User,
+    /// Automatic pause from `wpaperctl set`
+    Set,
+}
 
 #[derive(Debug)]
 pub enum EventSource {
@@ -68,7 +77,7 @@ pub struct Surface {
     display_info: DisplayInfo,
     image_loader: Rc<RefCell<ImageLoader>>,
     window_drawn: bool,
-    pub loading_image: Option<(PathBuf, usize)>,
+    pub loading_image: Option<ImageResult>,
     loading_image_tries: u8,
     /// Determines whether we should skip the next transition. Used to skip
     /// the first transition when starting up.
@@ -76,9 +85,8 @@ pub struct Surface {
     /// See [crate::wallpaper_info::WallpaperInfo]'s `initial_transition` field
     skip_next_transition: bool,
     /// Pause state of the automatic wallpaper sequence.
-    /// Setting this to true will mean only an explicit next/previous wallpaper command will change
-    /// the wallpaper.
-    should_pause: bool,
+    /// When Some, only an explicit next/previous wallpaper command will change the wallpaper.
+    pause_reason: Option<PauseReason>,
     /// Contains the value of XDG_STATE_HOME, given by wapaperd at struct creation
     xdg_state_home: PathBuf,
 }
@@ -134,7 +142,7 @@ impl Surface {
             event_source: EventSource::NotSet,
             wallpaper_info,
             window_drawn: false,
-            should_pause: false,
+            pause_reason: None,
             image_loader: wpaperd.image_loader.clone(),
             loading_image: None,
             loading_image_tries: 0,
@@ -225,7 +233,8 @@ impl Surface {
                 &self.wallpaper_info.path,
                 &self.wallpaper_info.recursive.clone(),
             ) {
-                if self.image_picker.current_image() == item.0 && !self.image_picker.is_reloading()
+                if self.image_picker.current_image() == *item.path()
+                    && !self.image_picker.is_reloading()
                 {
                     return Ok(true);
                 }
@@ -240,16 +249,17 @@ impl Surface {
             }
         }
 
-        let (image_path, index) = self
+        let loading = self
             .loading_image
             .as_ref()
             .expect("loading image to be set")
             .clone();
+        let image_path = loading.path().to_path_buf();
 
         let res = self
             .image_loader
             .borrow_mut()
-            .background_load(image_path.to_owned(), self.name().to_owned());
+            .background_load(image_path.clone(), self.name().to_owned());
         match res {
             crate::image_loader::ImageLoaderStatus::Loaded(data) => {
                 // Exec Script on wallpaper change
@@ -267,7 +277,7 @@ impl Surface {
                 if self.image_picker.is_reloading() {
                     self.image_picker.reloaded();
                 } else {
-                    self.setup_drawing_image(image_path, index);
+                    self.setup_drawing_image(loading);
                 }
                 // Restart the counter
                 self.loading_image_tries = 0;
@@ -316,7 +326,7 @@ impl Surface {
         }
     }
 
-    pub fn setup_drawing_image(&mut self, image_path: PathBuf, index: usize) {
+    pub fn setup_drawing_image(&mut self, result: ImageResult) {
         let transition_time = if self.skip_next_transition {
             self.skip_next_transition = false;
             0
@@ -324,8 +334,8 @@ impl Surface {
             self.wallpaper_info.transition_time
         };
 
-        self.update_wallpaper_link(&image_path);
-        self.image_picker.update_current_image(image_path, index);
+        self.update_wallpaper_link(result.path());
+        self.image_picker.update_current_image(result);
         self.get_context()
             .unwrap()
             .renderer
@@ -714,7 +724,7 @@ impl Surface {
     /// Remove the timer if pausing, and add a new timer with the remaining duration of the old
     /// timer when resuming.
     pub fn handle_pause_state(&mut self, handle: &LoopHandle<Wpaperd>) {
-        match (self.should_pause, &self.event_source) {
+        match (self.pause_reason.is_some(), &self.event_source) {
             // Should pause, but timer is still currently running
             (true, EventSource::Running(registration_token, duration, instant)) => {
                 let remaining_duration = remaining_duration(*duration, *instant);
@@ -753,18 +763,29 @@ impl Surface {
     }
 
     /// Indicate to the main event loop that the automatic wallpaper sequence for this [`Surface`]
-    /// should be paused.
+    /// should be paused (explicit user request).
     /// The actual pausing/resuming is handled in [`Surface::handle_pause_state`]
     #[inline]
     pub fn pause(&mut self) {
-        self.should_pause = true;
+        self.pause_reason = Some(PauseReason::User);
     }
+
+    /// Pause cycling due to `wpaperctl set` - will be auto-resumed by next/previous.
+    /// Does NOT override an explicit user pause (PauseReason::User).
+    /// The actual pausing/resuming is handled in [`Surface::handle_pause_state`]
+    #[inline]
+    pub fn pause_for_set(&mut self) {
+        if self.pause_reason.is_none() {
+            self.pause_reason = Some(PauseReason::Set);
+        }
+    }
+
     /// Indicate to the main event loop that the automatic wallpaper sequence for this [`Surface`]
     /// should be resumed.
     /// The actual pausing/resuming is handled in [`Surface::handle_pause_state`]
     #[inline]
     pub fn resume(&mut self) {
-        self.should_pause = false;
+        self.pause_reason = None;
     }
 
     /// Toggle the pause state for this [`Surface`], which is responsible for indicating to the main
@@ -783,7 +804,13 @@ impl Surface {
     /// loop that its automatic wallpaper sequence should be paused.
     #[inline]
     pub fn should_pause(&self) -> bool {
-        self.should_pause
+        self.pause_reason.is_some()
+    }
+
+    /// Returns the reason for pausing, if any.
+    #[inline]
+    pub fn pause_reason(&self) -> Option<PauseReason> {
+        self.pause_reason
     }
 
     pub fn wl_surface(&self) -> &wl_surface::WlSurface {
@@ -800,7 +827,7 @@ impl Surface {
 
     pub fn status(&self) -> &'static str {
         if self.wallpaper_info.path.is_dir() {
-            if self.should_pause {
+            if self.pause_reason.is_some() {
                 "paused"
             } else {
                 "running"
