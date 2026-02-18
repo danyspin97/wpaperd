@@ -239,8 +239,9 @@ impl OutputHandler for Wpaperd {
                 warn!(
                     "{:?}",
                     err.wrap_err(format!(
-                        "Configuration error on display {}",
-                        name.bold().magenta()
+                        "Configuration error on display {} ({})",
+                        name.bold().magenta(),
+                        description,
                     ))
                 );
                 WallpaperInfo::default()
