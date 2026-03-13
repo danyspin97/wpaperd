@@ -121,32 +121,28 @@ impl EglContext {
     }
 
     /// Resize the surface
-    /// Resizing the surface means to destroy the previous one and then recreate it
-    pub fn resize(&mut self, wl_surface: &WlSurface, display_info: &DisplayInfo) -> Result<()> {
-        egl.destroy_surface(self.display, self.surface)
-            .wrap_err("Failed to destroy the EGL surface")?;
-        let wl_egl_surface = WlEglSurface::new(
-            wl_surface.id(),
+    ///
+    /// Rather than destroying and recreating the EGL surface, we resize the
+    /// existing `wl_egl_window` in place via `wl_egl_window_resize()`. This
+    /// avoids calling `eglDestroyS()` on the currently-bound surface, which
+    /// on NVIDIA driver 575.64+ triggers an implicit:
+    ///
+    /// eglMakeCurrent(NO_SURFACE, NO_SURFACE, NO_CONTEXT)
+    ///
+    /// That implicit release corrupts the driver's "current draw surface"
+    /// tracking, causing the next `eglSwapBuffers()` to fail with
+    /// EGL_BAD_SURFACE.
+    ///
+    /// See:
+    /// - https://forums.developer.nvidia.com/t/575-64-libegl-nvidia-so-bug-eglsurface-x-is-not-current-draw-surface/336704
+    /// - wpaperd issues #116, #129, and #149
+    pub fn resize(&mut self, display_info: &DisplayInfo) -> Result<()> {
+        self.wl_egl_surface.resize(
             display_info.adjusted_width(),
             display_info.adjusted_height(),
-        )
-        .wrap_err("Failed to create a WlEglSurface")?;
-
-        let surface = unsafe {
-            egl.create_window_surface(
-                self.display,
-                self.config,
-                wl_egl_surface.ptr() as egl::NativeWindowType,
-                None,
-            )
-            .wrap_err("Failed to create an EGL window surface")?
-        };
-
-        self.surface = surface;
-        self.wl_egl_surface = wl_egl_surface;
-
-        self.make_current()
-            .wrap_err("Failed to switch to the EGL context")?;
+            0,
+            0,
+        );
         self.renderer
             .resize(display_info)
             .wrap_err("Failed to resize GL window")?;
@@ -177,12 +173,28 @@ impl EglContext {
         self.renderer
             .clear_after_draw()
             .wrap_err("Failed to unbind the buffer")?;
-        self.swap_buffers().wrap_err("Failed to swap EGL buffers")?;
 
-        // Reset the context
-        egl::API
-            .make_current(self.display, None, None, None)
-            .wrap_err("Failed to reset the EGL context")
+        // We intentionally do not release the EGL context after swapping
+        // buffers. libEGL_nvidia.so in NVIDIA driver 575.64+ appears to have
+        // a bug which causes:
+        //
+        // eglMakeCurrent(dpy, NO_SURFACE, NO_SURFACE, NO_CONTEXT)
+        //
+        // Followed by a subsequent:
+        //
+        // eglMakeCurrent(dpy, surf, surf, ctx)
+        //
+        // To leaves the driver in a confused state, where the next call to
+        // `eglSwapBuffers()` will fail with:
+        //
+        // EGL_BAD_SURFACE ("EGLSurface is not current draw surface")
+        //
+        // Per EGL spec §3.7.3 the context is implicitly released when another
+        // surface calls make_current(), so explicit release is not necessary
+        // on a single-threaded renderer.
+        //
+        // See https://registry.khronos.org/EGL/specs/eglspec.1.5.pdf
+        self.swap_buffers().wrap_err("Failed to swap EGL buffers")
     }
 }
 

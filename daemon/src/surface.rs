@@ -360,7 +360,7 @@ impl Surface {
         self.context
             .as_mut()
             .ok_or_else(|| eyre!("EGL context is not available"))?
-            .resize(&self.wl_surface, &self.display_info)
+            .resize(&self.display_info)
             .wrap_err("Failed to resize EGL window")?;
 
         // Queue drawing for the next frame. We can directly draw here, but we would still
@@ -879,7 +879,15 @@ impl Surface {
             &self.wallpaper_info,
             &self.display_info,
         ) {
-            Ok(context) => {
+            Ok(mut context) => {
+                // EglContext::new() always starts with a 10×10 wl_egl_window. Resize it to the
+                // actual display dimensions now so we never draw to a 10×10 surface.
+                if let Err(err) = context
+                    .resize(&self.display_info)
+                    .wrap_err("Failed to resize recovered EGL context")
+                {
+                    error!("{err:?}");
+                }
                 // We were able to create a new context, so we can draw the wallpaper
                 // First we need to tell the image picker that we are not choosing a new image
                 self.image_picker.reload();
