@@ -463,8 +463,8 @@ fn projection_matrix(transform: Transform) -> [f32; 4] {
         }
         Transform::_90 => {
             [
-                0.0, -1.0,
-                1.0, 0.0,
+                0.0, 1.0,
+                -1.0, 0.0,
             ]
         }
         Transform::_180 => {
@@ -475,8 +475,8 @@ fn projection_matrix(transform: Transform) -> [f32; 4] {
         }
         Transform::_270 => {
             [
-                0.0, 1.0,
-                -1.0, 0.0,
+                0.0, -1.0,
+                1.0, 0.0,
             ]
         }
         Transform::Flipped => {
@@ -487,8 +487,8 @@ fn projection_matrix(transform: Transform) -> [f32; 4] {
         }
         Transform::Flipped90 => {
             [
-                0.0, -1.0,
-                -1.0, 0.0,
+                0.0, 1.0,
+                1.0, 0.0,
             ]
         }
         Transform::Flipped180 => {
@@ -499,8 +499,8 @@ fn projection_matrix(transform: Transform) -> [f32; 4] {
         }
         Transform::Flipped270 => {
             [
-                0.0, 1.0,
-                1.0, 0.0,
+                0.0, -1.0,
+                -1.0, 0.0,
             ]
         }
         _ => unreachable!()
