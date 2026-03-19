@@ -43,6 +43,7 @@ pub struct Wpaperd {
     pub image_loader: Rc<RefCell<ImageLoader>>,
     pub wallpaper_groups: Rc<RefCell<WallpaperGroups>>,
     pub xdg_dirs: BaseDirectories,
+    pub ccw_rotation: bool,
 }
 
 impl Wpaperd {
@@ -54,6 +55,7 @@ impl Wpaperd {
         filelist_cache: Rc<RefCell<FilelistCache>>,
         image_loader: Rc<RefCell<ImageLoader>>,
         xdg_dirs: BaseDirectories,
+        ccw_rotation: bool,
     ) -> Result<Self> {
         let shm_state = Shm::bind(globals, qh).wrap_err("Failed to bind memory state")?;
 
@@ -72,6 +74,7 @@ impl Wpaperd {
             image_loader,
             wallpaper_groups: Rc::new(RefCell::new(WallpaperGroups::new())),
             xdg_dirs,
+            ccw_rotation,
         })
     }
 

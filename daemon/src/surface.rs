@@ -89,6 +89,7 @@ pub struct Surface {
     pause_reason: Option<PauseReason>,
     /// Contains the value of XDG_STATE_HOME, given by wapaperd at struct creation
     xdg_state_home: PathBuf,
+    ccw_rotation: bool,
 }
 
 impl Surface {
@@ -118,6 +119,7 @@ impl Surface {
             &wl_surface,
             &wallpaper_info,
             &display_info,
+            wpaperd.ccw_rotation,
         )
         .wrap_err_with(|| {
             format!(
@@ -148,6 +150,7 @@ impl Surface {
             loading_image_tries: 0,
             skip_next_transition: first_transition,
             xdg_state_home,
+            ccw_rotation: wpaperd.ccw_rotation,
         };
 
         // Start loading the wallpaper as soon as possible (i.e. surface creation)
@@ -878,6 +881,7 @@ impl Surface {
             &self.wl_surface,
             &self.wallpaper_info,
             &self.display_info,
+            self.ccw_rotation,
         ) {
             Ok(context) => {
                 // We were able to create a new context, so we can draw the wallpaper

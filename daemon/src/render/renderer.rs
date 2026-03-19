@@ -44,6 +44,7 @@ pub struct Renderer {
     //transparent_texture: gl::types::GLuint,
     /// contains the progress of the current animation
     transition_status: TransitionStatus,
+    ccw_rotation: bool,
 }
 
 impl Renderer {
@@ -51,6 +52,7 @@ impl Renderer {
         transition_time: u32,
         transition: Transition,
         display_info: &DisplayInfo,
+        ccw_rotation: bool,
     ) -> Result<Self> {
         let gl = Rc::new(gl::Gl::load_with(|name| {
             egl.get_proc_address(name)
@@ -75,6 +77,7 @@ impl Renderer {
             prev_wallpaper,
             current_wallpaper,
             transition_status: TransitionStatus::Ended,
+            ccw_rotation,
         };
 
         renderer
@@ -387,7 +390,7 @@ impl Renderer {
     }
 
     pub unsafe fn set_projection_matrix(&self, transform: Transform) -> Result<()> {
-        let projection_matrix = projection_matrix(transform);
+        let projection_matrix = projection_matrix(transform, self.ccw_rotation);
         let loc = self
             .gl
             .GetUniformLocation(self.program, b"projection_matrix\0".as_ptr() as *const _);
@@ -453,7 +456,7 @@ fn create_program(gl: &gl::Gl, transition: Transition) -> Result<gl::types::GLui
 }
 
 #[rustfmt::skip]
-fn projection_matrix(transform: Transform) -> [f32; 4] {
+fn projection_matrix(transform: Transform, ccw_rotation: bool) -> [f32; 4] {
     match transform {
         Transform::Normal => {
             [
@@ -461,11 +464,20 @@ fn projection_matrix(transform: Transform) -> [f32; 4] {
                 0.0, 1.0,
             ]
         }
-        Transform::_90 => {
-            [
-                0.0, 1.0,
-                -1.0, 0.0,
-            ]
+        Transform::_90 => if ccw_rotation {
+            {
+                [
+                    0.0, 1.0,
+                    -1.0, 0.0,
+                ]
+            }
+        } else {
+            {
+                [
+                    0.0, -1.0,
+                    1.0, 0.0,
+                ]
+            }
         }
         Transform::_180 => {
             [
@@ -473,11 +485,20 @@ fn projection_matrix(transform: Transform) -> [f32; 4] {
                 0.0, -1.0,
             ]
         }
-        Transform::_270 => {
-            [
-                0.0, -1.0,
-                1.0, 0.0,
-            ]
+        Transform::_270 => if ccw_rotation {
+            {
+                [
+                    0.0, -1.0,
+                    1.0, 0.0,
+                ]
+            }
+        } else {
+            {
+                [
+                    0.0, 1.0,
+                    -1.0, 0.0,
+                ]
+            }
         }
         Transform::Flipped => {
             [
@@ -485,11 +506,20 @@ fn projection_matrix(transform: Transform) -> [f32; 4] {
                 0.0, 1.0,
             ]
         }
-        Transform::Flipped90 => {
-            [
-                0.0, 1.0,
-                1.0, 0.0,
-            ]
+        Transform::Flipped90 => if ccw_rotation {
+            {
+                [
+                    0.0, 1.0,
+                    1.0, 0.0,
+                ]
+            }
+        } else {
+            {
+                [
+                    0.0, -1.0,
+                    -1.0, 0.0,
+                ]
+            }
         }
         Transform::Flipped180 => {
             [
@@ -497,11 +527,20 @@ fn projection_matrix(transform: Transform) -> [f32; 4] {
                 0.0, -1.0,
             ]
         }
-        Transform::Flipped270 => {
-            [
-                0.0, -1.0,
-                -1.0, 0.0,
-            ]
+        Transform::Flipped270 => if ccw_rotation {
+            {
+                [
+                    0.0, -1.0,
+                    -1.0, 0.0,
+                ]
+            }
+        } else {
+            {
+                [
+                    0.0, 1.0,
+                    1.0, 0.0,
+                ]
+            }
         }
         _ => unreachable!()
     }

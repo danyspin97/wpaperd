@@ -167,6 +167,7 @@ fn run(opts: Opts, xdg_dirs: BaseDirectories) -> Result<()> {
         filelist_cache.clone(),
         image_loader,
         xdg_dirs,
+        opts.ccw_rotation,
     )
     .wrap_err("Failed to initiliaze wpaperd status")?;
 

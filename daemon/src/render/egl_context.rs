@@ -33,6 +33,7 @@ impl EglContext {
         wl_surface: &WlSurface,
         wallpaper_info: &WallpaperInfo,
         display_info: &DisplayInfo,
+        ccw_rotation: bool,
     ) -> Result<Self> {
         const ATTRIBUTES: [i32; 7] = [
             egl::RED_SIZE,
@@ -84,6 +85,7 @@ impl EglContext {
                 wallpaper_info.transition_time,
                 wallpaper_info.transition.clone(),
                 display_info,
+                ccw_rotation,
             )
             .wrap_err("Failed to create a openGL ES renderer")?
         };
