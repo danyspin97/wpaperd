@@ -61,8 +61,12 @@ impl EglContext {
             .create_context(egl_display, config, None, &CONTEXT_ATTRIBUTES)
             .wrap_err("Failed to create an EGL context")?;
 
-        // First, create a small surface, we don't know the size of the output yet
-        let wl_egl_surface = WlEglSurface::new(wl_surface.id(), 10, 10)
+        let (initial_width, initial_height) = if display_info.is_configured() {
+            (display_info.adjusted_width(), display_info.adjusted_height())
+        } else {
+            (10, 10)
+        };
+        let wl_egl_surface = WlEglSurface::new(wl_surface.id(), initial_width, initial_height)
             .wrap_err("Failed to create a WlEglSurface")?;
 
         let surface = unsafe {
@@ -79,7 +83,7 @@ impl EglContext {
         egl.make_current(egl_display, Some(surface), Some(surface), Some(context))
             .wrap_err("Failed to set the current EGL context")?;
 
-        let renderer = unsafe {
+        let mut renderer = unsafe {
             Renderer::new(
                 wallpaper_info.transition_time,
                 wallpaper_info.transition.clone(),
@@ -87,6 +91,12 @@ impl EglContext {
             )
             .wrap_err("Failed to create a openGL ES renderer")?
         };
+
+        if display_info.is_configured() {
+            renderer
+                .resize(display_info)
+                .wrap_err("Failed to set the initial GL viewport")?;
+        }
 
         Ok(Self {
             display: egl_display,

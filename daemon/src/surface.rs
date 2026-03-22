@@ -215,10 +215,11 @@ impl Surface {
                         self.display_info.name
                     ))
                 );
-                // The draw failed for some reason. Invalid the context and try to draw in the next
-                // frame
+                // Invalidate the context so check_context will recreate it on the
+                // next event loop iteration. We intentionally don't request a frame
+                // callback here to avoid a tight error loop when the surface is
+                // temporarily invalid (e.g. after DPMS off/on).
                 self.context = None;
-                self.wl_surface.frame(qh, self.wl_surface.clone());
             }
         }
     }
@@ -868,7 +869,9 @@ impl Surface {
         }
     }
 
-    /// Check if the context is valid, and try to recreate it if needed
+    /// Check if the context is valid, and try to recreate it if needed.
+    /// When recreation fails, we avoid requesting frame callbacks to prevent
+    /// a tight error loop — recovery will happen on the next real event.
     #[inline]
     pub fn check_context(&mut self, egl_display: egl::Display, qh: &QueueHandle<Wpaperd>) {
         // The context is still valid
@@ -876,7 +879,7 @@ impl Surface {
             return;
         }
 
-        self.context = match EglContext::new(
+        match EglContext::new(
             egl_display,
             &self.wl_surface,
             &self.wallpaper_info,
@@ -884,6 +887,7 @@ impl Surface {
         ) {
             Ok(context) => {
                 // We were able to create a new context, so we can draw the wallpaper
+                self.context = Some(context);
                 // First we need to tell the image picker that we are not choosing a new image
                 self.image_picker.reload();
                 // Then we need to ask the background loader to load the image
@@ -900,14 +904,11 @@ impl Surface {
                         warn!("{err:?}");
                     }
                 }
-                Some(context)
             }
             Err(err) => {
                 error!("{err:?}");
-                self.wl_surface.frame(qh, self.wl_surface.clone());
-                None
             }
-        };
+        }
     }
 
     pub fn get_context(&mut self) -> Result<&mut EglContext> {
