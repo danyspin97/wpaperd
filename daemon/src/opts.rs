@@ -30,9 +30,6 @@ pub struct Opts {
         help = "Readiness fd used by wpaperd to signal that it has started correctly"
     )]
     pub notify: Option<u8>,
-    #[clap(
-        long,
-        help = "Use counter-clockwise rotation for monitors"
-    )]
+    #[clap(long, help = "Use counter-clockwise rotation for monitors")]
     pub ccw_rotation: bool,
 }
