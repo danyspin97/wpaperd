@@ -7,6 +7,8 @@ use clap::Parser;
 pub struct Opts {
     #[clap(subcommand)]
     pub subcmd: SubCmd,
+    #[clap(short, long)]
+    pub socket_name: Option<String>,
 }
 
 #[derive(clap::Subcommand)]

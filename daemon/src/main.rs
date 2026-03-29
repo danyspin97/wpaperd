@@ -159,6 +159,8 @@ fn run(opts: Opts, xdg_dirs: BaseDirectories) -> Result<()> {
         .wrap_err("Failed to insert the image loader listener into the event loop")?;
     let image_loader = Rc::new(RefCell::new(ImageLoader::new(image_loader_ping)));
 
+    let socket_name = config.socket_name.clone();
+
     let mut wpaperd = Wpaperd::new(
         &qh,
         &globals,
@@ -171,8 +173,10 @@ fn run(opts: Opts, xdg_dirs: BaseDirectories) -> Result<()> {
     .wrap_err("Failed to initiliaze wpaperd status")?;
 
     // Start listening on the IPC socket
-    let socket = listen_on_ipc_socket(&socket_path().wrap_err("Failed to locate wpaperd socket")?)
-        .wrap_err("Failed to listen to IPC socket")?;
+    let socket = listen_on_ipc_socket(
+        &socket_path(socket_name.as_deref()).wrap_err("Failed to locate wpaperd socket")?,
+    )
+    .wrap_err("Failed to listen to IPC socket")?;
 
     // Add source to calloop loop.
     event_loop
