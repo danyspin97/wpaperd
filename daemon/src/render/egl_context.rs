@@ -34,13 +34,17 @@ impl EglContext {
         wallpaper_info: &WallpaperInfo,
         display_info: &DisplayInfo,
     ) -> Result<Self> {
-        const ATTRIBUTES: [i32; 7] = [
+        const ATTRIBUTES: [i32; 11] = [
             egl::RED_SIZE,
             8,
             egl::GREEN_SIZE,
             8,
             egl::BLUE_SIZE,
             8,
+            egl::RENDERABLE_TYPE,
+            egl::OPENGL_ES2_BIT,
+            egl::SURFACE_TYPE,
+            egl::WINDOW_BIT,
             egl::NONE,
         ];
 
