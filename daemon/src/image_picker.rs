@@ -113,10 +113,6 @@ impl Queue {
         }
     }
 
-    fn has_reached_end(&self) -> bool {
-        self.current == self.tail
-    }
-
     fn resize(&mut self, new_size: usize) {
         if !self.is_full() {
             self.buffer.reserve_exact(new_size);

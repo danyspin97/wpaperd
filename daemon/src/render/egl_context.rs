@@ -20,7 +20,7 @@ use super::Renderer;
 pub struct EglContext {
     display: egl::Display,
     context: egl::Context,
-    config: egl::Config,
+    _config: egl::Config,
     wl_egl_surface: WlEglSurface,
     surface: khronos_egl::Surface,
     display_name: String,
@@ -91,7 +91,7 @@ impl EglContext {
         Ok(Self {
             display: egl_display,
             context,
-            config,
+            _config: config,
             surface,
             wl_egl_surface,
             display_name: display_info.name.to_owned(),

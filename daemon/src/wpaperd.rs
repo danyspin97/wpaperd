@@ -131,7 +131,6 @@ impl CompositorHandler for Wpaperd {
         time: u32,
     ) {
         let surface = self.surface_from_wl_surface(surface);
-
         surface.try_drawing(qh, Some(time));
     }
 
