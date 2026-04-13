@@ -79,13 +79,24 @@ impl EglContext {
         egl.make_current(egl_display, Some(surface), Some(surface), Some(context))
             .wrap_err("Failed to set the current EGL context")?;
 
-        let renderer = unsafe {
+        // Use match rather than ? so that we can clean up the EGL surface and context on
+        // failure. If we return early via ?, the egl::Surface and egl::Context locals have
+        // no Drop impl and will leak. A leaked surface prevents a subsequent
+        // eglCreateWindowSurface on the same WlSurface from succeeding (EGL_BAD_ALLOC).
+        let renderer = match unsafe {
             Renderer::new(
                 wallpaper_info.transition_time,
                 wallpaper_info.transition.clone(),
                 display_info,
             )
-            .wrap_err("Failed to create a openGL ES renderer")?
+            .wrap_err("Failed to create a openGL ES renderer")
+        } {
+            Ok(r) => r,
+            Err(err) => {
+                let _ = egl.destroy_surface(egl_display, surface);
+                let _ = egl.destroy_context(egl_display, context);
+                return Err(err);
+            }
         };
 
         Ok(Self {
@@ -204,7 +215,16 @@ impl Drop for EglContext {
             warn!(
                 "{:?}",
                 eyre!(err).wrap_err(format!(
-                    "Failed to destroy surface for display {}",
+                    "Failed to destroy EGL surface for display {}",
+                    self.display_name
+                ))
+            );
+        }
+        if let Err(err) = egl.destroy_context(self.display, self.context) {
+            warn!(
+                "{:?}",
+                eyre!(err).wrap_err(format!(
+                    "Failed to destroy EGL context for display {}",
                     self.display_name
                 ))
             );
