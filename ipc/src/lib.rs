@@ -61,6 +61,6 @@ pub enum IpcError {
 }
 
 pub fn socket_path() -> Result<PathBuf, BaseDirectoriesError> {
-    let xdg_dirs = BaseDirectories::with_prefix("wpaperd")?;
+    let xdg_dirs = BaseDirectories::with_prefix("wpaperd");
     Ok(xdg_dirs.get_runtime_directory()?.join("wpaperd.sock"))
 }

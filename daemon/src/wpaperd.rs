@@ -256,7 +256,7 @@ impl OutputHandler for Wpaperd {
                         "Could not create wallpapers state directory for display {name}"
                     ))
                 );
-                self.xdg_dirs.get_state_home()
+                self.xdg_dirs.get_state_home().expect("HOME is not set")
             }
         };
         let name = display_info.name.clone();

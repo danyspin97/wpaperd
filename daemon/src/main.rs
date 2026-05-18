@@ -283,7 +283,7 @@ fn main() -> Result<()> {
     color_eyre::install().wrap_err("Failed to inject color_eyre")?;
 
     let xdg_dirs =
-        BaseDirectories::with_prefix("wpaperd").wrap_err("Failed to initialize XDG directories")?;
+        BaseDirectories::with_prefix("wpaperd");
 
     let opts = Opts::parse();
 
@@ -292,7 +292,7 @@ fn main() -> Result<()> {
 
     if opts.daemon {
         // If wpaperd detach, then log to files
-        logger = logger.log_to_file(FileSpec::default().directory(xdg_dirs.get_state_home()));
+        logger = logger.log_to_file(FileSpec::default().directory(xdg_dirs.get_state_home().expect("HOME is not set")));
         match unsafe { fork()? } {
             nix::unistd::ForkResult::Parent { child: _ } => exit(0),
             nix::unistd::ForkResult::Child => {}
