@@ -252,7 +252,9 @@ fn run(opts: Opts, xdg_dirs: BaseDirectories) -> Result<()> {
 
             // This is only true once per surface at startup (or when a new display gets connected)
             if !surface.has_been_drawn() {
-                // Add the first timer, it will run endlessy or it will be updated in
+                // EGL context starts with 10x10 surface, resize to actual dimensions before first draw
+                surface.resize(&qh).ok();
+                // Add the first timer, it will run endlessly or it will be updated in
                 // Surface::handle_new_duration
                 surface.add_timer(&event_loop.handle(), None);
                 surface.try_drawing(&qh, None);

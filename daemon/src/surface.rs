@@ -167,36 +167,33 @@ impl Surface {
 
     /// Returns true if something has been drawn to the surface
     fn draw(&mut self, qh: &QueueHandle<Wpaperd>, time: Option<u32>) -> Result<()> {
+        let loading_image = self.loading_image.is_some();
+        let window_drawn = self.window_drawn;
+        let adjusted_width = self.display_info.adjusted_width();
+        let adjusted_height = self.display_info.adjusted_height();
+
         // Use the correct context before drawing
-        self.get_context()?
+        let context = self.get_context()?;
+        context
             .make_current()
             .wrap_err("Failed to switch EGL context")?;
 
-        if self
-            .get_context()?
-            .renderer
-            // If we don't have any time passed, just consider the transition to be ended by using 0
-            .update_transition_status(time.unwrap_or(0))
-        {
+        // Check transition status - if running, we don't draw this frame
+        let transition_running = context.renderer.update_transition_status(time.unwrap_or(0));
+        if transition_running {
             self.queue_draw(qh);
-            // We are waiting for an image to be loaded in memory
-        } else if self.loading_image.is_some() && self.window_drawn {
             return Ok(());
         }
 
-        self.get_context()?
-            .draw()
-            .wrap_err("Failed to draw the wallpaper")?;
+        if loading_image && window_drawn {
+            return Ok(());
+        }
 
-        // Mark the entire surface as damaged
-        self.wl_surface.damage_buffer(
-            0,
-            0,
-            self.display_info.adjusted_width(),
-            self.display_info.adjusted_height(),
-        );
+        context.draw().wrap_err("Failed to draw the wallpaper")?;
 
-        // Finally, commit the surface
+        // Mark the entire surface as damaged and commit
+        self.wl_surface
+            .damage_buffer(0, 0, adjusted_width, adjusted_height);
         self.wl_surface.commit();
 
         self.window_drawn = true;
@@ -360,7 +357,7 @@ impl Surface {
         self.context
             .as_mut()
             .ok_or_else(|| eyre!("EGL context is not available"))?
-            .resize(&self.wl_surface, &self.display_info)
+            .resize(&self.display_info)
             .wrap_err("Failed to resize EGL window")?;
 
         // Queue drawing for the next frame. We can directly draw here, but we would still
@@ -882,7 +879,15 @@ impl Surface {
             &self.wallpaper_info,
             &self.display_info,
         ) {
-            Ok(context) => {
+            Ok(mut context) => {
+                // EglContext::new() always starts with a 10×10 wl_egl_window. Resize it to the
+                // actual display dimensions now so we never draw to a 10×10 surface.
+                if let Err(err) = context
+                    .resize(&self.display_info)
+                    .wrap_err("Failed to resize recovered EGL context")
+                {
+                    error!("{err:?}");
+                }
                 // We were able to create a new context, so we can draw the wallpaper
                 // First we need to tell the image picker that we are not choosing a new image
                 self.image_picker.reload();
