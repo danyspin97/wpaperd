@@ -158,6 +158,10 @@ impl EglContext {
             0,
             0,
         );
+
+        self.make_current()
+            .wrap_err("Failed to switch EGL context")?;
+
         self.renderer
             .resize(display_info)
             .wrap_err("Failed to resize GL window")?;
