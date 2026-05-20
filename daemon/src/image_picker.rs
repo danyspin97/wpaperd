@@ -57,31 +57,40 @@ impl Queue {
         &self.buffer[self.current]
     }
 
-    fn next(&mut self) -> Option<(&Path, usize)> {
-        let next_index = (self.current + 1) % self.size;
+    fn next(&mut self, wrap: bool) -> Option<(&Path, usize)> {
+        let next = (self.current + 1) % self.size;
         if !self.is_full() {
-            if next_index < self.buffer.len() {
-                self.current = next_index;
-                Some((&self.buffer[next_index], next_index))
+            if next < self.buffer.len() {
+                self.current = next;
+            } else if wrap {
+                self.current = (self.current + 1) % self.buffer.len();
             } else {
-                None
+                return None;
             }
         } else if self.current != self.tail {
-            self.current = next_index;
-            Some((&self.buffer[next_index], next_index))
+            self.current = next;
         } else {
-            None
+            return None;
         }
+        Some((&self.buffer[self.current], self.current))
     }
 
-    fn previous(&mut self) -> Option<(&Path, usize)> {
-        let prev_index = (self.current + self.size - 1) % self.size;
-        if prev_index != self.tail {
-            self.current = prev_index;
-            Some((&self.buffer[prev_index], prev_index))
+    fn previous(&mut self, wrap: bool) -> Option<(&Path, usize)> {
+        let prev = (self.current + self.size - 1) % self.size;
+        if !self.is_full() {
+            if prev < self.buffer.len() {
+                self.current = prev;
+            } else if wrap {
+                self.current = (self.current + self.buffer.len() - 1) % self.buffer.len();
+            } else {
+                return None;
+            }
+        } else if prev != self.tail {
+            self.current = prev;
         } else {
-            None
+            return None;
         }
+        Some((&self.buffer[self.current], self.current))
     }
 
     fn is_full(&self) -> bool {
@@ -122,7 +131,7 @@ impl Queue {
             self.current = (self.tail + self.size - new_size % self.size) % self.size;
             let relative_current = (relative_current + self.size - self.current - 1) % new_size;
             let mut new_buf = VecDeque::new();
-            while let Some((prev, _)) = self.next() {
+            while let Some((prev, _)) = self.next(false) {
                 new_buf.push_back(prev.to_path_buf());
             }
             self.current = relative_current;
@@ -130,6 +139,10 @@ impl Queue {
             self.size = new_size;
             self.buffer = new_buf;
         }
+    }
+
+    fn len(&self) -> usize {
+        self.buffer.len()
     }
 }
 
@@ -302,12 +315,12 @@ impl ImagePicker {
                 }
             }
             (Some(ImagePickerAction::Previous), ImagePickerSorting::Random(queue)) => {
-                get_previous_image_for_random(&self.current_img, queue)
+                get_previous_image_for_random(&self.current_img, queue, files.len() <= queue.len())
             }
             (Some(ImagePickerAction::Previous), ImagePickerSorting::GroupedRandom(group)) => {
                 let mut group = group.group.borrow_mut();
                 let queue = &mut group.queue;
-                let (index, path) = get_previous_image_for_random(&self.current_img, queue);
+                let (index, path) = get_previous_image_for_random(&self.current_img, queue, files.len() <= queue.len());
                 if path != group.current_image {
                     group.loading_image = Some((index, path.to_path_buf()));
                 }
@@ -650,7 +663,8 @@ fn next_random_image(
     files: &[PathBuf],
 ) -> (usize, PathBuf) {
     // Use the next images in the queue, if any
-    while let Some((next, index)) = queue.next() {
+    let wrap = files.len() <= queue.len();
+    while let Some((next, index)) = queue.next(wrap) {
         if next.exists() {
             return (index, next.to_path_buf());
         }
@@ -688,8 +702,8 @@ fn next_random_image(
     }
 }
 
-fn get_previous_image_for_random(current_image: &Path, queue: &mut Queue) -> (usize, PathBuf) {
-    while let Some((prev, index)) = queue.previous() {
+fn get_previous_image_for_random(current_image: &Path, queue: &mut Queue, wrap: bool) -> (usize, PathBuf) {
+    while let Some((prev, index)) = queue.previous(wrap) {
         if prev.exists() {
             return (index, prev.to_path_buf());
         }
@@ -711,10 +725,10 @@ mod tests {
         queue.push(PathBuf::from("mypath"));
         queue.push(PathBuf::from("mypath2"));
         assert_eq!(Path::new("mypath2"), queue.current());
-        assert_eq!(Some((Path::new("mypath"), 0)), queue.previous());
+        assert_eq!(Some((Path::new("mypath"), 0)), queue.previous(false));
         assert_eq!(Path::new("mypath"), queue.current());
 
-        assert_eq!(None, queue.previous());
+        assert_eq!(None, queue.previous(false));
     }
 
     #[test]
@@ -727,13 +741,13 @@ mod tests {
         queue.push(PathBuf::from("mypath5"));
         assert_eq!(queue.buffer.len(), 5);
         assert_eq!(Path::new("mypath5"), queue.current());
-        assert_eq!(Some((Path::new("mypath4"), 3)), queue.previous());
+        assert_eq!(Some((Path::new("mypath4"), 3)), queue.previous(false));
 
         // Test that the current index works when it's inside the resizing range
         queue.resize(2);
         assert_eq!(Path::new("mypath4"), queue.current());
-        assert_eq!(None, queue.previous());
-        assert_eq!(Some((Path::new("mypath5"), 1)), queue.next());
+        assert_eq!(None, queue.previous(false));
+        assert_eq!(Some((Path::new("mypath5"), 1)), queue.next(false));
     }
 
     #[test]
@@ -749,15 +763,15 @@ mod tests {
         queue.push(PathBuf::from("mypath8"));
         assert_eq!(queue.buffer.len(), 5);
         assert_eq!(Path::new("mypath8"), queue.current());
-        assert_eq!(Some((Path::new("mypath7"), 3)), queue.previous());
-        assert_eq!(Some((Path::new("mypath6"), 2)), queue.previous());
-        assert_eq!(Some((Path::new("mypath5"), 1)), queue.previous());
+        assert_eq!(Some((Path::new("mypath7"), 3)), queue.previous(false));
+        assert_eq!(Some((Path::new("mypath6"), 2)), queue.previous(false));
+        assert_eq!(Some((Path::new("mypath5"), 1)), queue.previous(false));
 
         // Test that the current item point to the first item available
         queue.resize(2);
         assert_eq!(Path::new("mypath7"), queue.current());
-        assert_eq!(Some((Path::new("mypath8"), 1)), queue.next());
-        assert_eq!(None, queue.next());
+        assert_eq!(Some((Path::new("mypath8"), 1)), queue.next(false));
+        assert_eq!(None, queue.next(false));
     }
 
     // =======================================================
@@ -778,7 +792,7 @@ mod tests {
         assert_eq!(queue.current(), Path::new("/manual.png"));
 
         // User immediately does `previous` - should go to image3
-        let prev = queue.previous();
+        let prev = queue.previous(false);
         assert_eq!(prev, Some((Path::new("/image3.png"), 2)));
     }
 
@@ -798,11 +812,11 @@ mod tests {
         assert_eq!(queue.buffer.len(), 2);
 
         // Previous goes to image1
-        let prev = queue.previous();
+        let prev = queue.previous(false);
         assert_eq!(prev, Some((Path::new("/image1.png"), 0)));
 
         // No more previous (we're at the start)
-        assert_eq!(queue.previous(), None);
+        assert_eq!(queue.previous(false), None);
     }
 
     #[test]
@@ -819,7 +833,7 @@ mod tests {
         assert_eq!(queue.current(), Path::new("/image1.png"));
 
         // Next should go to image2
-        let next = queue.next();
+        let next = queue.next(false);
         assert_eq!(next, Some((Path::new("/image2.png"), 1)));
     }
 
