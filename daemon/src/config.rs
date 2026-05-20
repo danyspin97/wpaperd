@@ -437,7 +437,7 @@ impl Config {
                 info.path.as_ref().map(|p| {
                     (
                         p.to_path_buf(),
-                        info.recursive.map(Recursive::from).unwrap_or_default(),
+                        info.recursive.or(self.default.recursive).map(Recursive::from).unwrap_or_default(),
                     )
                 })
             })
