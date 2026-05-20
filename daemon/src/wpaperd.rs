@@ -213,24 +213,7 @@ impl OutputHandler for Wpaperd {
             display_info.adjusted_height() as u32,
         );
 
-        match Region::new(&self.compositor_state) {
-            Ok(region) => {
-                // Wayland clients are expected to render the cursor on their input region. By setting the
-                // input region to an empty region, the compositor renders the default cursor. Without
-                // this, and empty desktop won't render a cursor.
-                surface.set_input_region(Some(region.wl_region()));
-
-                // From `wl_surface::set_opaque_region`:
-                // > Setting the pending opaque region has copy semantics, and the
-                // > wl_region object can be destroyed immediately.
-                region.wl_region().destroy();
-            }
-
-            Err(_) => {
-                warn!("Failed to create region, cursor won't be shown for display {name}");
-                return;
-            }
-        };
+        surface.set_input_region(None);
 
         let wallpaper_info = match self.config.get_info_for_output(&name, &description) {
             Ok(wallpaper_info) => wallpaper_info,
