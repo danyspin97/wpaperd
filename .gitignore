@@ -4,3 +4,7 @@
 
 #nix
 /result
+
+# direnv
+/.direnv/
+/.envrc
