@@ -236,6 +236,7 @@ impl Surface {
                 if self.image_picker.current_image() == *item.path()
                     && !self.image_picker.is_reloading()
                 {
+                    self.image_picker.clear_first_action();
                     return Ok(true);
                 }
                 self.loading_image = Some(item);
@@ -244,6 +245,7 @@ impl Surface {
                     self.get_context()?.renderer.transition_finished();
                 }
             } else {
+                self.image_picker.clear_first_action();
                 // we don't need to load any image
                 return Ok(true);
             }

@@ -239,7 +239,7 @@ impl ImagePickerSorting {
 
 pub struct ImagePicker {
     current_img: PathBuf,
-    action: Option<ImagePickerAction>,
+    actions: VecDeque<ImagePickerAction>,
     sorting: ImagePickerSorting,
     filelist_cache: Rc<RefCell<FilelistCache>>,
     reload: bool,
@@ -259,7 +259,7 @@ impl ImagePicker {
     ) -> Self {
         Self {
             current_img: PathBuf::from(""),
-            action: Some(ImagePickerAction::Next),
+            actions: VecDeque::from([ImagePickerAction::Next]),
             sorting: ImagePickerSorting::new(
                 wallpaper_info,
                 wl_surface,
@@ -275,7 +275,7 @@ impl ImagePicker {
 
     /// Get the next image based on the sorting method
     fn get_image_path(&mut self, files: &[PathBuf]) -> (Option<usize>, PathBuf) {
-        match (&self.action, &mut self.sorting) {
+        match (self.actions.front(), &mut self.sorting) {
             (
                 None,
                 ImagePickerSorting::Ascending(current_index)
@@ -440,14 +440,14 @@ impl ImagePicker {
             ImageResult::Forced(img_path) => {
                 // Don't update navigation state for forced images - they're "detours"
                 // Clear action without updating state
-                self.action.take();
+                self.actions.clear();
                 self.current_img = img_path;
             }
             ImageResult::FromList {
                 path: img_path,
                 index,
             } => {
-                match (self.action.take(), &mut self.sorting) {
+                match (self.actions.pop_front(), &mut self.sorting) {
                     (Some(ImagePickerAction::Next), ImagePickerSorting::Random(queue)) => {
                         queue.push(img_path.clone());
                     }
@@ -508,7 +508,7 @@ impl ImagePicker {
             self.reload = true;
             self.was_last_forced = false;
         } else {
-            self.action = Some(ImagePickerAction::Previous);
+            self.actions.push_back(ImagePickerAction::Previous);
         }
     }
 
@@ -516,7 +516,7 @@ impl ImagePicker {
     pub fn next_image(&mut self) {
         // Clear forced flag - next continues normal navigation
         self.was_last_forced = false;
-        self.action = Some(ImagePickerAction::Next);
+        self.actions.push_back(ImagePickerAction::Next);
     }
 
     pub fn current_image(&self) -> PathBuf {
@@ -652,6 +652,10 @@ impl ImagePicker {
         if let ImagePickerSorting::GroupedRandom(grouped_random) = &self.sorting {
             grouped_random.group.borrow().queue_all_surfaces(qh);
         }
+    }
+
+    pub fn clear_first_action(&mut self) {
+        self.actions.pop_front();
     }
 }
 
