@@ -178,14 +178,17 @@ impl Surface {
             .make_current()
             .wrap_err("Failed to switch EGL context")?;
 
-        // Check transition status - if running, we don't draw this frame
+        // Check transition status and draw the wallpaper
         let transition_running = context.renderer.update_transition_status(time.unwrap_or(0));
         if transition_running {
+            // Transition is running - still need to draw so the transition renders
+            context.draw().wrap_err("Failed to draw the transition")?;
             self.queue_draw(qh);
             return Ok(());
         }
 
         if loading_image && window_drawn {
+            self.queue_draw(qh);
             return Ok(());
         }
 
