@@ -517,7 +517,6 @@ impl ImagePicker {
         // Clear forced flag - next continues normal navigation
         self.was_last_forced = false;
         self.action = Some(ImagePickerAction::Next);
-        self.get_image_from_path(path, recursive);
     }
 
     pub fn current_image(&self) -> PathBuf {
