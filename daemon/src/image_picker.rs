@@ -746,7 +746,7 @@ mod tests {
         queue.resize(2);
         assert_eq!(Path::new("mypath4"), queue.current());
         assert_eq!(None, queue.previous(false));
-        assert_eq!(Some((Path::new("mypath5"), 1)), queue.next(false));
+        assert_eq!(Some(Path::new("mypath5")), queue.next(false));
     }
 
     #[test]
