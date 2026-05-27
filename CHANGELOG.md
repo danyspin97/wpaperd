@@ -1,3 +1,59 @@
+# 1.3.0
+### 🚀 Features
+
+- Add wpaperctl set command
+- Preserve explicit pause across set operations
+- Validate image format before accepting set
+- *(image_picker)* Simplify functions
+- *(image_picker)* Add a queue of actions
+- *(egl_context)* Use the correct size when recreating the context
+
+### 🐛 Bug Fixes
+
+- Handle monitor descriptions with more than one space before the port information
+- *(image_picker)* Remove legacy code, fixing random sorting
+- Update `Cargo.lock`
+- *(daemon/image_loader)* Apply image orientation
+- Include output description in config error
+- Handle wallpaper link to missing image file
+- *(nvidia)* Resolve EGL driver bugs by using wl_egl_window_resize
+- Correctly handle multiple monitors
+- Resource leak
+- Add EGL_RENDERABLE_TYPE/EGL_OPENGL_ES2_BIT to config
+- *(egl_context)* Fix resizing on Intel and AMD graphic cards
+- *(image_picker)* Fix queue handling when there are few images
+- *(wpaperd)* Mark wpaperd surface as input
+- *(config)* Respect default recursive value
+- *(transitions)* They work now
+- *(image_picker)* Fix next_image going forward 2 times
+- *(image_picker)* Fix tests compilation issue
+
+### 🚜 Refactor
+
+- Replace tuple with ImageResult enum
+
+### 📚 Documentation
+
+- Put Dell example in double quotes
+- Add set command to README
+- *(README)* Improve FAQ and add hyprland support notice
+
+### ⚙️ Miscellaneous Tasks
+
+- Update checkout action to v4
+- Avoid using deprecated actions
+- Update `upload-sarif` action
+- Only run release workflow on dispatch - avoid "no jobs were run" error
+- Avoid using deprecated `audit-check`
+- *(fmt)* Wups. Forgot to `cargo fmt`.
+- Update dependencies
+- Remove unused import
+- *(flake)* Update inputs
+- *(flake)* Pull in Nixpkgs' own jemalloc crate
+- *(surface)* Document state machine
+- Set version to 1.3.0
+- Update dependencies
+
 # 1.2.2
 ## Breaking changes
 - `initial-transition` is now set to false by default
