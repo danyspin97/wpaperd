@@ -36,7 +36,7 @@ wayland-egl = "0.32.11"
 khronos-egl = { version = "6.0.0", features = [ "static" ] }
 format-bytes = "0.3.0"
 ctrlc = { version = "3.5.2", features = ["termination"] }
-tikv-jemallocator = { version = "0.6.1", optional = true }
+tikv-jemallocator = { version = "0.7.0", optional = true }
 regex = "1.12.3"
 rayon = "1.12.0"
 fastrand = { version = "2.4.1", features = ["getrandom"] }
