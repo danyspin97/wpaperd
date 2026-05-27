@@ -877,15 +877,7 @@ impl Surface {
             &self.wallpaper_info,
             &self.display_info,
         ) {
-            Ok(mut context) => {
-                // EglContext::new() always starts with a 10×10 wl_egl_window. Resize it to the
-                // actual display dimensions now so we never draw to a 10×10 surface.
-                if let Err(err) = context
-                    .resize(&self.display_info)
-                    .wrap_err("Failed to resize recovered EGL context")
-                {
-                    error!("{err:?}");
-                }
+            Ok(context) => {
                 // We were able to create a new context, so we can draw the wallpaper
                 // First we need to tell the image picker that we are not choosing a new image
                 self.image_picker.reload();

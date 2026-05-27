@@ -65,8 +65,17 @@ impl EglContext {
             .create_context(egl_display, config, None, &CONTEXT_ATTRIBUTES)
             .wrap_err("Failed to create an EGL context")?;
 
-        // First, create a small surface, we don't know the size of the output yet
-        let wl_egl_surface = WlEglSurface::new(wl_surface.id(), 10, 10)
+        // First, create a small surface
+        let (initial_width, initial_height) = if display_info.is_configured() {
+            (
+                display_info.adjusted_width(),
+                display_info.adjusted_height(),
+            )
+        } else {
+            // If we don't know the size of the output yet, just use a 10x10 window
+            (10, 10)
+        };
+        let wl_egl_surface = WlEglSurface::new(wl_surface.id(), initial_width, initial_height)
             .wrap_err("Failed to create a WlEglSurface")?;
 
         let surface = unsafe {
