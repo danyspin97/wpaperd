@@ -320,7 +320,11 @@ impl ImagePicker {
             (Some(ImagePickerAction::Previous), ImagePickerSorting::GroupedRandom(group)) => {
                 let mut group = group.group.borrow_mut();
                 let queue = &mut group.queue;
-                let (index, path) = get_previous_image_for_random(&self.current_img, queue, files.len() <= queue.len());
+                let (index, path) = get_previous_image_for_random(
+                    &self.current_img,
+                    queue,
+                    files.len() <= queue.len(),
+                );
                 if path != group.current_image {
                     group.loading_image = Some((index, path.to_path_buf()));
                 }
@@ -702,7 +706,11 @@ fn next_random_image(
     }
 }
 
-fn get_previous_image_for_random(current_image: &Path, queue: &mut Queue, wrap: bool) -> (usize, PathBuf) {
+fn get_previous_image_for_random(
+    current_image: &Path,
+    queue: &mut Queue,
+    wrap: bool,
+) -> (usize, PathBuf) {
     while let Some((prev, index)) = queue.previous(wrap) {
         if prev.exists() {
             return (index, prev.to_path_buf());
