@@ -22,7 +22,7 @@ pub enum ImageResult {
     /// Image was forced via `wpaperctl set` - not part of normal navigation
     Forced(PathBuf),
     /// Image from the configured directory/list with its index
-    FromList { path: PathBuf, index: usize },
+    FromList { path: PathBuf, index: Option<usize> },
 }
 
 impl ImageResult {
@@ -57,7 +57,7 @@ impl Queue {
         &self.buffer[self.current]
     }
 
-    fn next(&mut self, wrap: bool) -> Option<(&Path, usize)> {
+    fn next(&mut self, wrap: bool) -> Option<&Path> {
         let next = (self.current + 1) % self.size;
         if !self.is_full() {
             if next < self.buffer.len() {
@@ -72,10 +72,10 @@ impl Queue {
         } else {
             return None;
         }
-        Some((&self.buffer[self.current], self.current))
+        Some(&self.buffer[self.current])
     }
 
-    fn previous(&mut self, wrap: bool) -> Option<(&Path, usize)> {
+    fn previous(&mut self, wrap: bool) -> Option<&Path> {
         let prev = (self.current + self.size - 1) % self.size;
         if !self.is_full() {
             if prev < self.buffer.len() {
@@ -90,7 +90,7 @@ impl Queue {
         } else {
             return None;
         }
-        Some((&self.buffer[self.current], self.current))
+        Some(&self.buffer[self.current])
     }
 
     fn is_full(&self) -> bool {
@@ -131,7 +131,7 @@ impl Queue {
             self.current = (self.tail + self.size - new_size % self.size) % self.size;
             let relative_current = (relative_current + self.size - self.current - 1) % new_size;
             let mut new_buf = VecDeque::new();
-            while let Some((prev, _)) = self.next(false) {
+            while let Some(prev) = self.next(false) {
                 new_buf.push_back(prev.to_path_buf());
             }
             self.current = relative_current;
@@ -274,61 +274,63 @@ impl ImagePicker {
     }
 
     /// Get the next image based on the sorting method
-    fn get_image_path(&mut self, files: &[PathBuf]) -> (usize, PathBuf) {
+    fn get_image_path(&mut self, files: &[PathBuf]) -> (Option<usize>, PathBuf) {
         match (&self.action, &mut self.sorting) {
             (
                 None,
                 ImagePickerSorting::Ascending(current_index)
                 | ImagePickerSorting::Descending(current_index),
-            ) if self.current_img.exists() => (*current_index, self.current_img.to_path_buf()),
+            ) if self.current_img.exists() => {
+                (Some(*current_index), self.current_img.to_path_buf())
+            }
             (_, ImagePickerSorting::GroupedRandom(group))
                 if group.group.borrow().loading_image.is_some() =>
             {
                 let group = group.group.borrow();
-                let (index, loading_image) = group.loading_image.as_ref().unwrap();
-                (*index, loading_image.to_path_buf())
+                let loading_image = group.loading_image.as_ref().unwrap();
+                (None, loading_image.to_path_buf())
             }
             (_, ImagePickerSorting::GroupedRandom(group))
                 if group.group.borrow().current_image != self.current_img =>
             {
                 let group = group.group.borrow();
-                (group.index, group.current_image.clone())
+                (None, group.current_image.clone())
             }
             (None, ImagePickerSorting::Random(_) | ImagePickerSorting::GroupedRandom(_))
                 if self.current_img.exists() =>
             {
-                (0, self.current_img.to_path_buf())
+                (None, self.current_img.to_path_buf())
             }
             (None | Some(ImagePickerAction::Next), ImagePickerSorting::Random(queue)) => {
-                next_random_image(&self.current_img, queue, files)
+                (None, next_random_image(&self.current_img, queue, files))
             }
             (None | Some(ImagePickerAction::Next), ImagePickerSorting::GroupedRandom(group)) => {
                 let mut group = group.group.borrow_mut();
                 if self.current_img == group.current_image {
                     // start loading a new image
-                    let (index, path) =
-                        next_random_image(&self.current_img, &mut group.queue, files);
-                    group.loading_image = Some((index, path.to_path_buf()));
-                    (index, path)
+                    let path = next_random_image(&self.current_img, &mut group.queue, files);
+                    group.loading_image = Some(path.to_path_buf());
+                    (None, path)
                 } else {
-                    (group.index, group.current_image.clone())
+                    (None, group.current_image.clone())
                 }
             }
-            (Some(ImagePickerAction::Previous), ImagePickerSorting::Random(queue)) => {
-                get_previous_image_for_random(&self.current_img, queue, files.len() <= queue.len())
-            }
+            (Some(ImagePickerAction::Previous), ImagePickerSorting::Random(queue)) => (
+                None,
+                get_previous_image_for_random(&self.current_img, queue, files.len() <= queue.len()),
+            ),
             (Some(ImagePickerAction::Previous), ImagePickerSorting::GroupedRandom(group)) => {
                 let mut group = group.group.borrow_mut();
                 let queue = &mut group.queue;
-                let (index, path) = get_previous_image_for_random(
+                let path = get_previous_image_for_random(
                     &self.current_img,
                     queue,
                     files.len() <= queue.len(),
                 );
                 if path != group.current_image {
-                    group.loading_image = Some((index, path.to_path_buf()));
+                    group.loading_image = Some(path.to_path_buf());
                 }
-                (index, path)
+                (None, path)
             }
             (
                 None | Some(ImagePickerAction::Next),
@@ -359,7 +361,7 @@ impl ImagePicker {
                 } else {
                     index - 1
                 };
-                (index, files[index].to_path_buf())
+                (Some(index), files[index].to_path_buf())
             }
             (Some(ImagePickerAction::Previous), ImagePickerSorting::Descending(current_index))
             | (
@@ -375,7 +377,7 @@ impl ImagePicker {
                     }
                 };
                 let index = (index + 1) % files.len();
-                (index, files[index].to_path_buf())
+                (Some(index), files[index].to_path_buf())
             }
         }
     }
@@ -428,7 +430,7 @@ impl ImagePicker {
             // path is not a directory, also it's not the current image or we need to reload
             Some(ImageResult::FromList {
                 path: path.to_path_buf(),
-                index: 0,
+                index: None,
             })
         }
     }
@@ -460,20 +462,18 @@ impl ImagePicker {
                         let mut group = group.group.borrow_mut();
                         group.loading_image = None;
                         group.current_image.clone_from(&img_path);
-                        group.index = index;
                     }
                     (
                         _,
                         ImagePickerSorting::Ascending(current_index)
                         | ImagePickerSorting::Descending(current_index),
-                    ) => *current_index = index,
+                    ) => *current_index = index.unwrap_or(usize::MAX),
                     (Some(ImagePickerAction::Next), ImagePickerSorting::GroupedRandom(group)) => {
                         let mut group = group.group.borrow_mut();
                         let queue = &mut group.queue;
                         queue.push(img_path.clone());
                         group.loading_image = None;
                         group.current_image.clone_from(&img_path);
-                        group.index = index;
                     }
                 }
                 self.current_img = img_path;
@@ -513,7 +513,7 @@ impl ImagePicker {
     }
 
     /// Update wallpaper by going up 1 index through the cached image paths
-    pub fn next_image(&mut self, path: &Path, recursive: &Option<Recursive>) {
+    pub fn next_image(&mut self) {
         // Clear forced flag - next continues normal navigation
         self.was_last_forced = false;
         self.action = Some(ImagePickerAction::Next);
@@ -599,7 +599,6 @@ impl ImagePicker {
                     // If there are no other surfaces, we must reuse the current wallpaper
                     if group.surfaces.len() == 1 {
                         group.current_image = self.current_img.clone();
-                        group.index = self.get_current_index();
                         group.queue.push(self.current_img.clone());
                     }
 
@@ -614,11 +613,7 @@ impl ImagePicker {
 
     fn get_current_index(&mut self) -> usize {
         match &self.sorting {
-            ImagePickerSorting::Random(queue) => queue.current,
-            // This is already covered above
-            ImagePickerSorting::GroupedRandom(old_grouped_random) => {
-                old_grouped_random.group.borrow().index
-            }
+            ImagePickerSorting::Random(_) | ImagePickerSorting::GroupedRandom(_) => unreachable!(),
             ImagePickerSorting::Ascending(index) | ImagePickerSorting::Descending(index) => *index,
         }
     }
@@ -661,21 +656,18 @@ impl ImagePicker {
     }
 }
 
-fn next_random_image(
-    current_image: &Path,
-    queue: &mut Queue,
-    files: &[PathBuf],
-) -> (usize, PathBuf) {
+fn next_random_image(current_image: &Path, queue: &mut Queue, files: &[PathBuf]) -> PathBuf {
     // Use the next images in the queue, if any
     let wrap = files.len() <= queue.len();
-    while let Some((next, index)) = queue.next(wrap) {
-        if next.exists() {
-            return (index, next.to_path_buf());
-        }
-    }
     // If there is only one image just return it
     if files.len() == 1 {
-        return (0, files[0].to_path_buf());
+        return files[0].to_path_buf();
+    }
+
+    while let Some(next) = queue.next(wrap) {
+        if next.exists() {
+            return next.to_path_buf();
+        }
     }
 
     // Otherwise pick a new random image that has not been drawn before
@@ -687,7 +679,7 @@ fn next_random_image(
         // search for an image that has not been drawn yet
         // fail after 5 tries
         if !queue.contains(&files[index]) {
-            break (index, files[index].to_path_buf());
+            break files[index].to_path_buf();
         }
 
         // We have already tried a bunch of times
@@ -697,7 +689,7 @@ fn next_random_image(
             break loop {
                 let index = fastrand::usize(..files.len());
                 if files[index] != current_image {
-                    break (index, files[index].to_path_buf());
+                    break files[index].to_path_buf();
                 }
             };
         }
@@ -706,20 +698,16 @@ fn next_random_image(
     }
 }
 
-fn get_previous_image_for_random(
-    current_image: &Path,
-    queue: &mut Queue,
-    wrap: bool,
-) -> (usize, PathBuf) {
-    while let Some((prev, index)) = queue.previous(wrap) {
+fn get_previous_image_for_random(current_image: &Path, queue: &mut Queue, wrap: bool) -> PathBuf {
+    while let Some(prev) = queue.previous(wrap) {
         if prev.exists() {
-            return (index, prev.to_path_buf());
+            return prev.to_path_buf();
         }
     }
 
     // We didn't find any suitable image, reset to the last working one
     queue.set_current_to(current_image);
-    (usize::MAX, current_image.to_path_buf())
+    current_image.to_path_buf()
 }
 
 #[cfg(test)]
@@ -733,7 +721,7 @@ mod tests {
         queue.push(PathBuf::from("mypath"));
         queue.push(PathBuf::from("mypath2"));
         assert_eq!(Path::new("mypath2"), queue.current());
-        assert_eq!(Some((Path::new("mypath"), 0)), queue.previous(false));
+        assert_eq!(Some(Path::new("mypath")), queue.previous(false));
         assert_eq!(Path::new("mypath"), queue.current());
 
         assert_eq!(None, queue.previous(false));
@@ -749,7 +737,7 @@ mod tests {
         queue.push(PathBuf::from("mypath5"));
         assert_eq!(queue.buffer.len(), 5);
         assert_eq!(Path::new("mypath5"), queue.current());
-        assert_eq!(Some((Path::new("mypath4"), 3)), queue.previous(false));
+        assert_eq!(Some(Path::new("mypath4")), queue.previous(false));
 
         // Test that the current index works when it's inside the resizing range
         queue.resize(2);
@@ -771,14 +759,14 @@ mod tests {
         queue.push(PathBuf::from("mypath8"));
         assert_eq!(queue.buffer.len(), 5);
         assert_eq!(Path::new("mypath8"), queue.current());
-        assert_eq!(Some((Path::new("mypath7"), 3)), queue.previous(false));
-        assert_eq!(Some((Path::new("mypath6"), 2)), queue.previous(false));
-        assert_eq!(Some((Path::new("mypath5"), 1)), queue.previous(false));
+        assert_eq!(Some(Path::new("mypath7")), queue.previous(false));
+        assert_eq!(Some(Path::new("mypath6")), queue.previous(false));
+        assert_eq!(Some(Path::new("mypath5")), queue.previous(false));
 
         // Test that the current item point to the first item available
         queue.resize(2);
         assert_eq!(Path::new("mypath7"), queue.current());
-        assert_eq!(Some((Path::new("mypath8"), 1)), queue.next(false));
+        assert_eq!(Some(Path::new("mypath8")), queue.next(false));
         assert_eq!(None, queue.next(false));
     }
 
@@ -801,7 +789,7 @@ mod tests {
 
         // User immediately does `previous` - should go to image3
         let prev = queue.previous(false);
-        assert_eq!(prev, Some((Path::new("/image3.png"), 2)));
+        assert_eq!(prev, Some(Path::new("/image3.png")));
     }
 
     #[test]
@@ -821,7 +809,7 @@ mod tests {
 
         // Previous goes to image1
         let prev = queue.previous(false);
-        assert_eq!(prev, Some((Path::new("/image1.png"), 0)));
+        assert_eq!(prev, Some(Path::new("/image1.png")));
 
         // No more previous (we're at the start)
         assert_eq!(queue.previous(false), None);
@@ -842,7 +830,7 @@ mod tests {
 
         // Next should go to image2
         let next = queue.next(false);
-        assert_eq!(next, Some((Path::new("/image2.png"), 1)));
+        assert_eq!(next, Some(Path::new("/image2.png")));
     }
 
     #[test]
@@ -871,7 +859,7 @@ mod tests {
 
         let from_list = ImageResult::FromList {
             path: PathBuf::from("/list.png"),
-            index: 42,
+            index: None,
         };
         assert_eq!(from_list.path(), Path::new("/list.png"));
     }
@@ -886,12 +874,12 @@ mod tests {
     fn test_image_result_from_list_variant() {
         let result = ImageResult::FromList {
             path: PathBuf::from("/test.png"),
-            index: 5,
+            index: None,
         };
         match result {
             ImageResult::FromList { path, index } => {
                 assert_eq!(path, PathBuf::from("/test.png"));
-                assert_eq!(index, 5);
+                assert_eq!(index, None);
             }
             _ => panic!("Expected FromList variant"),
         }

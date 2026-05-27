@@ -479,8 +479,7 @@ impl Surface {
         );
         if path_changed {
             // ask the image_picker to pick a new a image
-            self.image_picker
-                .next_image(&self.wallpaper_info.path, &self.wallpaper_info.recursive);
+            self.image_picker.next_image();
             self.load_new_wallpaper();
         } else if let Some(Sorting::GroupedRandom { .. }) = self.wallpaper_info.sorting {
             // Always queue draw to load changes (needed for GroupedRandom)
@@ -589,10 +588,7 @@ impl Surface {
                         let saturating_sub = new_duration.saturating_sub(time_passed);
                         if saturating_sub.is_zero() {
                             // The image was on screen for the same time as the new duration
-                            self.image_picker.next_image(
-                                &self.wallpaper_info.path,
-                                &self.wallpaper_info.recursive,
-                            );
+                            self.image_picker.next_image();
                             if let Err(err) = self.load_wallpaper().wrap_err_with(|| {
                                 format!(
                                     "Failed to query the image loader for display {}",
@@ -699,10 +695,7 @@ impl Surface {
                                         context.renderer.transition_finished();
                                     }
                                 }
-                                surface.image_picker.next_image(
-                                    &surface.wallpaper_info.path,
-                                    &surface.wallpaper_info.recursive,
-                                );
+                                surface.image_picker.next_image();
                                 surface.load_new_wallpaper();
                                 surface.wallpaper_info.duration.unwrap()
                             };

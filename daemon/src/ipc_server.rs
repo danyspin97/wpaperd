@@ -131,10 +131,7 @@ pub fn handle_message(
                 if surface.pause_reason() == Some(PauseReason::Set) {
                     surface.resume();
                 }
-                surface.image_picker.next_image(
-                    &surface.wallpaper_info.path,
-                    &surface.wallpaper_info.recursive,
-                );
+                surface.image_picker.next_image();
                 surface.load_new_wallpaper();
             }
 
