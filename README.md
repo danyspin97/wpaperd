@@ -12,6 +12,9 @@ the images and have beautiful hardware-accelerated transitions, while being easy
 wayland protocol, which is available on all wlroots based compositors (sway,
 hyprland, ...) and on KDE. **Therefore it won't work on GNOME.**
 
+*Notice2*: Hyprland does not behave like the other compositors, causing multiple issues to
+wpaperd. For this reason **Hyprland is not supported by wpaperd**.
+
 ## Features
 
 - Different wallpaper for each display
@@ -412,6 +415,15 @@ This is the list of available transitions with their own settings and defaults:
 ```bash
 $ cargo build --release
 ```
+
+- An image is **unsupported**:
+  wpaperd uses the `image` crate to load and decode the image. Therefore, if you find an
+  unsupported image, please open a bug into the image repository
+  [here](https://github.com/image-rs/image/issues/new/choose)
+
+- wpaperd is not working on **Hyprland**:
+  Is the issue reproducible on sway or another compositor? Unfortunately Hyprland is not
+  supported by wpaperd, so please don't open any issue specific to it.
 
 ## License
 
