@@ -15,6 +15,8 @@ hyprland, ...) and on KDE. **Therefore it won't work on GNOME.**
 *Notice2*: Hyprland does not behave like the other compositors, causing multiple issues to
 wpaperd. For this reason **Hyprland is not supported by wpaperd**.
 
+[![Packaging status](https://repology.org/badge/vertical-allrepos/wpaperd.svg)](https://repology.org/project/wpaperd/versions)
+
 ## Features
 
 - Different wallpaper for each display
