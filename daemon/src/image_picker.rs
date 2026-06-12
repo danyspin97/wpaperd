@@ -15,6 +15,25 @@ use crate::{
     wpaperd::Wpaperd,
 };
 
+/// Result from `get_image_from_path` - distinguishes forced images from list-based images.
+/// This makes the contract explicit: forced images have no meaningful index.
+#[derive(Debug, Clone)]
+pub enum ImageResult {
+    /// Image was forced via `wpaperctl set` - not part of normal navigation
+    Forced(PathBuf),
+    /// Image from the configured directory/list with its index
+    FromList { path: PathBuf, index: Option<usize> },
+}
+
+impl ImageResult {
+    pub fn path(&self) -> &Path {
+        match self {
+            ImageResult::Forced(p) => p,
+            ImageResult::FromList { path, .. } => path,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct Queue {
     buffer: VecDeque<PathBuf>,
@@ -43,31 +62,40 @@ impl Queue {
         &self.buffer[self.current]
     }
 
-    fn next(&mut self) -> Option<(&Path, usize)> {
-        let next_index = (self.current + 1) % self.size;
+    fn next(&mut self, wrap: bool) -> Option<&Path> {
+        let next = (self.current + 1) % self.size;
         if !self.is_full() {
-            if next_index < self.buffer.len() {
-                self.current = next_index;
-                Some((&self.buffer[next_index], next_index))
+            if next < self.buffer.len() {
+                self.current = next;
+            } else if wrap {
+                self.current = (self.current + 1) % self.buffer.len();
             } else {
-                None
+                return None;
             }
         } else if self.current != self.tail {
-            self.current = next_index;
-            Some((&self.buffer[next_index], next_index))
+            self.current = next;
         } else {
-            None
+            return None;
         }
+        Some(&self.buffer[self.current])
     }
 
-    fn previous(&mut self) -> Option<(&Path, usize)> {
-        let prev_index = (self.current + self.size - 1) % self.size;
-        if prev_index != self.tail {
-            self.current = prev_index;
-            Some((&self.buffer[prev_index], prev_index))
+    fn previous(&mut self, wrap: bool) -> Option<&Path> {
+        let prev = (self.current + self.size - 1) % self.size;
+        if !self.is_full() {
+            if prev < self.buffer.len() {
+                self.current = prev;
+            } else if wrap {
+                self.current = (self.current + self.buffer.len() - 1) % self.buffer.len();
+            } else {
+                return None;
+            }
+        } else if prev != self.tail {
+            self.current = prev;
         } else {
-            None
+            return None;
         }
+        Some(&self.buffer[self.current])
     }
 
     fn is_full(&self) -> bool {
@@ -126,10 +154,6 @@ impl Queue {
         self.in_cycle = (self.in_cycle + 1).min(self.buffer.len());
     }
 
-    fn has_reached_end(&self) -> bool {
-        self.current == self.tail
-    }
-
     fn resize(&mut self, new_size: usize) {
         // A queue cannot work with zero capacity; an automatically sized
         // queue can ask for it when its folder is emptied. Keep the
@@ -148,6 +172,10 @@ impl Queue {
         self.size = new_size;
         self.tail = new_size - 1;
         self.in_cycle = self.in_cycle.min(self.buffer.len());
+    }
+
+    fn len(&self) -> usize {
+        self.buffer.len()
     }
 }
 
@@ -276,10 +304,14 @@ impl ImagePickerSorting {
 
 pub struct ImagePicker {
     current_img: PathBuf,
-    action: Option<ImagePickerAction>,
+    actions: VecDeque<ImagePickerAction>,
     sorting: ImagePickerSorting,
     filelist_cache: Rc<RefCell<FilelistCache>>,
     reload: bool,
+    /// Forced image path from `wpaperctl set`, consumed on next get_image_from_path call
+    forced_image: Option<PathBuf>,
+    /// True if the currently displayed image was set via `wpaperctl set`
+    was_last_forced: bool,
 }
 
 impl ImagePicker {
@@ -292,7 +324,7 @@ impl ImagePicker {
     ) -> Self {
         Self {
             current_img: PathBuf::from(""),
-            action: Some(ImagePickerAction::Next),
+            actions: VecDeque::from([ImagePickerAction::Next]),
             sorting: ImagePickerSorting::new(
                 wallpaper_info,
                 wl_surface,
@@ -301,61 +333,69 @@ impl ImagePicker {
             ),
             filelist_cache,
             reload: false,
+            forced_image: None,
+            was_last_forced: false,
         }
     }
 
     /// Get the next image based on the sorting method
-    fn get_image_path(&mut self, files: &[PathBuf]) -> (usize, PathBuf) {
-        match (&self.action, &mut self.sorting) {
+    fn get_image_path(&mut self, files: &[PathBuf]) -> (Option<usize>, PathBuf) {
+        match (self.actions.front(), &mut self.sorting) {
             (
                 None,
                 ImagePickerSorting::Ascending(current_index)
                 | ImagePickerSorting::Descending(current_index),
-            ) if self.current_img.exists() => (*current_index, self.current_img.to_path_buf()),
+            ) if self.current_img.exists() => {
+                (Some(*current_index), self.current_img.to_path_buf())
+            }
             (_, ImagePickerSorting::GroupedRandom(group))
                 if group.group.borrow().loading_image.is_some() =>
             {
                 let group = group.group.borrow();
-                let (index, loading_image) = group.loading_image.as_ref().unwrap();
-                (*index, loading_image.to_path_buf())
+                let loading_image = group.loading_image.as_ref().unwrap();
+                (None, loading_image.to_path_buf())
             }
             (_, ImagePickerSorting::GroupedRandom(group))
                 if group.group.borrow().current_image != self.current_img =>
             {
                 let group = group.group.borrow();
-                (group.index, group.current_image.clone())
+                (None, group.current_image.clone())
             }
             (None, ImagePickerSorting::Random(_) | ImagePickerSorting::GroupedRandom(_))
                 if self.current_img.exists() =>
             {
-                (0, self.current_img.to_path_buf())
+                (None, self.current_img.to_path_buf())
             }
             (None | Some(ImagePickerAction::Next), ImagePickerSorting::Random(queue)) => {
-                next_random_image(&self.current_img, queue, files)
+                (None, next_random_image(&self.current_img, queue, files))
             }
             (None | Some(ImagePickerAction::Next), ImagePickerSorting::GroupedRandom(group)) => {
                 let mut group = group.group.borrow_mut();
                 if self.current_img == group.current_image {
                     // start loading a new image
-                    let (index, path) =
-                        next_random_image(&self.current_img, &mut group.queue, files);
-                    group.loading_image = Some((index, path.to_path_buf()));
-                    (index, path)
+                    let path = next_random_image(&self.current_img, &mut group.queue, files);
+                    group.loading_image = Some(path.to_path_buf());
+                    (None, path)
                 } else {
-                    (group.index, group.current_image.clone())
+                    (None, group.current_image.clone())
                 }
             }
-            (Some(ImagePickerAction::Previous), ImagePickerSorting::Random(queue)) => {
-                get_previous_image_for_random(&self.current_img, queue)
-            }
+            (Some(ImagePickerAction::Previous), ImagePickerSorting::Random(queue)) => (
+                None,
+                get_previous_image_for_random(&self.current_img, queue, files.len() <= queue.len()),
+            ),
             (Some(ImagePickerAction::Previous), ImagePickerSorting::GroupedRandom(group)) => {
                 let mut group = group.group.borrow_mut();
                 let queue = &mut group.queue;
-                let (index, path) = get_previous_image_for_random(&self.current_img, queue);
+                let path = get_previous_image_for_random(
+                    &self.current_img,
+                    queue,
+                    files.len() <= queue.len(),
+                );
                 if path != group.current_image {
-                    group.loading_image = Some((index, path.to_path_buf()));
+                    group.loading_image = Some(path.to_path_buf());
                 }
-                (index, path)
+                (None, path)
             }
             (
                 None | Some(ImagePickerAction::Next),
@@ -386,7 +426,7 @@ impl ImagePicker {
                 } else {
                     index - 1
                 };
-                (index, files[index].to_path_buf())
+                (Some(index), files[index].to_path_buf())
             }
             (Some(ImagePickerAction::Previous), ImagePickerSorting::Descending(current_index))
             | (
@@ -402,16 +442,32 @@ impl ImagePicker {
                     }
                 };
                 let index = (index + 1) % files.len();
-                (index, files[index].to_path_buf())
+                (Some(index), files[index].to_path_buf())
             }
         }
+    }
+
+    /// Set the wallpaper to a specific image path.
+    /// The forced image will be returned by the next call to `get_image_from_path`.
+    pub fn set_image(&mut self, path: PathBuf) {
+        self.forced_image = Some(path);
     }
 
     pub fn get_image_from_path(
         &mut self,
         path: &Path,
         recursive: &Option<Recursive>,
-    ) -> Option<(PathBuf, usize)> {
+    ) -> Option<ImageResult> {
+        // Check for forced image first (from wpaperctl set)
+        // Don't update navigation state - forced images are "detours"
+        if let Some(forced_path) = self.forced_image.take() {
+            self.was_last_forced = true;
+            return Some(ImageResult::Forced(forced_path));
+        }
+
+        // Clear flag for normal image loads
+        self.was_last_forced = false;
+
         if path.is_dir() {
             let files = self
                 .filelist_cache
@@ -427,60 +483,105 @@ impl ImagePicker {
                 if img_path == self.current_img && !self.reload {
                     None
                 } else {
-                    Some((img_path, index))
+                    Some(ImageResult::FromList {
+                        path: img_path,
+                        index,
+                    })
                 }
             }
         } else if path == self.current_img && !self.reload {
             None
         } else {
             // path is not a directory, also it's not the current image or we need to reload
-            Some((path.to_path_buf(), 0))
+            Some(ImageResult::FromList {
+                path: path.to_path_buf(),
+                index: None,
+            })
         }
     }
 
-    pub fn update_current_image(&mut self, img_path: PathBuf, index: usize) {
-        match (self.action.take(), &mut self.sorting) {
-            (Some(ImagePickerAction::Next), ImagePickerSorting::Random(queue)) => {
-                queue.push(img_path.clone());
+    pub fn update_current_image(&mut self, result: ImageResult) {
+        match result {
+            ImageResult::Forced(img_path) => {
+                // Don't update navigation state for forced images - they're "detours"
+                // Clear action without updating state
+                self.actions.clear();
+                self.current_img = img_path;
             }
-            (None | Some(ImagePickerAction::Previous), ImagePickerSorting::Random { .. }) => {}
-            (
-                None | Some(ImagePickerAction::Previous),
-                ImagePickerSorting::GroupedRandom(group),
-            ) => {
-                let mut group = group.group.borrow_mut();
-                group.loading_image = None;
-                group.current_image.clone_from(&img_path);
-                group.index = index;
-            }
-            (
-                _,
-                ImagePickerSorting::Ascending(current_index)
-                | ImagePickerSorting::Descending(current_index),
-            ) => *current_index = index,
-            (Some(ImagePickerAction::Next), ImagePickerSorting::GroupedRandom(group)) => {
-                let mut group = group.group.borrow_mut();
-                let queue = &mut group.queue;
-                queue.push(img_path.clone());
-                group.loading_image = None;
-                group.current_image.clone_from(&img_path);
-                group.index = index;
+            ImageResult::FromList {
+                path: img_path,
+                index,
+            } => {
+                match (self.actions.pop_front(), &mut self.sorting) {
+                    (Some(ImagePickerAction::Next), ImagePickerSorting::Random(queue)) => {
+                        queue.push(img_path.clone());
+                    }
+                    (
+                        None | Some(ImagePickerAction::Previous),
+                        ImagePickerSorting::Random { .. },
+                    ) => {}
+                    (
+                        None | Some(ImagePickerAction::Previous),
+                        ImagePickerSorting::GroupedRandom(group),
+                    ) => {
+                        let mut group = group.group.borrow_mut();
+                        group.loading_image = None;
+                        group.current_image.clone_from(&img_path);
+                    }
+                    (
+                        _,
+                        ImagePickerSorting::Ascending(current_index)
+                        | ImagePickerSorting::Descending(current_index),
+                    ) => *current_index = index.unwrap_or(usize::MAX),
+                    (Some(ImagePickerAction::Next), ImagePickerSorting::GroupedRandom(group)) => {
+                        let mut group = group.group.borrow_mut();
+                        let queue = &mut group.queue;
+                        queue.push(img_path.clone());
+                        group.loading_image = None;
+                        group.current_image.clone_from(&img_path);
+                    }
+                }
+                self.current_img = img_path;
             }
         }
-
-        self.current_img = img_path;
     }
 
-    /// Update wallpaper by going down 1 index through the cached image paths
-    /// Expiry timer reset even if already at the first cached image
+    /// Update wallpaper by going down 1 index through the cached image paths.
+    /// Expiry timer reset even if already at the first cached image.
+    ///
+    /// # Detour Semantics
+    ///
+    /// If the current image was set via `wpaperctl set`, this returns to the
+    /// image that was showing before the set (doesn't decrement the index).
+    /// This implements "detour" behavior: forced images are temporary diversions
+    /// that don't affect navigation history.
+    ///
+    /// # Implementation Note
+    ///
+    /// When returning from a forced image, we reuse the `reload` flag to trigger
+    /// a redisplay of the current index position. This is a non-standard use of
+    /// `reload` (which normally means "refresh current image from disk"), but it
+    /// achieves the desired behavior without adding another flag. The `reload`
+    /// flag causes `get_image_from_path` to return the current index's image
+    /// even if it matches `current_img`.
     pub fn previous_image(&mut self) {
-        self.action = Some(ImagePickerAction::Previous);
+        if self.was_last_forced {
+            // DETOUR RETURN: User called `previous` after a forced image.
+            // Instead of going back in history, return to the image that was
+            // showing before the forced image. We reuse `reload` to trigger
+            // `get_image_from_path` to re-fetch the current index position.
+            self.reload = true;
+            self.was_last_forced = false;
+        } else {
+            self.actions.push_back(ImagePickerAction::Previous);
+        }
     }
 
     /// Update wallpaper by going up 1 index through the cached image paths
-    pub fn next_image(&mut self, path: &Path, recursive: &Option<Recursive>) {
-        self.action = Some(ImagePickerAction::Next);
-        self.get_image_from_path(path, recursive);
+    pub fn next_image(&mut self) {
+        // Clear forced flag - next continues normal navigation
+        self.was_last_forced = false;
+        self.actions.push_back(ImagePickerAction::Next);
     }
 
     pub fn current_image(&self) -> PathBuf {
@@ -565,7 +666,6 @@ impl ImagePicker {
                     // If there are no other surfaces, we must reuse the current wallpaper
                     if group.surfaces.len() == 1 {
                         group.current_image = self.current_img.clone();
-                        group.index = self.get_current_index();
                         group.queue.push(self.current_img.clone());
                     }
 
@@ -583,11 +683,7 @@ impl ImagePicker {
 
     fn get_current_index(&mut self) -> usize {
         match &self.sorting {
-            ImagePickerSorting::Random(queue) => queue.current,
-            // This is already covered above
-            ImagePickerSorting::GroupedRandom(old_grouped_random) => {
-                old_grouped_random.group.borrow().index
-            }
+            ImagePickerSorting::Random(_) | ImagePickerSorting::GroupedRandom(_) => unreachable!(),
             ImagePickerSorting::Ascending(index) | ImagePickerSorting::Descending(index) => *index,
         }
     }
@@ -625,22 +721,25 @@ impl ImagePicker {
             grouped_random.group.borrow().queue_all_surfaces(qh);
         }
     }
+
+    pub fn clear_first_action(&mut self) {
+        self.actions.pop_front();
+    }
 }
 
-fn next_random_image(
-    current_image: &Path,
-    queue: &mut Queue,
-    files: &[PathBuf],
-) -> (usize, PathBuf) {
-    // Use the next images in the queue, if any
-    while let Some((next, index)) = queue.next() {
-        if next.exists() {
-            return (index, next.to_path_buf());
-        }
-    }
+fn next_random_image(current_image: &Path, queue: &mut Queue, files: &[PathBuf]) -> PathBuf {
     // If there is only one image just return it
     if files.len() == 1 {
-        return (0, files[0].to_path_buf());
+        return files[0].to_path_buf();
+    }
+
+    // Use the next images in the queue, if any. Reaching the newest
+    // entry means picking something new rather than wrapping around,
+    // so every pass through the collection is shuffled afresh.
+    while let Some(next) = queue.next(false) {
+        if next.exists() {
+            return next.to_path_buf();
+        }
     }
 
     // Pick uniformly among the images that have not been shown in the
@@ -652,8 +751,7 @@ fn next_random_image(
         .filter(|index| !shown.contains(&files[*index]))
         .collect();
     if !available.is_empty() {
-        let index = available[fastrand::usize(..available.len())];
-        return (index, files[index].to_path_buf());
+        return files[available[fastrand::usize(..available.len())]].to_path_buf();
     }
 
     // Every image has been shown: start a new cycle. The only image we
@@ -662,21 +760,21 @@ fn next_random_image(
     loop {
         let index = fastrand::usize(..files.len());
         if files[index] != current_image {
-            break (index, files[index].to_path_buf());
+            break files[index].to_path_buf();
         }
     }
 }
 
-fn get_previous_image_for_random(current_image: &Path, queue: &mut Queue) -> (usize, PathBuf) {
-    while let Some((prev, index)) = queue.previous() {
+fn get_previous_image_for_random(current_image: &Path, queue: &mut Queue, wrap: bool) -> PathBuf {
+    while let Some(prev) = queue.previous(wrap) {
         if prev.exists() {
-            return (index, prev.to_path_buf());
+            return prev.to_path_buf();
         }
     }
 
     // We didn't find any suitable image, reset to the last working one
     queue.set_current_to(current_image);
-    (usize::MAX, current_image.to_path_buf())
+    current_image.to_path_buf()
 }
 
 #[cfg(test)]
@@ -692,10 +790,10 @@ mod tests {
         queue.push(PathBuf::from("mypath"));
         queue.push(PathBuf::from("mypath2"));
         assert_eq!(Path::new("mypath2"), queue.current());
-        assert_eq!(Some((Path::new("mypath"), 0)), queue.previous());
+        assert_eq!(Some(Path::new("mypath")), queue.previous(false));
         assert_eq!(Path::new("mypath"), queue.current());
 
-        assert_eq!(None, queue.previous());
+        assert_eq!(None, queue.previous(false));
     }
 
     #[test]
@@ -711,9 +809,9 @@ mod tests {
 
         queue.push(PathBuf::from("mypath"));
         assert_eq!(Path::new("mypath"), queue.current());
-        assert_eq!(Some((Path::new("mypath3"), 1)), queue.previous());
-        assert_eq!(Some((Path::new("mypath2"), 0)), queue.previous());
-        assert_eq!(None, queue.previous());
+        assert_eq!(Some(Path::new("mypath3")), queue.previous(false));
+        assert_eq!(Some(Path::new("mypath2")), queue.previous(false));
+        assert_eq!(None, queue.previous(false));
     }
 
     #[test]
@@ -726,11 +824,11 @@ mod tests {
         queue.push(PathBuf::from("mypath2"));
         queue.push(PathBuf::from("mypath3"));
 
-        assert_eq!(Some((Path::new("mypath2"), 1)), queue.previous());
-        assert_eq!(Some((Path::new("mypath"), 0)), queue.previous());
-        assert_eq!(Some((Path::new("mypath2"), 1)), queue.next());
+        assert_eq!(Some(Path::new("mypath2")), queue.previous(false));
+        assert_eq!(Some(Path::new("mypath")), queue.previous(false));
+        assert_eq!(Some(Path::new("mypath2")), queue.next(false));
         queue.push(PathBuf::from("mypath2"));
-        assert_eq!(Some((Path::new("mypath3"), 2)), queue.next());
+        assert_eq!(Some(Path::new("mypath3")), queue.next(false));
     }
 
     #[test]
@@ -768,14 +866,14 @@ mod tests {
         queue.push(PathBuf::from("mypath3"));
         queue.push(PathBuf::from("mypath4"));
         queue.push(PathBuf::from("mypath5"));
-        assert_eq!(Some((Path::new("mypath4"), 3)), queue.previous());
-        assert_eq!(Some((Path::new("mypath3"), 2)), queue.previous());
-        assert_eq!(Some((Path::new("mypath2"), 1)), queue.previous());
+        assert_eq!(Some(Path::new("mypath4")), queue.previous(false));
+        assert_eq!(Some(Path::new("mypath3")), queue.previous(false));
+        assert_eq!(Some(Path::new("mypath2")), queue.previous(false));
 
         queue.resize(2);
         assert_eq!(Path::new("mypath4"), queue.current());
-        assert_eq!(None, queue.previous());
-        assert_eq!(Some((Path::new("mypath5"), 1)), queue.next());
+        assert_eq!(None, queue.previous(false));
+        assert_eq!(Some(Path::new("mypath5")), queue.next(false));
     }
 
     #[test]
@@ -790,8 +888,7 @@ mod tests {
             queue.push(files[1].clone());
             queue.push(files[2].clone());
 
-            let (index, path) = next_random_image(&files[2], &mut queue, &files);
-            assert_eq!(3, index);
+            let path = next_random_image(&files[2], &mut queue, &files);
             assert_eq!(files[3], path);
         }
     }
@@ -808,7 +905,7 @@ mod tests {
             for cycle in 0..3 {
                 let mut shown = HashSet::new();
                 for _ in 0..files.len() {
-                    let (_, path) = next_random_image(&current, &mut queue, &files);
+                    let path = next_random_image(&current, &mut queue, &files);
                     assert_ne!(current, path, "repeat across change in cycle {cycle}");
                     assert!(shown.insert(path.clone()), "repeat within cycle {cycle}");
                     queue.push(path.clone());
@@ -846,9 +943,9 @@ mod tests {
 
         queue.resize(5);
         assert_eq!(Path::new("mypath3"), queue.current());
-        assert_eq!(Some((Path::new("mypath2"), 1)), queue.previous());
-        assert_eq!(Some((Path::new("mypath"), 0)), queue.previous());
-        assert_eq!(None, queue.previous());
+        assert_eq!(Some(Path::new("mypath2")), queue.previous(false));
+        assert_eq!(Some(Path::new("mypath")), queue.previous(false));
+        assert_eq!(None, queue.previous(false));
     }
 
     #[test]
@@ -863,8 +960,8 @@ mod tests {
 
         queue.resize(2);
         assert_eq!(Path::new("mypath3"), queue.current());
-        assert_eq!(Some((Path::new("mypath2"), 0)), queue.previous());
-        assert_eq!(None, queue.previous());
+        assert_eq!(Some(Path::new("mypath2")), queue.previous(false));
+        assert_eq!(None, queue.previous(false));
     }
 
     #[test]
@@ -877,8 +974,8 @@ mod tests {
 
         queue.resize(0);
         assert_eq!(Path::new("mypath2"), queue.current());
-        assert_eq!(Some((Path::new("mypath"), 0)), queue.previous());
-        assert_eq!(None, queue.previous());
+        assert_eq!(Some(Path::new("mypath")), queue.previous(false));
+        assert_eq!(None, queue.previous(false));
     }
 
     #[test]
@@ -891,13 +988,13 @@ mod tests {
         queue.push(PathBuf::from("mypath5"));
         assert_eq!(queue.buffer.len(), 5);
         assert_eq!(Path::new("mypath5"), queue.current());
-        assert_eq!(Some((Path::new("mypath4"), 3)), queue.previous());
+        assert_eq!(Some(Path::new("mypath4")), queue.previous(false));
 
         // Test that the current index works when it's inside the resizing range
         queue.resize(2);
         assert_eq!(Path::new("mypath4"), queue.current());
-        assert_eq!(None, queue.previous());
-        assert_eq!(Some((Path::new("mypath5"), 1)), queue.next());
+        assert_eq!(None, queue.previous(false));
+        assert_eq!(Some(Path::new("mypath5")), queue.next(false));
     }
 
     #[test]
@@ -913,14 +1010,256 @@ mod tests {
         queue.push(PathBuf::from("mypath8"));
         assert_eq!(queue.buffer.len(), 5);
         assert_eq!(Path::new("mypath8"), queue.current());
-        assert_eq!(Some((Path::new("mypath7"), 3)), queue.previous());
-        assert_eq!(Some((Path::new("mypath6"), 2)), queue.previous());
-        assert_eq!(Some((Path::new("mypath5"), 1)), queue.previous());
+        assert_eq!(Some(Path::new("mypath7")), queue.previous(false));
+        assert_eq!(Some(Path::new("mypath6")), queue.previous(false));
+        assert_eq!(Some(Path::new("mypath5")), queue.previous(false));
 
         // Test that the current item point to the first item available
         queue.resize(2);
         assert_eq!(Path::new("mypath7"), queue.current());
-        assert_eq!(Some((Path::new("mypath8"), 1)), queue.next());
-        assert_eq!(None, queue.next());
+        assert_eq!(Some(Path::new("mypath8")), queue.next(false));
+        assert_eq!(None, queue.next(false));
+    }
+
+    // =======================================================
+    // Tests for Queue interaction with "set" behavior
+    // =======================================================
+
+    #[test]
+    fn test_queue_set_then_previous_navigates_back() {
+        let mut queue = Queue::with_capacity(5);
+
+        // Build up some history
+        queue.push(PathBuf::from("/image1.png"));
+        queue.push(PathBuf::from("/image2.png"));
+        queue.push(PathBuf::from("/image3.png"));
+
+        // User sets a manual wallpaper (push simulates adding to history)
+        queue.push(PathBuf::from("/manual.png"));
+        assert_eq!(queue.current(), Path::new("/manual.png"));
+
+        // User immediately does `previous` - should go to image3
+        let prev = queue.previous(false);
+        assert_eq!(prev, Some(Path::new("/image3.png")));
+    }
+
+    #[test]
+    fn test_queue_set_existing_image_is_noop() {
+        let mut queue = Queue::with_capacity(5);
+
+        queue.push(PathBuf::from("/image1.png"));
+        queue.push(PathBuf::from("/image2.png"));
+
+        // User sets the same image that's already current
+        // Queue::push already handles this - duplicates are ignored
+        queue.push(PathBuf::from("/image2.png"));
+
+        // Still at image2, buffer should not have grown
+        assert_eq!(queue.current(), Path::new("/image2.png"));
+        assert_eq!(queue.buffer.len(), 2);
+
+        // Previous goes to image1
+        let prev = queue.previous(false);
+        assert_eq!(prev, Some(Path::new("/image1.png")));
+
+        // No more previous (we're at the start)
+        assert_eq!(queue.previous(false), None);
+    }
+
+    #[test]
+    fn test_queue_set_current_to_moves_cursor() {
+        let mut queue = Queue::with_capacity(5);
+
+        queue.push(PathBuf::from("/image1.png"));
+        queue.push(PathBuf::from("/image2.png"));
+        queue.push(PathBuf::from("/image3.png"));
+        assert_eq!(queue.current(), Path::new("/image3.png"));
+
+        // set_current_to moves cursor to existing image in history
+        queue.set_current_to(Path::new("/image1.png"));
+        assert_eq!(queue.current(), Path::new("/image1.png"));
+
+        // Next should go to image2
+        let next = queue.next(false);
+        assert_eq!(next, Some(Path::new("/image2.png")));
+    }
+
+    #[test]
+    fn test_queue_set_current_to_nonexistent_is_noop() {
+        let mut queue = Queue::with_capacity(5);
+
+        queue.push(PathBuf::from("/image1.png"));
+        queue.push(PathBuf::from("/image2.png"));
+        assert_eq!(queue.current(), Path::new("/image2.png"));
+
+        // Try to set to a path not in history - set_current_to is a no-op
+        queue.set_current_to(Path::new("/nonexistent.png"));
+
+        // Current should still be image2
+        assert_eq!(queue.current(), Path::new("/image2.png"));
+    }
+
+    // =======================================================
+    // Tests for ImageResult enum
+    // =======================================================
+
+    #[test]
+    fn test_image_result_path_returns_correct_path() {
+        let forced = ImageResult::Forced(PathBuf::from("/forced.png"));
+        assert_eq!(forced.path(), Path::new("/forced.png"));
+
+        let from_list = ImageResult::FromList {
+            path: PathBuf::from("/list.png"),
+            index: None,
+        };
+        assert_eq!(from_list.path(), Path::new("/list.png"));
+    }
+
+    #[test]
+    fn test_image_result_forced_variant() {
+        let result = ImageResult::Forced(PathBuf::from("/test.png"));
+        assert!(matches!(result, ImageResult::Forced(_)));
+    }
+
+    #[test]
+    fn test_image_result_from_list_variant() {
+        let result = ImageResult::FromList {
+            path: PathBuf::from("/test.png"),
+            index: None,
+        };
+        match result {
+            ImageResult::FromList { path, index } => {
+                assert_eq!(path, PathBuf::from("/test.png"));
+                assert_eq!(index, None);
+            }
+            _ => panic!("Expected FromList variant"),
+        }
+    }
+
+    // =======================================================
+    // Tests for ImagePicker forced image state transitions
+    // =======================================================
+    //
+    // Note: ImagePicker requires complex dependencies (WlSurface, FilelistCache, etc.)
+    // that are difficult to construct in unit tests. These tests focus on the
+    // state machine logic by testing the individual state transitions.
+    //
+    // Integration testing of the full set->previous/next flow should be done
+    // via manual testing with the actual daemon.
+
+    /// Helper struct to test ImagePicker state transitions without full dependencies
+    struct ForcedImageState {
+        was_last_forced: bool,
+        reload: bool,
+        action: Option<ImagePickerAction>,
+    }
+
+    impl ForcedImageState {
+        fn new() -> Self {
+            Self {
+                was_last_forced: false,
+                reload: false,
+                action: None,
+            }
+        }
+
+        /// Simulates the state change when a forced image is loaded
+        fn simulate_forced_image_loaded(&mut self) {
+            self.was_last_forced = true;
+        }
+
+        /// Simulates previous_image() behavior
+        fn previous_image(&mut self) {
+            if self.was_last_forced {
+                // DETOUR RETURN: reload current index instead of going back
+                self.reload = true;
+                self.was_last_forced = false;
+            } else {
+                self.action = Some(ImagePickerAction::Previous);
+            }
+        }
+
+        /// Simulates next_image() behavior (just the state transition part)
+        fn next_image(&mut self) {
+            self.was_last_forced = false;
+            self.action = Some(ImagePickerAction::Next);
+        }
+    }
+
+    #[test]
+    fn test_forced_image_previous_triggers_reload() {
+        let mut state = ForcedImageState::new();
+
+        // Simulate: user did `wpaperctl set`, image loaded
+        state.simulate_forced_image_loaded();
+        assert!(state.was_last_forced);
+        assert!(!state.reload);
+
+        // User calls `previous`
+        state.previous_image();
+
+        // Should trigger reload (return to pre-set image), NOT set Previous action
+        assert!(state.reload);
+        assert!(!state.was_last_forced);
+        assert!(state.action.is_none());
+    }
+
+    #[test]
+    fn test_forced_image_next_clears_flag_and_continues() {
+        let mut state = ForcedImageState::new();
+
+        // Simulate: user did `wpaperctl set`, image loaded
+        state.simulate_forced_image_loaded();
+        assert!(state.was_last_forced);
+
+        // User calls `next`
+        state.next_image();
+
+        // Should clear forced flag and continue normal navigation
+        assert!(!state.was_last_forced);
+        assert!(matches!(state.action, Some(ImagePickerAction::Next)));
+    }
+
+    #[test]
+    fn test_normal_previous_sets_action() {
+        let mut state = ForcedImageState::new();
+
+        // No forced image - normal state
+        assert!(!state.was_last_forced);
+
+        // User calls `previous`
+        state.previous_image();
+
+        // Should set Previous action, not reload
+        assert!(!state.reload);
+        assert!(matches!(state.action, Some(ImagePickerAction::Previous)));
+    }
+
+    #[test]
+    fn test_detour_semantics_sequence() {
+        let mut state = ForcedImageState::new();
+
+        // 1. User is viewing normal image, calls next a few times
+        state.next_image();
+        assert!(matches!(state.action, Some(ImagePickerAction::Next)));
+        state.action = None; // Reset for next operation
+
+        // 2. User does `wpaperctl set /some/image.png`
+        state.simulate_forced_image_loaded();
+        assert!(state.was_last_forced);
+
+        // 3. User calls `previous` - should return to pre-set image (reload)
+        state.previous_image();
+        assert!(state.reload);
+        assert!(!state.was_last_forced);
+        assert!(state.action.is_none()); // No Previous action - reload handles it
+
+        // 4. Reset reload flag (simulating it was consumed)
+        state.reload = false;
+
+        // 5. Now user calls `previous` again - normal navigation
+        state.previous_image();
+        assert!(!state.reload);
+        assert!(matches!(state.action, Some(ImagePickerAction::Previous)));
     }
 }

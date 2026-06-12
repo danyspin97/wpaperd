@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use clap::Parser;
 
 #[derive(Parser)]
@@ -32,6 +34,14 @@ pub enum SubCmd {
     GetStatus {
         #[clap(short, long)]
         json: bool,
+        monitors: Vec<String>,
+    },
+    /// Set wallpaper to a specific image file
+    #[clap(visible_alias = "set")]
+    SetWallpaper {
+        /// Path to the image file
+        path: PathBuf,
+        /// Monitors to set wallpaper on (if empty, sets on all monitors)
         monitors: Vec<String>,
     },
 }

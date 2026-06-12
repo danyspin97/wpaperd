@@ -12,6 +12,11 @@ the images and have beautiful hardware-accelerated transitions, while being easy
 wayland protocol, which is available on all wlroots based compositors (sway,
 hyprland, ...) and on KDE. **Therefore it won't work on GNOME.**
 
+*Notice2*: Hyprland does not behave like the other compositors, causing multiple issues to
+wpaperd. For this reason **Hyprland is not supported by wpaperd**.
+
+[![Packaging status](https://repology.org/badge/vertical-allrepos/wpaperd.svg)](https://repology.org/project/wpaperd/versions)
+
 ## Features
 
 - Different wallpaper for each display
@@ -116,6 +121,21 @@ $ wpaperctl pause
 $ wpaperctl resume
 $ wpaperctl toggle-pause
 ```
+
+## Setting a specific wallpaper
+
+You can set a wallpaper to a specific image using _wpaperctl_:
+
+```bash
+$ wpaperctl set /path/to/image.png
+$ wpaperctl set /path/to/image.png DP-1  # specific monitor
+```
+
+When you set a wallpaper:
+- Automatic cycling is paused
+- Calling `next` or `previous` resumes cycling
+- The `previous` command returns to the wallpaper that was showing before the set (it doesn't go back in history)
+- If you explicitly called `pause` before `set`, cycling remains paused until you call `resume` or `toggle-pause`
 
 ## Wallpaper Configuration
 
@@ -399,6 +419,15 @@ This is the list of available transitions with their own settings and defaults:
 ```bash
 $ cargo build --release
 ```
+
+- An image is **unsupported**:
+  wpaperd uses the `image` crate to load and decode the image. Therefore, if you find an
+  unsupported image, please open a bug into the image repository
+  [here](https://github.com/image-rs/image/issues/new/choose)
+
+- wpaperd is not working on **Hyprland**:
+  Is the issue reproducible on sway or another compositor? Unfortunately Hyprland is not
+  supported by wpaperd, so please don't open any issue specific to it.
 
 ## License
 

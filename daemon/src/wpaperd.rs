@@ -5,7 +5,7 @@ use color_eyre::eyre::eyre;
 use color_eyre::owo_colors::OwoColorize;
 use color_eyre::{eyre::WrapErr, Result};
 use log::{error, warn};
-use smithay_client_toolkit::compositor::{CompositorHandler, CompositorState, Region};
+use smithay_client_toolkit::compositor::{CompositorHandler, CompositorState};
 use smithay_client_toolkit::output::{OutputHandler, OutputState};
 use smithay_client_toolkit::reexports::calloop::LoopHandle;
 use smithay_client_toolkit::reexports::client::globals::GlobalList;
@@ -131,7 +131,6 @@ impl CompositorHandler for Wpaperd {
         time: u32,
     ) {
         let surface = self.surface_from_wl_surface(surface);
-
         surface.try_drawing(qh, Some(time));
     }
 
@@ -214,24 +213,7 @@ impl OutputHandler for Wpaperd {
             display_info.adjusted_height() as u32,
         );
 
-        match Region::new(&self.compositor_state) {
-            Ok(region) => {
-                // Wayland clients are expected to render the cursor on their input region. By setting the
-                // input region to an empty region, the compositor renders the default cursor. Without
-                // this, and empty desktop won't render a cursor.
-                surface.set_input_region(Some(region.wl_region()));
-
-                // From `wl_surface::set_opaque_region`:
-                // > Setting the pending opaque region has copy semantics, and the
-                // > wl_region object can be destroyed immediately.
-                region.wl_region().destroy();
-            }
-
-            Err(_) => {
-                warn!("Failed to create region, cursor won't be shown for display {name}");
-                return;
-            }
-        };
+        surface.set_input_region(None);
 
         let wallpaper_info = match self.config.get_info_for_output(&name, &description) {
             Ok(wallpaper_info) => wallpaper_info,
@@ -239,8 +221,9 @@ impl OutputHandler for Wpaperd {
                 warn!(
                     "{:?}",
                     err.wrap_err(format!(
-                        "Configuration error on display {}",
-                        name.bold().magenta()
+                        "Configuration error on display {} ({})",
+                        name.bold().magenta(),
+                        description,
                     ))
                 );
                 WallpaperInfo::default()
@@ -256,7 +239,7 @@ impl OutputHandler for Wpaperd {
                         "Could not create wallpapers state directory for display {name}"
                     ))
                 );
-                self.xdg_dirs.get_state_home()
+                self.xdg_dirs.get_state_home().expect("HOME is not set")
             }
         };
         let name = display_info.name.clone();

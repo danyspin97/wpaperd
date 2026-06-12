@@ -37,12 +37,21 @@ use smithay_client_toolkit::{
 use crate::{
     display_info::DisplayInfo,
     image_loader::ImageLoader,
-    image_picker::ImagePicker,
+    image_picker::{ImagePicker, ImageResult},
     render::EglContext,
     wallpaper_groups::WallpaperGroups,
     wallpaper_info::{Sorting, WallpaperInfo},
     wpaperd::Wpaperd,
 };
+
+/// Reason for pausing automatic wallpaper cycling
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PauseReason {
+    /// Explicit pause via `wpaperctl pause`
+    User,
+    /// Automatic pause from `wpaperctl set`
+    Set,
+}
 
 #[derive(Debug)]
 pub enum EventSource {
@@ -68,7 +77,7 @@ pub struct Surface {
     display_info: DisplayInfo,
     image_loader: Rc<RefCell<ImageLoader>>,
     window_drawn: bool,
-    pub loading_image: Option<(PathBuf, usize)>,
+    pub loading_image: Option<ImageResult>,
     loading_image_tries: u8,
     /// Determines whether we should skip the next transition. Used to skip
     /// the first transition when starting up.
@@ -76,9 +85,8 @@ pub struct Surface {
     /// See [crate::wallpaper_info::WallpaperInfo]'s `initial_transition` field
     skip_next_transition: bool,
     /// Pause state of the automatic wallpaper sequence.
-    /// Setting this to true will mean only an explicit next/previous wallpaper command will change
-    /// the wallpaper.
-    should_pause: bool,
+    /// When Some, only an explicit next/previous wallpaper command will change the wallpaper.
+    pause_reason: Option<PauseReason>,
     /// Contains the value of XDG_STATE_HOME, given by wapaperd at struct creation
     xdg_state_home: PathBuf,
 }
@@ -134,7 +142,7 @@ impl Surface {
             event_source: EventSource::NotSet,
             wallpaper_info,
             window_drawn: false,
-            should_pause: false,
+            pause_reason: None,
             image_loader: wpaperd.image_loader.clone(),
             loading_image: None,
             loading_image_tries: 0,
@@ -159,36 +167,36 @@ impl Surface {
 
     /// Returns true if something has been drawn to the surface
     fn draw(&mut self, qh: &QueueHandle<Wpaperd>, time: Option<u32>) -> Result<()> {
+        let loading_image = self.loading_image.is_some();
+        let window_drawn = self.window_drawn;
+        let adjusted_width = self.display_info.adjusted_width();
+        let adjusted_height = self.display_info.adjusted_height();
+
         // Use the correct context before drawing
-        self.get_context()?
+        let context = self.get_context()?;
+        context
             .make_current()
             .wrap_err("Failed to switch EGL context")?;
 
-        if self
-            .get_context()?
-            .renderer
-            // If we don't have any time passed, just consider the transition to be ended by using 0
-            .update_transition_status(time.unwrap_or(0))
-        {
+        // Check transition status and draw the wallpaper
+        let transition_running = context.renderer.update_transition_status(time.unwrap_or(0));
+        if transition_running {
+            // Transition is running - still need to draw so the transition renders
+            context.draw().wrap_err("Failed to draw the transition")?;
             self.queue_draw(qh);
-            // We are waiting for an image to be loaded in memory
-        } else if self.loading_image.is_some() && self.window_drawn {
             return Ok(());
         }
 
-        self.get_context()?
-            .draw()
-            .wrap_err("Failed to draw the wallpaper")?;
+        if loading_image && window_drawn {
+            self.queue_draw(qh);
+            return Ok(());
+        }
 
-        // Mark the entire surface as damaged
-        self.wl_surface.damage_buffer(
-            0,
-            0,
-            self.display_info.adjusted_width(),
-            self.display_info.adjusted_height(),
-        );
+        context.draw().wrap_err("Failed to draw the wallpaper")?;
 
-        // Finally, commit the surface
+        // Mark the entire surface as damaged and commit
+        self.wl_surface
+            .damage_buffer(0, 0, adjusted_width, adjusted_height);
         self.wl_surface.commit();
 
         self.window_drawn = true;
@@ -225,8 +233,10 @@ impl Surface {
                 &self.wallpaper_info.path,
                 &self.wallpaper_info.recursive.clone(),
             ) {
-                if self.image_picker.current_image() == item.0 && !self.image_picker.is_reloading()
+                if self.image_picker.current_image() == *item.path()
+                    && !self.image_picker.is_reloading()
                 {
+                    self.image_picker.clear_first_action();
                     return Ok(true);
                 }
                 self.loading_image = Some(item);
@@ -235,21 +245,23 @@ impl Surface {
                     self.get_context()?.renderer.transition_finished();
                 }
             } else {
+                self.image_picker.clear_first_action();
                 // we don't need to load any image
                 return Ok(true);
             }
         }
 
-        let (image_path, index) = self
+        let loading = self
             .loading_image
             .as_ref()
             .expect("loading image to be set")
             .clone();
+        let image_path = loading.path().to_path_buf();
 
         let res = self
             .image_loader
             .borrow_mut()
-            .background_load(image_path.to_owned(), self.name().to_owned());
+            .background_load(image_path.clone(), self.name().to_owned());
         match res {
             crate::image_loader::ImageLoaderStatus::Loaded(data) => {
                 // Exec Script on wallpaper change
@@ -267,7 +279,7 @@ impl Surface {
                 if self.image_picker.is_reloading() {
                     self.image_picker.reloaded();
                 } else {
-                    self.setup_drawing_image(image_path, index);
+                    self.setup_drawing_image(loading);
                 }
                 // Restart the counter
                 self.loading_image_tries = 0;
@@ -316,7 +328,7 @@ impl Surface {
         }
     }
 
-    pub fn setup_drawing_image(&mut self, image_path: PathBuf, index: usize) {
+    pub fn setup_drawing_image(&mut self, result: ImageResult) {
         let transition_time = if self.skip_next_transition {
             self.skip_next_transition = false;
             0
@@ -324,8 +336,8 @@ impl Surface {
             self.wallpaper_info.transition_time
         };
 
-        self.update_wallpaper_link(&image_path);
-        self.image_picker.update_current_image(image_path, index);
+        self.update_wallpaper_link(result.path());
+        self.image_picker.update_current_image(result);
         self.get_context()
             .unwrap()
             .renderer
@@ -350,7 +362,7 @@ impl Surface {
         self.context
             .as_mut()
             .ok_or_else(|| eyre!("EGL context is not available"))?
-            .resize(&self.wl_surface, &self.display_info)
+            .resize(&self.display_info)
             .wrap_err("Failed to resize EGL window")?;
 
         // Queue drawing for the next frame. We can directly draw here, but we would still
@@ -469,8 +481,7 @@ impl Surface {
         );
         if path_changed {
             // ask the image_picker to pick a new a image
-            self.image_picker
-                .next_image(&self.wallpaper_info.path, &self.wallpaper_info.recursive);
+            self.image_picker.next_image();
             self.load_new_wallpaper();
         } else if let Some(Sorting::GroupedRandom { .. }) = self.wallpaper_info.sorting {
             // Always queue draw to load changes (needed for GroupedRandom)
@@ -586,10 +597,7 @@ impl Surface {
                         let saturating_sub = new_duration.saturating_sub(time_passed);
                         if saturating_sub.is_zero() {
                             // The image was on screen for the same time as the new duration
-                            self.image_picker.next_image(
-                                &self.wallpaper_info.path,
-                                &self.wallpaper_info.recursive,
-                            );
+                            self.image_picker.next_image();
                             if let Err(err) = self.load_wallpaper().wrap_err_with(|| {
                                 format!(
                                     "Failed to query the image loader for display {}",
@@ -696,10 +704,7 @@ impl Surface {
                                         context.renderer.transition_finished();
                                     }
                                 }
-                                surface.image_picker.next_image(
-                                    &surface.wallpaper_info.path,
-                                    &surface.wallpaper_info.recursive,
-                                );
+                                surface.image_picker.next_image();
                                 surface.load_new_wallpaper();
                                 surface.wallpaper_info.duration.unwrap()
                             };
@@ -721,7 +726,7 @@ impl Surface {
     /// Remove the timer if pausing, and add a new timer with the remaining duration of the old
     /// timer when resuming.
     pub fn handle_pause_state(&mut self, handle: &LoopHandle<Wpaperd>) {
-        match (self.should_pause, &self.event_source) {
+        match (self.pause_reason.is_some(), &self.event_source) {
             // Should pause, but timer is still currently running
             (true, EventSource::Running(registration_token, duration, instant)) => {
                 let remaining_duration = remaining_duration(*duration, *instant);
@@ -760,18 +765,29 @@ impl Surface {
     }
 
     /// Indicate to the main event loop that the automatic wallpaper sequence for this [`Surface`]
-    /// should be paused.
+    /// should be paused (explicit user request).
     /// The actual pausing/resuming is handled in [`Surface::handle_pause_state`]
     #[inline]
     pub fn pause(&mut self) {
-        self.should_pause = true;
+        self.pause_reason = Some(PauseReason::User);
     }
+
+    /// Pause cycling due to `wpaperctl set` - will be auto-resumed by next/previous.
+    /// Does NOT override an explicit user pause (PauseReason::User).
+    /// The actual pausing/resuming is handled in [`Surface::handle_pause_state`]
+    #[inline]
+    pub fn pause_for_set(&mut self) {
+        if self.pause_reason.is_none() {
+            self.pause_reason = Some(PauseReason::Set);
+        }
+    }
+
     /// Indicate to the main event loop that the automatic wallpaper sequence for this [`Surface`]
     /// should be resumed.
     /// The actual pausing/resuming is handled in [`Surface::handle_pause_state`]
     #[inline]
     pub fn resume(&mut self) {
-        self.should_pause = false;
+        self.pause_reason = None;
     }
 
     /// Toggle the pause state for this [`Surface`], which is responsible for indicating to the main
@@ -790,7 +806,13 @@ impl Surface {
     /// loop that its automatic wallpaper sequence should be paused.
     #[inline]
     pub fn should_pause(&self) -> bool {
-        self.should_pause
+        self.pause_reason.is_some()
+    }
+
+    /// Returns the reason for pausing, if any.
+    #[inline]
+    pub fn pause_reason(&self) -> Option<PauseReason> {
+        self.pause_reason
     }
 
     pub fn wl_surface(&self) -> &wl_surface::WlSurface {
@@ -807,7 +829,7 @@ impl Surface {
 
     pub fn status(&self) -> &'static str {
         if self.wallpaper_info.path.is_dir() {
-            if self.should_pause {
+            if self.pause_reason.is_some() {
                 "paused"
             } else {
                 "running"
@@ -828,16 +850,19 @@ impl Surface {
     /// Add a symlink into .local/state that points to the current wallpaper
     fn update_wallpaper_link(&self, image_path: &Path) {
         let link = self.xdg_state_home.join(self.name());
-        // remove the previous file if it exists, otherwise symlink() fails
-        if link.exists() {
-            if let Err(err) = fs::remove_file(&link)
-                .wrap_err_with(|| format!("Failed to remove symlink {link:?}"))
-            {
+
+        // remove the previous file if it exists, otherwise symlink() fails. If
+        // no file exists, remove_file will return an error of kind NotFound and
+        // in that case we ignore the error.
+        if let Err(err) = fs::remove_file(&link) {
+            if err.kind() != std::io::ErrorKind::NotFound {
+                let err = eyre!(err).wrap_err(format!("Failed to remove symlink {link:?}"));
                 warn!("{err:?}");
                 // Do no try to create a new symlink
                 return;
             }
         }
+
         if let Err(err) = std::os::unix::fs::symlink(image_path, &link)
             .wrap_err_with(|| format!("Failed to create symlink {link:?} to {image_path:?}"))
         {

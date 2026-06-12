@@ -1,6 +1,6 @@
 [package]
 name = "wpaperd-ipc"
-version = "1.2.3"
+version = "1.3.0"
 edition = "2021"
 authors = ["Danilo Spinella <danilo.spinella@suse.com>"]
 description = "IPC library for wpaperd"
@@ -13,5 +13,5 @@ categories = ["command-line-utilities", "multimedia"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-serde = { version = "1.0.219", features = ["derive"] }
-xdg = "2.5.2"
+serde = { version = "1.0.228", features = ["derive"] }
+xdg = "3.0.0"

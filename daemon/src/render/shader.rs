@@ -70,7 +70,7 @@ void main() {
 
 pub const FRAGMENT_SHADER_SOURCE: &CStr = c"
 #version 310 es
-precision mediump float;
+precision highp float;
 out vec4 FragColor;
 
 in vec2 v_texcoord;

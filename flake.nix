@@ -41,6 +41,7 @@
         default = mkShell {
           buildInputs = [
             rust-bin.stable.latest.default
+            rust-jemalloc-sys
           ];
           packages = [
             pkg-config

@@ -11,9 +11,8 @@ use crate::{image_picker::Queue, wpaperd::Wpaperd};
 
 pub struct WallpaperGroup {
     pub group: u8,
-    pub index: usize,
     pub current_image: PathBuf,
-    pub loading_image: Option<(usize, PathBuf)>,
+    pub loading_image: Option<PathBuf>,
     pub surfaces: HashSet<WlSurface>,
     pub queue: Queue,
 }
@@ -22,7 +21,6 @@ impl WallpaperGroup {
     pub fn new(group: u8, queue_size: usize) -> Self {
         Self {
             group,
-            index: 0,
             current_image: PathBuf::from(""),
             loading_image: None,
             surfaces: HashSet::new(),
