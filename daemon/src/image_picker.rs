@@ -80,10 +80,27 @@ impl Queue {
     }
 
     fn push(&mut self, p: PathBuf) {
-        // Avoid duplicates
-        if self.buffer.contains(&p) {
+        // Nothing to record if the cursor is already on this image: we
+        // got here by replaying history, and the queue already reflects
+        // what is on screen.
+        if self
+            .buffer
+            .get(self.current)
+            .map_or(false, |path| *path == p)
+        {
             return;
-        };
+        }
+
+        // The image is in our history but not under the cursor, so the
+        // random fallback showed it again. Move it to the most recent
+        // slot; navigation should walk the order images actually
+        // appeared, repeats included.
+        if let Some(index) = self.buffer.iter().position(|path| *path == p) {
+            self.buffer.remove(index);
+            self.buffer.push_back(p);
+            self.current = self.buffer.len() - 1;
+            return;
+        }
 
         if self.is_full() {
             self.buffer.pop_front();
@@ -676,6 +693,41 @@ mod tests {
         assert_eq!(Path::new("mypath"), queue.current());
 
         assert_eq!(None, queue.previous());
+    }
+
+    #[test]
+    fn test_push_redisplayed_image() {
+        // A queue larger than the image set forces the random fallback
+        // to repeat an image we have already shown. Recording that
+        // repeat moves it to the most recent slot, so previous walks
+        // the order things actually appeared on screen.
+        let mut queue = Queue::with_capacity(5);
+        queue.push(PathBuf::from("mypath"));
+        queue.push(PathBuf::from("mypath2"));
+        queue.push(PathBuf::from("mypath3"));
+
+        queue.push(PathBuf::from("mypath"));
+        assert_eq!(Path::new("mypath"), queue.current());
+        assert_eq!(Some((Path::new("mypath3"), 1)), queue.previous());
+        assert_eq!(Some((Path::new("mypath2"), 0)), queue.previous());
+        assert_eq!(None, queue.previous());
+    }
+
+    #[test]
+    fn test_push_replayed_image() {
+        // Walking back and then forward replays the queue in place.
+        // Pushing a replayed image must leave the buffer and cursor
+        // alone, or the replay would skip ahead of the user.
+        let mut queue = Queue::with_capacity(3);
+        queue.push(PathBuf::from("mypath"));
+        queue.push(PathBuf::from("mypath2"));
+        queue.push(PathBuf::from("mypath3"));
+
+        assert_eq!(Some((Path::new("mypath2"), 1)), queue.previous());
+        assert_eq!(Some((Path::new("mypath"), 0)), queue.previous());
+        assert_eq!(Some((Path::new("mypath2"), 1)), queue.next());
+        queue.push(PathBuf::from("mypath2"));
+        assert_eq!(Some((Path::new("mypath3"), 2)), queue.next());
     }
 
     #[test]
