@@ -1,6 +1,6 @@
 use std::{
     cell::RefCell,
-    collections::VecDeque,
+    collections::{HashSet, VecDeque},
     path::{Path, PathBuf},
     rc::Rc,
 };
@@ -74,11 +74,8 @@ impl Queue {
         self.buffer.len() == self.size
     }
 
-    fn shown_in_current_cycle(&self, p: &PathBuf) -> bool {
-        self.buffer
-            .iter()
-            .skip(self.buffer.len() - self.in_cycle)
-            .any(|path| path == p)
+    fn current_cycle(&self) -> impl Iterator<Item = &PathBuf> {
+        self.buffer.iter().skip(self.buffer.len() - self.in_cycle)
     }
 
     fn start_new_cycle(&mut self) {
@@ -613,9 +610,11 @@ fn next_random_image(
 
     // Pick uniformly among the images that have not been shown in the
     // current cycle. Sampling the complement directly means a repeat
-    // can never happen by bad luck, only by exhaustion.
+    // can never happen by bad luck, only by exhaustion. The set keeps
+    // this linear when the queue is sized to the whole collection.
+    let shown: HashSet<&PathBuf> = queue.current_cycle().collect();
     let available: Vec<usize> = (0..files.len())
-        .filter(|index| !queue.shown_in_current_cycle(&files[*index]))
+        .filter(|index| !shown.contains(&files[*index]))
         .collect();
     if !available.is_empty() {
         let index = available[fastrand::usize(..available.len())];
