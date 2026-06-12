@@ -104,10 +104,10 @@ calculate the next wallpaper accordingly. When `sorting` is set to `random`, it 
 all the wallpapers shown in a queue, so that the commands `next` and `previous` can work
 as intended.
 
-**Notice**: _wpaperd will not show a wallpaper again while it is still in the queue, whose size
-can be set with `queue-size` (`10` by default). When `queue-size` is equal to or bigger than the
-number of available images, no wallpaper is repeated until all of them have been shown; then a
-new cycle starts._
+**Notice**: _by default the queue is sized to the number of available images and follows it as
+the folder changes, so no wallpaper is repeated until all of them have been shown; then a new
+cycle starts. Set `queue-size` to limit how many recently shown wallpapers are remembered
+instead._
 
 The cycling of images can also be paused/resumed by running the `pause` and `resume` commands, or just `toggle-pause`, using _wpaperctl_:
 
@@ -145,7 +145,7 @@ represents a different display and can contain the following keys:
 - `offset`, offset the image on the screen, with a value from `0.0` to `1.0`. (_Optional_, `0.0` by
   default for `tile` mode and `0.5` for all the other modes)
 - `queue-size`, decide how big the queue should be when `path` is set a directory and `sorting` is
-   set to `random`. (_Optional_, `10` by default)
+   set to `random`. (_Optional_, sized to the number of available images by default)
 - `initial-transition`, enable the initial transition at wpaperd startup. (_Optional_, true by default)
 - `recursive`, recursively iterate the directory `path` when looking for available wallpapers;
   it is only valid when `path` points to a directory. (_Optional_, true by default)

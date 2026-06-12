@@ -78,6 +78,10 @@ impl FilelistCache {
         event_loop_handle
             .insert_source(ping_source, move |_, _, wpaperd| {
                 wpaperd.filelist_cache.borrow_mut().update_cache();
+                // Queues sized to the collection follow it as it changes
+                for surface in &mut wpaperd.surfaces {
+                    surface.update_automatic_queue_size();
+                }
             })
             .map_err(|e| eyre!("{e:?}"))
             .wrap_err("Failed to insert the filelist cache watcher in the event loop")?;

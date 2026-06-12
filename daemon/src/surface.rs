@@ -539,6 +539,14 @@ impl Surface {
         }
     }
 
+    /// A queue without an explicit queue-size follows the number of
+    /// available wallpapers; explicitly sized queues are left alone
+    pub fn update_automatic_queue_size(&mut self) {
+        if self.wallpaper_info.drawn_images_queue_size.is_none() {
+            self.image_picker.update_queue_size(&self.wallpaper_info);
+        }
+    }
+
     fn handle_new_duration(
         &mut self,
         wallpaper_info: &WallpaperInfo,
