@@ -529,8 +529,7 @@ impl Surface {
             }
         }
         if self.wallpaper_info.drawn_images_queue_size != wallpaper_info.drawn_images_queue_size {
-            self.image_picker
-                .update_queue_size(self.wallpaper_info.drawn_images_queue_size);
+            self.image_picker.update_queue_size(&self.wallpaper_info);
         }
         if self.wallpaper_info.transition_time != wallpaper_info.transition_time {
             let transition_time = self.wallpaper_info.transition_time;

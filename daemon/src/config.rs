@@ -21,7 +21,6 @@ use serde::Deserialize;
 use smithay_client_toolkit::reexports::calloop::ping::Ping;
 
 use crate::{
-    image_picker::ImagePicker,
     render::Transition,
     wallpaper_info::{BackgroundMode, Recursive, Sorting, WallpaperInfo},
 };
@@ -209,8 +208,9 @@ impl SerializedWallpaperInfo {
             (None, None) => BackgroundMode::default(),
         };
         let drawn_images_queue_size = match (&self.queue_size, &default.queue_size) {
-            (Some(size), _) | (None, Some(size)) => *size,
-            (None, None) => ImagePicker::DEFAULT_DRAWN_IMAGES_QUEUE_SIZE,
+            (Some(size), _) | (None, Some(size)) => Some(*size),
+            // None means the queue follows the number of available wallpapers
+            (None, None) => None,
         };
         let initial_transition = match (&self.initial_transition, &default.initial_transition) {
             (Some(initial_transition), _) | (None, Some(initial_transition)) => *initial_transition,

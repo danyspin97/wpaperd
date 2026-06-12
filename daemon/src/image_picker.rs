@@ -188,6 +188,38 @@ impl Drop for GroupedRandom {
     }
 }
 
+/// An explicit queue-size always wins. Otherwise the queue is sized to
+/// the collection itself, so that no wallpaper repeats until every one
+/// has been shown. Single files and empty folders fall back to the
+/// default; a queue needs room for at least one image.
+fn effective_queue_size(explicit: Option<usize>, files_count: usize) -> usize {
+    explicit
+        .unwrap_or(if files_count == 0 {
+            ImagePicker::DEFAULT_DRAWN_IMAGES_QUEUE_SIZE
+        } else {
+            files_count
+        })
+        .max(1)
+}
+
+fn queue_size_for(
+    wallpaper_info: &WallpaperInfo,
+    filelist_cache: &RefCell<FilelistCache>,
+) -> usize {
+    let files_count = if wallpaper_info.path.is_dir() {
+        filelist_cache
+            .borrow()
+            .get(
+                &wallpaper_info.path,
+                wallpaper_info.recursive.unwrap_or_default(),
+            )
+            .len()
+    } else {
+        0
+    };
+    effective_queue_size(wallpaper_info.drawn_images_queue_size, files_count)
+}
+
 enum ImagePickerSorting {
     Random(Queue),
     GroupedRandom(GroupedRandom),
@@ -204,14 +236,14 @@ impl ImagePickerSorting {
     ) -> Self {
         match wallpaper_info.sorting {
             None | Some(Sorting::Random) => {
-                Self::new_random(wallpaper_info.drawn_images_queue_size)
+                Self::new_random(queue_size_for(wallpaper_info, &filelist_cache))
             }
             Some(Sorting::GroupedRandom { group }) => {
                 ImagePickerSorting::GroupedRandom(GroupedRandom::new(
                     groups,
                     group,
                     wl_surface,
-                    wallpaper_info.drawn_images_queue_size,
+                    queue_size_for(wallpaper_info, &filelist_cache),
                 ))
             }
             Some(Sorting::Ascending) => {
@@ -495,13 +527,16 @@ impl ImagePicker {
                 // The path has changed, use a new random sorting, otherwise we reuse the current
                 // drawn_images
                 (_, Sorting::Random) if path_changed => {
-                    self.sorting =
-                        ImagePickerSorting::new_random(wallpaper_info.drawn_images_queue_size);
+                    self.sorting = ImagePickerSorting::new_random(queue_size_for(
+                        wallpaper_info,
+                        &self.filelist_cache,
+                    ));
                 }
                 (_, Sorting::Random) => {
                     // if the path was not changed, use the current image as the first image of
                     // the drawn_images
-                    let mut queue = Queue::with_capacity(wallpaper_info.drawn_images_queue_size);
+                    let mut queue =
+                        Queue::with_capacity(queue_size_for(wallpaper_info, &self.filelist_cache));
                     queue.push(self.current_image());
                     self.sorting = ImagePickerSorting::Random(queue);
                 }
@@ -510,7 +545,7 @@ impl ImagePicker {
                         wallpaper_groups.clone(),
                         group,
                         wl_surface,
-                        wallpaper_info.drawn_images_queue_size,
+                        queue_size_for(wallpaper_info, &self.filelist_cache),
                     ));
                 }
                 // If the group is the same
@@ -523,7 +558,7 @@ impl ImagePicker {
                         wallpaper_groups.clone(),
                         group,
                         wl_surface,
-                        wallpaper_info.drawn_images_queue_size,
+                        queue_size_for(wallpaper_info, &self.filelist_cache),
                     );
 
                     let mut group = grouped_random.group.borrow_mut();
@@ -539,7 +574,10 @@ impl ImagePicker {
                 }
             }
         } else {
-            self.sorting = ImagePickerSorting::new_random(wallpaper_info.drawn_images_queue_size);
+            self.sorting = ImagePickerSorting::new_random(queue_size_for(
+                wallpaper_info,
+                &self.filelist_cache,
+            ));
         }
     }
 
@@ -554,18 +592,15 @@ impl ImagePicker {
         }
     }
 
-    pub fn update_queue_size(&mut self, drawn_images_queue_size: usize) {
+    pub fn update_queue_size(&mut self, wallpaper_info: &WallpaperInfo) {
+        let queue_size = queue_size_for(wallpaper_info, &self.filelist_cache);
         match &mut self.sorting {
             ImagePickerSorting::Random(queue) => {
-                queue.resize(drawn_images_queue_size);
+                queue.resize(queue_size);
             }
             ImagePickerSorting::Ascending(_) | ImagePickerSorting::Descending(_) => {}
             ImagePickerSorting::GroupedRandom(group) => {
-                group
-                    .group
-                    .borrow_mut()
-                    .queue
-                    .resize(drawn_images_queue_size);
+                group.group.borrow_mut().queue.resize(queue_size);
             }
         }
     }
@@ -782,6 +817,21 @@ mod tests {
                 assert_eq!(files.len(), shown.len());
             }
         }
+    }
+
+    #[test]
+    fn test_effective_queue_size() {
+        // An explicit queue-size always wins
+        assert_eq!(7, effective_queue_size(Some(7), 100));
+        // Without one, the queue covers the whole collection
+        assert_eq!(100, effective_queue_size(None, 100));
+        // Single files and empty folders fall back to the default
+        assert_eq!(
+            ImagePicker::DEFAULT_DRAWN_IMAGES_QUEUE_SIZE,
+            effective_queue_size(None, 0)
+        );
+        // A queue needs room for at least one image
+        assert_eq!(1, effective_queue_size(Some(0), 100));
     }
 
     #[test]
