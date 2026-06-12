@@ -104,11 +104,10 @@ calculate the next wallpaper accordingly. When `sorting` is set to `random`, it 
 all the wallpapers shown in a queue, so that the commands `next` and `previous` can work
 as intended.
 
-**Notice**: _For best randomization, keep `queue-size` (which defaults to `10`) smaller than your
-total number of images. A good rule of thumb: set `queue-size` to half your image count or less.
-When `queue-size` equals or exceeds the total number of images, navigation through the queue
-becomes blocked and duplicate-avoidance becomes ineffective. A warning will be logged if this
-configuration is detected._
+**Notice**: _wpaperd will not show a wallpaper again while it is still in the queue, whose size
+can be set with `queue-size` (`10` by default). When `queue-size` is equal to or bigger than the
+number of available images, no wallpaper is repeated until all of them have been shown; then a
+new cycle starts._
 
 The cycling of images can also be paused/resumed by running the `pause` and `resume` commands, or just `toggle-pause`, using _wpaperctl_:
 

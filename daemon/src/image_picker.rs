@@ -21,6 +21,10 @@ pub struct Queue {
     current: usize,
     tail: usize,
     size: usize,
+    // How many of the most recent entries belong to the current cycle,
+    // i.e. have been shown since the last time every available image
+    // had been seen. Random selection avoids these.
+    in_cycle: usize,
 }
 
 impl Queue {
@@ -30,6 +34,7 @@ impl Queue {
             current: 0,
             tail: size - 1,
             size,
+            in_cycle: 0,
         }
     }
 
@@ -69,8 +74,15 @@ impl Queue {
         self.buffer.len() == self.size
     }
 
-    fn contains(&self, p: &PathBuf) -> bool {
-        self.buffer.contains(p)
+    fn shown_in_current_cycle(&self, p: &PathBuf) -> bool {
+        self.buffer
+            .iter()
+            .skip(self.buffer.len() - self.in_cycle)
+            .any(|path| path == p)
+    }
+
+    fn start_new_cycle(&mut self) {
+        self.in_cycle = 0;
     }
 
     fn set_current_to(&mut self, p: &Path) {
@@ -91,11 +103,16 @@ impl Queue {
             return;
         }
 
-        // The image is in our history but not under the cursor, so the
-        // random fallback showed it again. Move it to the most recent
-        // slot; navigation should walk the order images actually
-        // appeared, repeats included.
+        // The image is in our history but not under the cursor, so a new
+        // cycle showed it again. Move it to the most recent slot;
+        // navigation should walk the order images actually appeared,
+        // repeats included.
         if let Some(index) = self.buffer.iter().position(|path| *path == p) {
+            // It can only have come from before the current cycle
+            // started, so it joins the cycle now
+            if index < self.buffer.len() - self.in_cycle {
+                self.in_cycle += 1;
+            }
             self.buffer.remove(index);
             self.buffer.push_back(p);
             self.current = self.buffer.len() - 1;
@@ -109,6 +126,7 @@ impl Queue {
             self.buffer.push_back(p);
             self.current = self.buffer.len() - 1;
         }
+        self.in_cycle = (self.in_cycle + 1).min(self.buffer.len());
     }
 
     fn has_reached_end(&self) -> bool {
@@ -131,6 +149,7 @@ impl Queue {
             self.tail = new_size - 1;
             self.size = new_size;
             self.buffer = new_buf;
+            self.in_cycle = self.in_cycle.min(self.buffer.len());
         }
     }
 }
@@ -592,31 +611,25 @@ fn next_random_image(
         return (0, files[0].to_path_buf());
     }
 
-    // Otherwise pick a new random image that has not been drawn before
-    // Try 5 times, then get a random image. We do this because it might happen
-    // that the queue is bigger than the amount of available wallpapers
-    let mut tries = 5;
+    // Pick uniformly among the images that have not been shown in the
+    // current cycle. Sampling the complement directly means a repeat
+    // can never happen by bad luck, only by exhaustion.
+    let available: Vec<usize> = (0..files.len())
+        .filter(|index| !queue.shown_in_current_cycle(&files[*index]))
+        .collect();
+    if !available.is_empty() {
+        let index = available[fastrand::usize(..available.len())];
+        return (index, files[index].to_path_buf());
+    }
+
+    // Every image has been shown: start a new cycle. The only image we
+    // rule out is the one on screen, and we know there is more than one.
+    queue.start_new_cycle();
     loop {
         let index = fastrand::usize(..files.len());
-        // search for an image that has not been drawn yet
-        // fail after 5 tries
-        if !queue.contains(&files[index]) {
+        if files[index] != current_image {
             break (index, files[index].to_path_buf());
         }
-
-        // We have already tried a bunch of times
-        // We still need a new image, get the first one that is different than
-        // the current one. We also know that there is more than one image
-        if tries == 0 {
-            break loop {
-                let index = fastrand::usize(..files.len());
-                if files[index] != current_image {
-                    break (index, files[index].to_path_buf());
-                }
-            };
-        }
-
-        tries -= 1;
     }
 }
 
@@ -636,6 +649,8 @@ fn get_previous_image_for_random(current_image: &Path, queue: &mut Queue) -> (us
 mod tests {
     // Note this useful idiom: importing names from outer (for mod tests) scope.
     use super::*;
+
+    use std::collections::HashSet;
 
     #[test]
     fn test_push() {
@@ -682,6 +697,71 @@ mod tests {
         assert_eq!(Some((Path::new("mypath2"), 1)), queue.next());
         queue.push(PathBuf::from("mypath2"));
         assert_eq!(Some((Path::new("mypath3"), 2)), queue.next());
+    }
+
+    #[test]
+    fn test_push_keeps_cycle_count() {
+        // The cycle count follows where a re-shown image came from: one
+        // shown again within the current cycle does not grow it, one
+        // from before the cycle joins it.
+        let mut queue = Queue::with_capacity(5);
+        queue.push(PathBuf::from("mypath"));
+        queue.push(PathBuf::from("mypath2"));
+        queue.push(PathBuf::from("mypath3"));
+        assert_eq!(3, queue.in_cycle);
+
+        // mypath2 is already part of the cycle; showing it again is
+        // not progress through the collection
+        queue.push(PathBuf::from("mypath2"));
+        assert_eq!(3, queue.in_cycle);
+        assert_eq!(Path::new("mypath2"), queue.current());
+
+        // A new cycle starts empty and the first image shown joins it
+        queue.start_new_cycle();
+        assert_eq!(0, queue.in_cycle);
+        queue.push(PathBuf::from("mypath"));
+        assert_eq!(1, queue.in_cycle);
+    }
+
+    #[test]
+    fn test_next_random_image_avoids_already_shown() {
+        // With one image left unseen, the selection must pick it; chance
+        // is not good enough. The loop guards against a regression to
+        // sampling that only mostly avoids the queue.
+        let files: Vec<PathBuf> = ["a", "b", "c", "d"].iter().map(PathBuf::from).collect();
+        for _ in 0..50 {
+            let mut queue = Queue::with_capacity(10);
+            queue.push(files[0].clone());
+            queue.push(files[1].clone());
+            queue.push(files[2].clone());
+
+            let (index, path) = next_random_image(&files[2], &mut queue, &files);
+            assert_eq!(3, index);
+            assert_eq!(files[3], path);
+        }
+    }
+
+    #[test]
+    fn test_next_random_image_cycles_without_repeats() {
+        // Once every image has been shown, a new cycle starts: again no
+        // repeats until every image has been shown, and no image twice
+        // in a row across the boundary.
+        let files: Vec<PathBuf> = ["a", "b", "c"].iter().map(PathBuf::from).collect();
+        for _ in 0..20 {
+            let mut queue = Queue::with_capacity(10);
+            let mut current = PathBuf::new();
+            for cycle in 0..3 {
+                let mut shown = HashSet::new();
+                for _ in 0..files.len() {
+                    let (_, path) = next_random_image(&current, &mut queue, &files);
+                    assert_ne!(current, path, "repeat across change in cycle {cycle}");
+                    assert!(shown.insert(path.clone()), "repeat within cycle {cycle}");
+                    queue.push(path.clone());
+                    current = path;
+                }
+                assert_eq!(files.len(), shown.len());
+            }
+        }
     }
 
     #[test]
