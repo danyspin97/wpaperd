@@ -134,23 +134,23 @@ impl Queue {
     }
 
     fn resize(&mut self, new_size: usize) {
-        if !self.is_full() {
-            self.buffer.reserve_exact(new_size);
-            self.size = new_size;
-        } else {
-            let relative_current = (self.current + self.size - self.tail) % self.size;
-            self.current = (self.tail + self.size - new_size % self.size) % self.size;
-            let relative_current = (relative_current + self.size - self.current - 1) % new_size;
-            let mut new_buf = VecDeque::new();
-            while let Some((prev, _)) = self.next() {
-                new_buf.push_back(prev.to_path_buf());
-            }
-            self.current = relative_current;
-            self.tail = new_size - 1;
-            self.size = new_size;
-            self.buffer = new_buf;
-            self.in_cycle = self.in_cycle.min(self.buffer.len());
+        // A queue cannot work with zero capacity; an automatically sized
+        // queue can ask for it when its folder is emptied. Keep the
+        // current size until there is a real one again.
+        if new_size == 0 {
+            return;
         }
+
+        // The buffer is stored oldest to newest, so shrinking means
+        // dropping from the front. The cursor follows the image it was
+        // on, or the oldest survivor if that image is dropped.
+        while self.buffer.len() > new_size {
+            self.buffer.pop_front();
+            self.current = self.current.saturating_sub(1);
+        }
+        self.size = new_size;
+        self.tail = new_size - 1;
+        self.in_cycle = self.in_cycle.min(self.buffer.len());
     }
 }
 
@@ -724,6 +724,27 @@ mod tests {
     }
 
     #[test]
+    fn test_resize_evicts_cursor() {
+        // A live resize can fire while the user is anywhere in their
+        // history. When the cursor's image is evicted, the cursor lands
+        // on the oldest survivor.
+        let mut queue = Queue::with_capacity(5);
+        queue.push(PathBuf::from("mypath"));
+        queue.push(PathBuf::from("mypath2"));
+        queue.push(PathBuf::from("mypath3"));
+        queue.push(PathBuf::from("mypath4"));
+        queue.push(PathBuf::from("mypath5"));
+        assert_eq!(Some((Path::new("mypath4"), 3)), queue.previous());
+        assert_eq!(Some((Path::new("mypath3"), 2)), queue.previous());
+        assert_eq!(Some((Path::new("mypath2"), 1)), queue.previous());
+
+        queue.resize(2);
+        assert_eq!(Path::new("mypath4"), queue.current());
+        assert_eq!(None, queue.previous());
+        assert_eq!(Some((Path::new("mypath5"), 1)), queue.next());
+    }
+
+    #[test]
     fn test_next_random_image_avoids_already_shown() {
         // With one image left unseen, the selection must pick it; chance
         // is not good enough. The loop guards against a regression to
@@ -762,6 +783,53 @@ mod tests {
                 assert_eq!(files.len(), shown.len());
             }
         }
+    }
+
+    #[test]
+    fn test_resize_grow() {
+        // Growing a queue that was not full left tail pointing at the
+        // old last slot, and walking backwards past the oldest entry
+        // indexed out of bounds.
+        let mut queue = Queue::with_capacity(3);
+        queue.push(PathBuf::from("mypath"));
+        queue.push(PathBuf::from("mypath2"));
+        queue.push(PathBuf::from("mypath3"));
+
+        queue.resize(5);
+        assert_eq!(Path::new("mypath3"), queue.current());
+        assert_eq!(Some((Path::new("mypath2"), 1)), queue.previous());
+        assert_eq!(Some((Path::new("mypath"), 0)), queue.previous());
+        assert_eq!(None, queue.previous());
+    }
+
+    #[test]
+    fn test_resize_shrink_not_full() {
+        // Shrinking below the number of buffered entries must drop the
+        // oldest ones; leaving the buffer bigger than the size means
+        // eviction never starts again and navigation wraps wrongly.
+        let mut queue = Queue::with_capacity(10);
+        queue.push(PathBuf::from("mypath"));
+        queue.push(PathBuf::from("mypath2"));
+        queue.push(PathBuf::from("mypath3"));
+
+        queue.resize(2);
+        assert_eq!(Path::new("mypath3"), queue.current());
+        assert_eq!(Some((Path::new("mypath2"), 0)), queue.previous());
+        assert_eq!(None, queue.previous());
+    }
+
+    #[test]
+    fn test_resize_to_zero() {
+        // A queue cannot work with zero capacity; an automatically sized
+        // queue can ask for it when its folder is emptied. Ignore it.
+        let mut queue = Queue::with_capacity(2);
+        queue.push(PathBuf::from("mypath"));
+        queue.push(PathBuf::from("mypath2"));
+
+        queue.resize(0);
+        assert_eq!(Path::new("mypath2"), queue.current());
+        assert_eq!(Some((Path::new("mypath"), 0)), queue.previous());
+        assert_eq!(None, queue.previous());
     }
 
     #[test]
