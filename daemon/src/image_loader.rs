@@ -105,13 +105,28 @@ impl ImageLoader {
                     // fullscreen)
                     // Do the conversion first, then the ping, otherwise we will have a race
                     // condition
-                    let mut decoder = image.into_decoder().unwrap();
-                    let orientation = decoder.orientation().unwrap();
-                    let mut image = DynamicImage::from_decoder(decoder).unwrap();
-                    image.apply_orientation(orientation);
-                    let image = image.into_rgba8();
-                    tx.send(Some(image)).unwrap();
-                    ping_clone.ping();
+                    let result = (|| -> color_eyre::Result<RgbaImage> {
+                        let mut decoder = image.into_decoder()?;
+                        let orientation = decoder.orientation()?;
+                        let mut image = DynamicImage::from_decoder(decoder)?;
+                        image.apply_orientation(orientation);
+                        Ok(image.into_rgba8())
+                    })();
+                    match result {
+                        Ok(image) => {
+                            tx.send(Some(image)).unwrap();
+                            ping_clone.ping();
+                        }
+                        Err(err) => {
+                            warn!(
+                                "{:?}",
+                                err.wrap_err(format!(
+                                    "Failed to decode image {path_clone:?} needed for {requester_clone}"
+                                ))
+                            );
+                            tx.send(None).unwrap();
+                        }
+                    }
                 }
                 Err(err) => {
                     warn!(
