@@ -308,11 +308,10 @@ impl Renderer {
 
     #[inline]
     pub fn start_transition(&mut self, transition_time: u32) {
-        match self.transition_status {
-            TransitionStatus::Started | TransitionStatus::Running { .. } => unreachable!(),
-            TransitionStatus::Ended => self.transition_status = TransitionStatus::Started,
-        }
-        // Needed to skip the initial transition depending on the configuration
+        // Always restart the transition regardless of the current state. An image
+        // can finish loading faster than a frame event arrives (e.g. cached image),
+        // so Started/Running is a valid state to enter here.
+        self.transition_status = TransitionStatus::Started;
         self.transition_time = transition_time;
     }
 
