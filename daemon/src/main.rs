@@ -69,10 +69,22 @@ fn run(opts: Opts, xdg_dirs: BaseDirectories) -> Result<()> {
         } else if let Some(config_file) = xdg_dirs.find_config_file("config.toml") {
             config_file
         } else {
-            return Err(
-                eyre!("No configuration file found at wallpaper.toml or config.toml")
-                    .wrap_err("Failed to locate any config file"),
-            );
+            if let Some(home) = xdg_dirs.config_home {
+                error!(
+                    "Failed to find config file in: {:?}",
+                    home.join(&xdg_dirs.user_prefix).join("")
+                );
+            }
+            for dir in xdg_dirs.config_dirs.iter() {
+                error!(
+                    "Failed to find config file in: {:?}",
+                    dir.join(&xdg_dirs.shared_prefix).join("")
+                );
+            }
+            return Err(eyre!(
+                "No configuration file found at wallpaper.toml or (preferably) config.toml"
+            )
+            .wrap_err("Failed to locate any config file"));
         }
     };
 
