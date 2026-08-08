@@ -338,10 +338,9 @@ impl Surface {
 
         self.update_wallpaper_link(result.path());
         self.image_picker.update_current_image(result);
-        self.get_context()
-            .unwrap()
-            .renderer
-            .start_transition(transition_time);
+        if let Ok(context) = self.get_context() {
+            context.renderer.start_transition(transition_time);
+        }
         // Update the instant where we have drawn the image
         if let EventSource::Running(registration_token, duration, _) = self.event_source {
             self.event_source = EventSource::Running(registration_token, duration, Instant::now());
