@@ -233,7 +233,7 @@ impl ImagePickerSorting {
     }
 
     fn new_ascending(files_len: usize) -> ImagePickerSorting {
-        Self::Ascending(files_len - 1)
+        Self::Ascending(files_len.saturating_sub(1))
     }
 }
 
