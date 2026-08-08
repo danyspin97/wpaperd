@@ -1,6 +1,6 @@
 use std::{
     cell::RefCell,
-    collections::VecDeque,
+    collections::{HashSet, VecDeque},
     path::{Path, PathBuf},
     rc::Rc,
 };
@@ -40,6 +40,10 @@ pub struct Queue {
     current: usize,
     tail: usize,
     size: usize,
+    // How many of the most recent entries belong to the current cycle,
+    // i.e. have been shown since the last time every available image
+    // had been seen. Random selection avoids these.
+    in_cycle: usize,
 }
 
 impl Queue {
@@ -49,6 +53,7 @@ impl Queue {
             current: 0,
             tail: size - 1,
             size,
+            in_cycle: 0,
         }
     }
 
@@ -97,8 +102,12 @@ impl Queue {
         self.buffer.len() == self.size
     }
 
-    fn contains(&self, p: &PathBuf) -> bool {
-        self.buffer.contains(p)
+    fn current_cycle(&self) -> impl Iterator<Item = &PathBuf> {
+        self.buffer.iter().skip(self.buffer.len() - self.in_cycle)
+    }
+
+    fn start_new_cycle(&mut self) {
+        self.in_cycle = 0;
     }
 
     fn set_current_to(&mut self, p: &Path) {
@@ -108,10 +117,32 @@ impl Queue {
     }
 
     fn push(&mut self, p: PathBuf) {
-        // Avoid duplicates
-        if self.buffer.contains(&p) {
+        // Nothing to record if the cursor is already on this image: we
+        // got here by replaying history, and the queue already reflects
+        // what is on screen.
+        if self
+            .buffer
+            .get(self.current)
+            .map_or(false, |path| *path == p)
+        {
             return;
-        };
+        }
+
+        // The image is in our history but not under the cursor, so a new
+        // cycle showed it again. Move it to the most recent slot;
+        // navigation should walk the order images actually appeared,
+        // repeats included.
+        if let Some(index) = self.buffer.iter().position(|path| *path == p) {
+            // It can only have come from before the current cycle
+            // started, so it joins the cycle now
+            if index < self.buffer.len() - self.in_cycle {
+                self.in_cycle += 1;
+            }
+            self.buffer.remove(index);
+            self.buffer.push_back(p);
+            self.current = self.buffer.len() - 1;
+            return;
+        }
 
         if self.is_full() {
             self.buffer.pop_front();
@@ -120,25 +151,27 @@ impl Queue {
             self.buffer.push_back(p);
             self.current = self.buffer.len() - 1;
         }
+        self.in_cycle = (self.in_cycle + 1).min(self.buffer.len());
     }
 
     fn resize(&mut self, new_size: usize) {
-        if !self.is_full() {
-            self.buffer.reserve_exact(new_size);
-            self.size = new_size;
-        } else {
-            let relative_current = (self.current + self.size - self.tail) % self.size;
-            self.current = (self.tail + self.size - new_size % self.size) % self.size;
-            let relative_current = (relative_current + self.size - self.current - 1) % new_size;
-            let mut new_buf = VecDeque::new();
-            while let Some(prev) = self.next(false) {
-                new_buf.push_back(prev.to_path_buf());
-            }
-            self.current = relative_current;
-            self.tail = new_size - 1;
-            self.size = new_size;
-            self.buffer = new_buf;
+        // A queue cannot work with zero capacity; an automatically sized
+        // queue can ask for it when its folder is emptied. Keep the
+        // current size until there is a real one again.
+        if new_size == 0 {
+            return;
         }
+
+        // The buffer is stored oldest to newest, so shrinking means
+        // dropping from the front. The cursor follows the image it was
+        // on, or the oldest survivor if that image is dropped.
+        while self.buffer.len() > new_size {
+            self.buffer.pop_front();
+            self.current = self.current.saturating_sub(1);
+        }
+        self.size = new_size;
+        self.tail = new_size - 1;
+        self.in_cycle = self.in_cycle.min(self.buffer.len());
     }
 
     fn len(&self) -> usize {
@@ -183,6 +216,38 @@ impl Drop for GroupedRandom {
     }
 }
 
+/// An explicit queue-size always wins. Otherwise the queue is sized to
+/// the collection itself, so that no wallpaper repeats until every one
+/// has been shown. Single files and empty folders fall back to the
+/// default; a queue needs room for at least one image.
+fn effective_queue_size(explicit: Option<usize>, files_count: usize) -> usize {
+    explicit
+        .unwrap_or(if files_count == 0 {
+            ImagePicker::DEFAULT_DRAWN_IMAGES_QUEUE_SIZE
+        } else {
+            files_count
+        })
+        .max(1)
+}
+
+fn queue_size_for(
+    wallpaper_info: &WallpaperInfo,
+    filelist_cache: &RefCell<FilelistCache>,
+) -> usize {
+    let files_count = if wallpaper_info.path.is_dir() {
+        filelist_cache
+            .borrow()
+            .get(
+                &wallpaper_info.path,
+                wallpaper_info.recursive.unwrap_or_default(),
+            )
+            .len()
+    } else {
+        0
+    };
+    effective_queue_size(wallpaper_info.drawn_images_queue_size, files_count)
+}
+
 enum ImagePickerSorting {
     Random(Queue),
     GroupedRandom(GroupedRandom),
@@ -199,14 +264,14 @@ impl ImagePickerSorting {
     ) -> Self {
         match wallpaper_info.sorting {
             None | Some(Sorting::Random) => {
-                Self::new_random(wallpaper_info.drawn_images_queue_size)
+                Self::new_random(queue_size_for(wallpaper_info, &filelist_cache))
             }
             Some(Sorting::GroupedRandom { group }) => {
                 ImagePickerSorting::GroupedRandom(GroupedRandom::new(
                     groups,
                     group,
                     wl_surface,
-                    wallpaper_info.drawn_images_queue_size,
+                    queue_size_for(wallpaper_info, &filelist_cache),
                 ))
             }
             Some(Sorting::Ascending) => {
@@ -563,13 +628,16 @@ impl ImagePicker {
                 // The path has changed, use a new random sorting, otherwise we reuse the current
                 // drawn_images
                 (_, Sorting::Random) if path_changed => {
-                    self.sorting =
-                        ImagePickerSorting::new_random(wallpaper_info.drawn_images_queue_size);
+                    self.sorting = ImagePickerSorting::new_random(queue_size_for(
+                        wallpaper_info,
+                        &self.filelist_cache,
+                    ));
                 }
                 (_, Sorting::Random) => {
                     // if the path was not changed, use the current image as the first image of
                     // the drawn_images
-                    let mut queue = Queue::with_capacity(wallpaper_info.drawn_images_queue_size);
+                    let mut queue =
+                        Queue::with_capacity(queue_size_for(wallpaper_info, &self.filelist_cache));
                     queue.push(self.current_image());
                     self.sorting = ImagePickerSorting::Random(queue);
                 }
@@ -578,7 +646,7 @@ impl ImagePicker {
                         wallpaper_groups.clone(),
                         group,
                         wl_surface,
-                        wallpaper_info.drawn_images_queue_size,
+                        queue_size_for(wallpaper_info, &self.filelist_cache),
                     ));
                 }
                 // If the group is the same
@@ -591,7 +659,7 @@ impl ImagePicker {
                         wallpaper_groups.clone(),
                         group,
                         wl_surface,
-                        wallpaper_info.drawn_images_queue_size,
+                        queue_size_for(wallpaper_info, &self.filelist_cache),
                     );
 
                     let mut group = grouped_random.group.borrow_mut();
@@ -606,7 +674,10 @@ impl ImagePicker {
                 }
             }
         } else {
-            self.sorting = ImagePickerSorting::new_random(wallpaper_info.drawn_images_queue_size);
+            self.sorting = ImagePickerSorting::new_random(queue_size_for(
+                wallpaper_info,
+                &self.filelist_cache,
+            ));
         }
     }
 
@@ -617,18 +688,15 @@ impl ImagePicker {
         }
     }
 
-    pub fn update_queue_size(&mut self, drawn_images_queue_size: usize) {
+    pub fn update_queue_size(&mut self, wallpaper_info: &WallpaperInfo) {
+        let queue_size = queue_size_for(wallpaper_info, &self.filelist_cache);
         match &mut self.sorting {
             ImagePickerSorting::Random(queue) => {
-                queue.resize(drawn_images_queue_size);
+                queue.resize(queue_size);
             }
             ImagePickerSorting::Ascending(_) | ImagePickerSorting::Descending(_) => {}
             ImagePickerSorting::GroupedRandom(group) => {
-                group
-                    .group
-                    .borrow_mut()
-                    .queue
-                    .resize(drawn_images_queue_size);
+                group.group.borrow_mut().queue.resize(queue_size);
             }
         }
     }
@@ -660,44 +728,40 @@ impl ImagePicker {
 }
 
 fn next_random_image(current_image: &Path, queue: &mut Queue, files: &[PathBuf]) -> PathBuf {
-    // Use the next images in the queue, if any
-    let wrap = files.len() <= queue.len();
     // If there is only one image just return it
     if files.len() == 1 {
         return files[0].to_path_buf();
     }
 
-    while let Some(next) = queue.next(wrap) {
+    // Use the next images in the queue, if any. Reaching the newest
+    // entry means picking something new rather than wrapping around,
+    // so every pass through the collection is shuffled afresh.
+    while let Some(next) = queue.next(false) {
         if next.exists() {
             return next.to_path_buf();
         }
     }
 
-    // Otherwise pick a new random image that has not been drawn before
-    // Try 5 times, then get a random image. We do this because it might happen
-    // that the queue is bigger than the amount of available wallpapers
-    let mut tries = 5;
+    // Pick uniformly among the images that have not been shown in the
+    // current cycle. Sampling the complement directly means a repeat
+    // can never happen by bad luck, only by exhaustion. The set keeps
+    // this linear when the queue is sized to the whole collection.
+    let shown: HashSet<&PathBuf> = queue.current_cycle().collect();
+    let available: Vec<usize> = (0..files.len())
+        .filter(|index| !shown.contains(&files[*index]))
+        .collect();
+    if !available.is_empty() {
+        return files[available[fastrand::usize(..available.len())]].to_path_buf();
+    }
+
+    // Every image has been shown: start a new cycle. The only image we
+    // rule out is the one on screen, and we know there is more than one.
+    queue.start_new_cycle();
     loop {
         let index = fastrand::usize(..files.len());
-        // search for an image that has not been drawn yet
-        // fail after 5 tries
-        if !queue.contains(&files[index]) {
+        if files[index] != current_image {
             break files[index].to_path_buf();
         }
-
-        // We have already tried a bunch of times
-        // We still need a new image, get the first one that is different than
-        // the current one. We also know that there is more than one image
-        if tries == 0 {
-            break loop {
-                let index = fastrand::usize(..files.len());
-                if files[index] != current_image {
-                    break files[index].to_path_buf();
-                }
-            };
-        }
-
-        tries -= 1;
     }
 }
 
@@ -718,6 +782,8 @@ mod tests {
     // Note this useful idiom: importing names from outer (for mod tests) scope.
     use super::*;
 
+    use std::collections::HashSet;
+
     #[test]
     fn test_push() {
         let mut queue = Queue::with_capacity(2);
@@ -727,6 +793,188 @@ mod tests {
         assert_eq!(Some(Path::new("mypath")), queue.previous(false));
         assert_eq!(Path::new("mypath"), queue.current());
 
+        assert_eq!(None, queue.previous(false));
+    }
+
+    #[test]
+    fn test_push_redisplayed_image() {
+        // A queue larger than the image set forces the random fallback
+        // to repeat an image we have already shown. Recording that
+        // repeat moves it to the most recent slot, so previous walks
+        // the order things actually appeared on screen.
+        let mut queue = Queue::with_capacity(5);
+        queue.push(PathBuf::from("mypath"));
+        queue.push(PathBuf::from("mypath2"));
+        queue.push(PathBuf::from("mypath3"));
+
+        queue.push(PathBuf::from("mypath"));
+        assert_eq!(Path::new("mypath"), queue.current());
+        assert_eq!(Some(Path::new("mypath3")), queue.previous(false));
+        assert_eq!(Some(Path::new("mypath2")), queue.previous(false));
+        assert_eq!(None, queue.previous(false));
+    }
+
+    #[test]
+    fn test_push_replayed_image() {
+        // Walking back and then forward replays the queue in place.
+        // Pushing a replayed image must leave the buffer and cursor
+        // alone, or the replay would skip ahead of the user.
+        let mut queue = Queue::with_capacity(3);
+        queue.push(PathBuf::from("mypath"));
+        queue.push(PathBuf::from("mypath2"));
+        queue.push(PathBuf::from("mypath3"));
+
+        assert_eq!(Some(Path::new("mypath2")), queue.previous(false));
+        assert_eq!(Some(Path::new("mypath")), queue.previous(false));
+        assert_eq!(Some(Path::new("mypath2")), queue.next(false));
+        queue.push(PathBuf::from("mypath2"));
+        assert_eq!(Some(Path::new("mypath3")), queue.next(false));
+    }
+
+    #[test]
+    fn test_push_keeps_cycle_count() {
+        // The cycle count follows where a re-shown image came from: one
+        // shown again within the current cycle does not grow it, one
+        // from before the cycle joins it.
+        let mut queue = Queue::with_capacity(5);
+        queue.push(PathBuf::from("mypath"));
+        queue.push(PathBuf::from("mypath2"));
+        queue.push(PathBuf::from("mypath3"));
+        assert_eq!(3, queue.in_cycle);
+
+        // mypath2 is already part of the cycle; showing it again is
+        // not progress through the collection
+        queue.push(PathBuf::from("mypath2"));
+        assert_eq!(3, queue.in_cycle);
+        assert_eq!(Path::new("mypath2"), queue.current());
+
+        // A new cycle starts empty and the first image shown joins it
+        queue.start_new_cycle();
+        assert_eq!(0, queue.in_cycle);
+        queue.push(PathBuf::from("mypath"));
+        assert_eq!(1, queue.in_cycle);
+    }
+
+    #[test]
+    fn test_resize_evicts_cursor() {
+        // A live resize can fire while the user is anywhere in their
+        // history. When the cursor's image is evicted, the cursor lands
+        // on the oldest survivor.
+        let mut queue = Queue::with_capacity(5);
+        queue.push(PathBuf::from("mypath"));
+        queue.push(PathBuf::from("mypath2"));
+        queue.push(PathBuf::from("mypath3"));
+        queue.push(PathBuf::from("mypath4"));
+        queue.push(PathBuf::from("mypath5"));
+        assert_eq!(Some(Path::new("mypath4")), queue.previous(false));
+        assert_eq!(Some(Path::new("mypath3")), queue.previous(false));
+        assert_eq!(Some(Path::new("mypath2")), queue.previous(false));
+
+        queue.resize(2);
+        assert_eq!(Path::new("mypath4"), queue.current());
+        assert_eq!(None, queue.previous(false));
+        assert_eq!(Some(Path::new("mypath5")), queue.next(false));
+    }
+
+    #[test]
+    fn test_next_random_image_avoids_already_shown() {
+        // With one image left unseen, the selection must pick it; chance
+        // is not good enough. The loop guards against a regression to
+        // sampling that only mostly avoids the queue.
+        let files: Vec<PathBuf> = ["a", "b", "c", "d"].iter().map(PathBuf::from).collect();
+        for _ in 0..50 {
+            let mut queue = Queue::with_capacity(10);
+            queue.push(files[0].clone());
+            queue.push(files[1].clone());
+            queue.push(files[2].clone());
+
+            let path = next_random_image(&files[2], &mut queue, &files);
+            assert_eq!(files[3], path);
+        }
+    }
+
+    #[test]
+    fn test_next_random_image_cycles_without_repeats() {
+        // Once every image has been shown, a new cycle starts: again no
+        // repeats until every image has been shown, and no image twice
+        // in a row across the boundary.
+        let files: Vec<PathBuf> = ["a", "b", "c"].iter().map(PathBuf::from).collect();
+        for _ in 0..20 {
+            let mut queue = Queue::with_capacity(10);
+            let mut current = PathBuf::new();
+            for cycle in 0..3 {
+                let mut shown = HashSet::new();
+                for _ in 0..files.len() {
+                    let path = next_random_image(&current, &mut queue, &files);
+                    assert_ne!(current, path, "repeat across change in cycle {cycle}");
+                    assert!(shown.insert(path.clone()), "repeat within cycle {cycle}");
+                    queue.push(path.clone());
+                    current = path;
+                }
+                assert_eq!(files.len(), shown.len());
+            }
+        }
+    }
+
+    #[test]
+    fn test_effective_queue_size() {
+        // An explicit queue-size always wins
+        assert_eq!(7, effective_queue_size(Some(7), 100));
+        // Without one, the queue covers the whole collection
+        assert_eq!(100, effective_queue_size(None, 100));
+        // Single files and empty folders fall back to the default
+        assert_eq!(
+            ImagePicker::DEFAULT_DRAWN_IMAGES_QUEUE_SIZE,
+            effective_queue_size(None, 0)
+        );
+        // A queue needs room for at least one image
+        assert_eq!(1, effective_queue_size(Some(0), 100));
+    }
+
+    #[test]
+    fn test_resize_grow() {
+        // Growing a queue that was not full left tail pointing at the
+        // old last slot, and walking backwards past the oldest entry
+        // indexed out of bounds.
+        let mut queue = Queue::with_capacity(3);
+        queue.push(PathBuf::from("mypath"));
+        queue.push(PathBuf::from("mypath2"));
+        queue.push(PathBuf::from("mypath3"));
+
+        queue.resize(5);
+        assert_eq!(Path::new("mypath3"), queue.current());
+        assert_eq!(Some(Path::new("mypath2")), queue.previous(false));
+        assert_eq!(Some(Path::new("mypath")), queue.previous(false));
+        assert_eq!(None, queue.previous(false));
+    }
+
+    #[test]
+    fn test_resize_shrink_not_full() {
+        // Shrinking below the number of buffered entries must drop the
+        // oldest ones; leaving the buffer bigger than the size means
+        // eviction never starts again and navigation wraps wrongly.
+        let mut queue = Queue::with_capacity(10);
+        queue.push(PathBuf::from("mypath"));
+        queue.push(PathBuf::from("mypath2"));
+        queue.push(PathBuf::from("mypath3"));
+
+        queue.resize(2);
+        assert_eq!(Path::new("mypath3"), queue.current());
+        assert_eq!(Some(Path::new("mypath2")), queue.previous(false));
+        assert_eq!(None, queue.previous(false));
+    }
+
+    #[test]
+    fn test_resize_to_zero() {
+        // A queue cannot work with zero capacity; an automatically sized
+        // queue can ask for it when its folder is emptied. Ignore it.
+        let mut queue = Queue::with_capacity(2);
+        queue.push(PathBuf::from("mypath"));
+        queue.push(PathBuf::from("mypath2"));
+
+        queue.resize(0);
+        assert_eq!(Path::new("mypath2"), queue.current());
+        assert_eq!(Some(Path::new("mypath")), queue.previous(false));
         assert_eq!(None, queue.previous(false));
     }
 

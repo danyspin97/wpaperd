@@ -2,7 +2,7 @@ use std::{path::PathBuf, time::Duration};
 
 use serde::Deserialize;
 
-use crate::{image_picker::ImagePicker, render::Transition};
+use crate::render::Transition;
 
 #[derive(Debug, PartialEq, Default, Ord, Eq, PartialOrd, Clone, Copy)]
 pub enum Recursive {
@@ -28,7 +28,9 @@ pub struct WallpaperInfo {
     pub apply_shadow: bool,
     pub sorting: Option<Sorting>,
     pub mode: BackgroundMode,
-    pub drawn_images_queue_size: usize,
+    /// The queue size set in the configuration; None means the queue is
+    /// automatically sized to the number of available wallpapers
+    pub drawn_images_queue_size: Option<usize>,
     pub transition_time: u32,
 
     /// Determines if we should show the transition between black and first
@@ -54,7 +56,7 @@ impl Default for WallpaperInfo {
             apply_shadow: false,
             sorting: None,
             mode: BackgroundMode::default(),
-            drawn_images_queue_size: ImagePicker::DEFAULT_DRAWN_IMAGES_QUEUE_SIZE,
+            drawn_images_queue_size: None,
             transition_time: Transition::Fade {}.default_transition_time(),
             initial_transition: true,
             transition: Transition::Fade {},

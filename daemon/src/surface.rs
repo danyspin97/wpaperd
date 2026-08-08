@@ -540,14 +540,21 @@ impl Surface {
             }
         }
         if self.wallpaper_info.drawn_images_queue_size != wallpaper_info.drawn_images_queue_size {
-            self.image_picker
-                .update_queue_size(self.wallpaper_info.drawn_images_queue_size);
+            self.image_picker.update_queue_size(&self.wallpaper_info);
         }
         if self.wallpaper_info.transition_time != wallpaper_info.transition_time {
             let transition_time = self.wallpaper_info.transition_time;
             if let Ok(context) = self.get_context() {
                 context.renderer.update_transition_time(transition_time);
             }
+        }
+    }
+
+    /// A queue without an explicit queue-size follows the number of
+    /// available wallpapers; explicitly sized queues are left alone
+    pub fn update_automatic_queue_size(&mut self) {
+        if self.wallpaper_info.drawn_images_queue_size.is_none() {
+            self.image_picker.update_queue_size(&self.wallpaper_info);
         }
     }
 
