@@ -103,11 +103,13 @@ impl Wpaperd {
             .find(|surface| surface.name() == name)
     }
 
-    pub fn surface_from_wl_surface(&mut self, surface: &wl_surface::WlSurface) -> &mut Surface {
+    pub fn surface_from_wl_surface(
+        &mut self,
+        surface: &wl_surface::WlSurface,
+    ) -> Option<&mut Surface> {
         self.surfaces
             .iter_mut()
             .find(|s| surface == s.wl_surface())
-            .expect("surface to be registered in wpaperd")
     }
 }
 
@@ -119,8 +121,9 @@ impl CompositorHandler for Wpaperd {
         surface: &wl_surface::WlSurface,
         new_factor: i32,
     ) {
-        self.surface_from_wl_surface(surface)
-            .change_scale_factor(new_factor, qh);
+        if let Some(s) = self.surface_from_wl_surface(surface) {
+            s.change_scale_factor(new_factor, qh);
+        }
     }
 
     fn frame(
@@ -130,8 +133,9 @@ impl CompositorHandler for Wpaperd {
         surface: &wl_surface::WlSurface,
         time: u32,
     ) {
-        let surface = self.surface_from_wl_surface(surface);
-        surface.try_drawing(qh, Some(time));
+        if let Some(s) = self.surface_from_wl_surface(surface) {
+            s.try_drawing(qh, Some(time));
+        }
     }
 
     fn transform_changed(
@@ -141,8 +145,9 @@ impl CompositorHandler for Wpaperd {
         surface: &wl_surface::WlSurface,
         new_transform: wl_output::Transform,
     ) {
-        self.surface_from_wl_surface(surface)
-            .change_transform(new_transform, qh);
+        if let Some(s) = self.surface_from_wl_surface(surface) {
+            s.change_transform(new_transform, qh);
+        }
     }
 
     fn surface_enter(
