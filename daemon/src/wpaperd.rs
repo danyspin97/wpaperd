@@ -5,7 +5,7 @@ use color_eyre::eyre::eyre;
 use color_eyre::owo_colors::OwoColorize;
 use color_eyre::{eyre::WrapErr, Result};
 use log::{error, warn};
-use smithay_client_toolkit::compositor::{CompositorHandler, CompositorState};
+use smithay_client_toolkit::compositor::{CompositorHandler, CompositorState, Region};
 use smithay_client_toolkit::output::{OutputHandler, OutputState};
 use smithay_client_toolkit::reexports::calloop::LoopHandle;
 use smithay_client_toolkit::reexports::client::globals::GlobalList;
@@ -43,6 +43,11 @@ pub struct Wpaperd {
     pub image_loader: Rc<RefCell<ImageLoader>>,
     pub wallpaper_groups: Rc<RefCell<WallpaperGroups>>,
     pub xdg_dirs: BaseDirectories,
+    /// True when running under KDE Plasma (org_kde_plasma_shell global is present).
+    /// KDE Plasma also occupies the background layer; with an empty input region,
+    /// clicks fall through to the Plasma desktop and trigger its wallpaper manager.
+    /// A full input region prevents that while having no observable downside on KDE.
+    pub is_kde: bool,
 }
 
 impl Wpaperd {
@@ -56,6 +61,11 @@ impl Wpaperd {
         xdg_dirs: BaseDirectories,
     ) -> Result<Self> {
         let shm_state = Shm::bind(globals, qh).wrap_err("Failed to bind memory state")?;
+
+        // Detect KDE Plasma by checking for org_kde_plasma_shell in the global list.
+        let is_kde = globals
+            .contents()
+            .with_list(|list| list.iter().any(|g| g.interface == "org_kde_plasma_shell"));
 
         Ok(Self {
             compositor_state: CompositorState::bind(globals, qh)
@@ -72,6 +82,7 @@ impl Wpaperd {
             image_loader,
             wallpaper_groups: Rc::new(RefCell::new(WallpaperGroups::new())),
             xdg_dirs,
+            is_kde,
         })
     }
 
@@ -218,7 +229,19 @@ impl OutputHandler for Wpaperd {
             display_info.adjusted_height() as u32,
         );
 
-        surface.set_input_region(None);
+        // On KDE Plasma, the Plasma Desktop shell also occupies the background layer.
+        // Using an empty input region causes clicks to fall through to Plasma, which
+        // then shows its native wallpaper manager. A full input region (None) keeps
+        // wpaperd on top within the background layer and prevents that.
+        //
+        // On all other compositors (labwc, sway, etc.) we want an empty input region
+        // so that compositor-level root menus and similar features triggered by
+        // unhandled desktop clicks continue to work.
+        if self.is_kde {
+            surface.set_input_region(None);
+        } else if let Ok(region) = Region::new(&self.compositor_state) {
+            surface.set_input_region(Some(region.wl_region()));
+        }
 
         let wallpaper_info = match self.config.get_info_for_output(&name, &description) {
             Ok(wallpaper_info) => wallpaper_info,
