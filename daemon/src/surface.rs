@@ -715,13 +715,13 @@ impl Surface {
         match (self.pause_reason.is_some(), &self.event_source) {
             // Should pause, but timer is still currently running
             (true, EventSource::Running(registration_token, duration, instant)) => {
-                let remaining_duration = remaining_duration(*duration, *instant);
+                // remaining_duration returns None when the timer already expired (elapsed >=
+                // duration). This can happen if the timer fires exactly as pause is triggered.
+                // Use Duration::ZERO so the next wallpaper loads immediately on resume.
+                let remaining = remaining_duration(*duration, *instant).unwrap_or(Duration::ZERO);
 
                 handle.remove(*registration_token);
-                // The remaining duration should never be 0
-                self.event_source = EventSource::Paused(
-                    remaining_duration.expect("timer must have already been expired"),
-                );
+                self.event_source = EventSource::Paused(remaining);
             }
             // Should resume, but timer is not currently running
             (false, EventSource::Paused(duration)) => {
