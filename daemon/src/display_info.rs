@@ -70,6 +70,12 @@ impl DisplayInfo {
     pub fn change_size(&mut self, configure: LayerSurfaceConfigure) -> bool {
         let new_width = configure.new_size.0 as i32;
         let new_height = configure.new_size.1 as i32;
+        // A size of (0, 0) means the compositor defers the decision to the client.
+        // Resizing the EGL window to 0×0 would trigger a protocol error, so keep
+        // the existing dimensions.
+        if new_width == 0 || new_height == 0 {
+            return false;
+        }
         if (self.width, self.height) != (new_width, new_height) {
             self.width = new_width;
             self.height = new_height;
