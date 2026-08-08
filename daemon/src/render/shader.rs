@@ -53,13 +53,13 @@ pub unsafe fn create_shader(
 }
 
 pub const VERTEX_SHADER_SOURCE: &CStr = c"
-#version 310 es
+#version 300 es
 precision mediump float;
 
 layout (location = 0) in vec2 aPosition;
 layout (location = 1) in vec2 aTexCoord;
 
-layout (location = 10) uniform mat2 projection_matrix;
+uniform mat2 projection_matrix;
 
 out vec2 v_texcoord;
 
@@ -69,16 +69,16 @@ void main() {
 }";
 
 pub const FRAGMENT_SHADER_SOURCE: &CStr = c"
-#version 310 es
+#version 300 es
 precision highp float;
 out vec4 FragColor;
 
 in vec2 v_texcoord;
 
-layout (location = 2) uniform vec2 textureScale;
-layout (location = 3) uniform vec2 prevTextureScale;
-layout (location = 4) uniform sampler2D u_prev_texture;
-layout (location = 5) uniform sampler2D u_texture;
+uniform vec2 textureScale;
+uniform vec2 prevTextureScale;
+uniform sampler2D u_prev_texture;
+uniform sampler2D u_texture;
 
 uniform float progress;
 uniform float ratio;
