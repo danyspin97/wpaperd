@@ -331,8 +331,7 @@ impl Config {
                     .ok()
             })
             .filter(|(_, info)| {
-                info.sorting.is_some()
-                    && matches!(info.sorting.unwrap(), Sorting::GroupedRandom { .. })
+                matches!(info.sorting, Some(Sorting::GroupedRandom { .. }))
             })
             .collect::<Vec<_>>();
 
@@ -359,8 +358,8 @@ impl Config {
                             "Displays {} and {} are assigned to group {} but have different paths",
                             x.0,
                             y.0,
-                            match x.1.sorting.unwrap() {
-                                Sorting::GroupedRandom { group } => group,
+                            match x.1.sorting {
+                                Some(Sorting::GroupedRandom { group }) => group,
                                 _ => unreachable!(),
                             }
                         );
