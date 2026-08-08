@@ -491,31 +491,25 @@ impl Surface {
         if self.wallpaper_info.mode != wallpaper_info.mode
             || self.wallpaper_info.offset != wallpaper_info.offset
         {
-            if let Err(err) = self
-                .context
-                .as_mut()
-                .ok_or_else(|| eyre!("EGL context is not available"))
-                .and_then(|context| context.make_current())
-            {
-                error!("{err:?}");
-            } else if let Err(err) = self
-                .context
-                .as_mut()
-                .unwrap()
-                .renderer
-                .set_mode(
-                    self.wallpaper_info.mode,
-                    self.wallpaper_info.offset,
-                    &self.display_info,
-                )
-                .wrap_err_with(|| {
-                    format!(
-                        "Failed to change wallpaper mode for display {}",
-                        self.name()
-                    )
-                })
-            {
-                error!("{err:?}");
+            if let Some(context) = self.context.as_mut() {
+                if let Err(err) = context
+                    .make_current()
+                    .and_then(|_| {
+                        context.renderer.set_mode(
+                            self.wallpaper_info.mode,
+                            self.wallpaper_info.offset,
+                            &self.display_info,
+                        )
+                    })
+                    .wrap_err_with(|| {
+                        format!(
+                            "Failed to change wallpaper mode for display {}",
+                            self.name()
+                        )
+                    })
+                {
+                    error!("{err:?}");
+                }
             }
             if !path_changed {
                 // We should draw immediately
@@ -523,19 +517,19 @@ impl Surface {
             }
         }
         if self.wallpaper_info.transition != wallpaper_info.transition {
-            if let Err(err) = self
-                .get_context()
-                .and_then(|context| context.make_current())
-                .wrap_err_with(|| {
-                    format!("Failed to switch EGL context for display {}", self.name())
-                })
-            {
-                error!("{err:?}");
-            } else {
-                self.context.as_mut().unwrap().renderer.update_transition(
-                    self.wallpaper_info.transition.clone(),
-                    self.display_info.transform,
-                );
+            if let Some(context) = self.context.as_mut() {
+                let name = self.display_info.name.clone();
+                if let Err(err) = context
+                    .make_current()
+                    .wrap_err_with(|| format!("Failed to switch EGL context for display {name}"))
+                {
+                    error!("{err:?}");
+                } else {
+                    context.renderer.update_transition(
+                        self.wallpaper_info.transition.clone(),
+                        self.display_info.transform,
+                    );
+                }
             }
         }
         if self.wallpaper_info.drawn_images_queue_size != wallpaper_info.drawn_images_queue_size {

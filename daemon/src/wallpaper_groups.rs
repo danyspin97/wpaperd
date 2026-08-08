@@ -62,7 +62,9 @@ impl WallpaperGroups {
     }
 
     pub fn remove(&mut self, group: u8, wl_surface: &WlSurface) {
-        let wp_group = self.groups.get(&group).unwrap();
+        let Some(wp_group) = self.groups.get(&group) else {
+            return;
+        };
         let mut wp_group = wp_group.borrow_mut();
         // if this wl_surface is the last one for this WallpaperGroup
         if wp_group.surfaces.len() == 1 {
