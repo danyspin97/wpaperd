@@ -1,4 +1,4 @@
-use std::{ffi::CStr, ops::Deref, rc::Rc};
+use std::{ffi::CStr, ops::Deref, rc::Rc, time::Instant};
 
 use color_eyre::{
     eyre::{ensure, OptionExt, WrapErr},
@@ -27,8 +27,10 @@ fn black_image() -> RgbaImage {
 
 #[derive(Debug)]
 pub enum TransitionStatus {
+    /// Transition has been requested but no frame has been drawn yet.
+    /// The Instant is unused; the clock starts on the first actual draw.
     Started,
-    Running { started: u32, progress: f32 },
+    Running { started: Instant, progress: f32 },
     Ended,
 }
 
@@ -102,12 +104,9 @@ impl Renderer {
         self.check_error("Failed to get the uniform location for progress")?;
         self.gl.Uniform1f(
             loc,
-            match self.transition_status {
+            match &self.transition_status {
                 TransitionStatus::Started => 0.0,
-                TransitionStatus::Running {
-                    started: _,
-                    progress,
-                } => progress,
+                TransitionStatus::Running { progress, .. } => *progress,
                 TransitionStatus::Ended => 1.0,
             },
         );
@@ -120,21 +119,33 @@ impl Renderer {
         Ok(())
     }
 
-    /// Update the transition status with the current time
+    /// Update the transition status using wall-clock time.
+    ///
+    /// Returns `true` if the transition is still running, `false` if it ended or was already over.
+    /// Using `Instant` rather than the compositor frame timestamp avoids a bug where calling
+    /// `update_transition_status` with `time=0` (e.g. from a non-frame code path) recorded
+    /// `started=0`, causing the first real frame (at a large compositor timestamp) to compute
+    /// `progress = 1.0` and skip the entire transition.
     #[inline]
-    pub fn update_transition_status(&mut self, time: u32) -> bool {
+    pub fn update_transition_status(&mut self) -> bool {
         let started = match self.transition_status {
-            TransitionStatus::Started => time,
-            TransitionStatus::Running {
-                started,
-                progress: _,
-            } => started,
+            // First actual draw: start the clock now so the full transition duration is shown
+            // even if the surface was hidden between image load and first frame.
+            TransitionStatus::Started => {
+                let now = Instant::now();
+                self.transition_status = TransitionStatus::Running {
+                    started: now,
+                    progress: 0.0,
+                };
+                return true;
+            }
+            TransitionStatus::Running { started, .. } => started,
             TransitionStatus::Ended => return false,
         };
-        let progress =
-            ((time.saturating_sub(started)) as f32 / self.transition_time as f32).min(1.0);
-        // Recalculate the current progress, the transition might end now
-        if progress == 1.0 {
+        let elapsed_ms = started.elapsed().as_millis() as f32;
+        let progress = (elapsed_ms / self.transition_time as f32).min(1.0);
+        // Recalculate the current progress; the transition might end now
+        if progress >= 1.0 {
             self.transition_finished();
             false
         } else {
@@ -311,8 +322,13 @@ impl Renderer {
         // Always restart the transition regardless of the current state. An image
         // can finish loading faster than a frame event arrives (e.g. cached image),
         // so Started/Running is a valid state to enter here.
-        self.transition_status = TransitionStatus::Started;
-        self.transition_time = transition_time;
+        // A transition_time of 0 means instant switch; no animation needed.
+        if transition_time == 0 {
+            self.transition_finished();
+        } else {
+            self.transition_status = TransitionStatus::Started;
+            self.transition_time = transition_time;
+        }
     }
 
     #[inline]

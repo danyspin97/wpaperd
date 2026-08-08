@@ -166,7 +166,7 @@ impl Surface {
     }
 
     /// Returns true if something has been drawn to the surface
-    fn draw(&mut self, qh: &QueueHandle<Wpaperd>, time: Option<u32>) -> Result<()> {
+    fn draw(&mut self, qh: &QueueHandle<Wpaperd>) -> Result<()> {
         let loading_image = self.loading_image.is_some();
         let window_drawn = self.window_drawn;
         let adjusted_width = self.display_info.adjusted_width();
@@ -178,8 +178,8 @@ impl Surface {
             .make_current()
             .wrap_err("Failed to switch EGL context")?;
 
-        // Check transition status and draw the wallpaper
-        let transition_running = context.renderer.update_transition_status(time.unwrap_or(0));
+        // Check transition status and draw the wallpaper using wall-clock time.
+        let transition_running = context.renderer.update_transition_status();
         if transition_running {
             // Transition is running - still need to draw so the transition renders
             context.draw().wrap_err("Failed to draw the transition")?;
@@ -204,8 +204,8 @@ impl Surface {
         Ok(())
     }
 
-    pub fn try_drawing(&mut self, qh: &QueueHandle<Wpaperd>, time: Option<u32>) {
-        match self.draw(qh, time) {
+    pub fn try_drawing(&mut self, qh: &QueueHandle<Wpaperd>) {
+        match self.draw(qh) {
             Ok(_) => {}
             Err(err) => {
                 error!(
@@ -513,7 +513,7 @@ impl Surface {
             }
             if !path_changed {
                 // We should draw immediately
-                self.try_drawing(qh, None);
+                self.try_drawing(qh);
             }
         }
         if self.wallpaper_info.transition != wallpaper_info.transition {
@@ -878,7 +878,7 @@ impl Surface {
                 let res = self.load_wallpaper();
                 match res {
                     Ok(loaded) if loaded => {
-                        self.try_drawing(qh, None);
+                        self.try_drawing(qh);
                     }
                     Ok(_) => {
                         self.wl_surface.frame(qh, self.wl_surface.clone());

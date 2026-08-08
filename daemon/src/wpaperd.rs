@@ -142,10 +142,10 @@ impl CompositorHandler for Wpaperd {
         _conn: &Connection,
         qh: &QueueHandle<Self>,
         surface: &wl_surface::WlSurface,
-        time: u32,
+        _time: u32,
     ) {
         if let Some(s) = self.surface_from_wl_surface(surface) {
-            s.try_drawing(qh, Some(time));
+            s.try_drawing(qh);
         }
     }
 
