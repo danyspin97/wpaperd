@@ -346,7 +346,7 @@ impl Config {
             let mut errored_list = Vec::new();
             for i in 0..groups.len() {
                 let x = groups.get(i).unwrap();
-                for j in 1..groups.len() {
+                for j in (i + 1)..groups.len() {
                     if errored_list.contains(&j) {
                         continue;
                     }
