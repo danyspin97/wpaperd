@@ -221,7 +221,7 @@ pub fn handle_message(
 
     let mut stream = BufWriter::new(ustream);
     stream
-        .write_all(&serde_json::to_vec(&resp).unwrap())
+        .write_all(&serde_json::to_vec(&resp).wrap_err("Failed to serialize IPC response")?)
         .wrap_err("Failed to write response to the IPC client")
         .suggestion("The client might have died, try running it again")?;
 
