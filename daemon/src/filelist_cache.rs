@@ -90,9 +90,8 @@ impl FilelistCache {
         self.cache
             .iter()
             .find(|filelist| filelist.path == path && filelist.recursive == recursive)
-            .expect("Path passed to Filelist::get must have been cached")
-            .filelist
-            .clone()
+            .map(|filelist| filelist.filelist.clone())
+            .unwrap_or_default()
     }
 
     /// paths must be sorted

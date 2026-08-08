@@ -32,7 +32,7 @@ pub fn listen_on_ipc_socket(socket_path: &Path) -> Result<SocketSource> {
     Ok(socket)
 }
 
-fn check_monitors(wpaperd: &Wpaperd, monitors: &Vec<String>) -> Result<(), IpcError> {
+fn check_monitors(wpaperd: &Wpaperd, monitors: &[String]) -> Result<(), IpcError> {
     for monitor in monitors {
         if !wpaperd
             .surfaces
