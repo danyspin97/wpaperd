@@ -178,18 +178,22 @@ impl SerializedWallpaperInfo {
         } else {
             sorting
         };
-        let sorting = sorting.map(|sorting| {
-            if let Some(group) = group {
-                match sorting {
-                    Sorting::Random => Sorting::GroupedRandom { group },
-                    Sorting::Ascending => todo!(),
-                    Sorting::Descending => todo!(),
-                    Sorting::GroupedRandom { group: _ } => unreachable!(),
+        let sorting = if let Some(group) = group {
+            match sorting {
+                None | Some(Sorting::Random) => Some(Sorting::GroupedRandom { group }),
+                Some(Sorting::Ascending) | Some(Sorting::Descending) => {
+                    return Err(eyre!(
+                        "{} cannot be combined with {} other than {}",
+                        "group".bold().italic().blue(),
+                        "sorting".bold().italic().blue(),
+                        "random".bold().italic().green(),
+                    ));
                 }
-            } else {
-                sorting
+                Some(Sorting::GroupedRandom { group: _ }) => unreachable!(),
             }
-        });
+        } else {
+            sorting
+        };
 
         let mode = match (&self.mode, &default.mode) {
             (Some(mode), _) | (None, Some(mode)) => *mode,
