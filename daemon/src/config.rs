@@ -385,7 +385,13 @@ impl Config {
             // TODO(Shvedov): Better to compile re withing creation of
             // WallpaperInfo, but adding field of type `Option<Regex>` breaks
             // PatialEq macro.
-            let re = Regex::new(&k[3..]).unwrap();
+            let re = match Regex::new(&k[3..]) {
+                Ok(re) => re,
+                Err(err) => {
+                    warn!("Invalid regex in config key {k:?}: {err}");
+                    continue;
+                }
+            };
             if re.is_match(description) {
                 matched = Some(v);
                 break;
