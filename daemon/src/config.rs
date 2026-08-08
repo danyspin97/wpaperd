@@ -156,29 +156,16 @@ impl SerializedWallpaperInfo {
         // sorting and group can only be set when path is a directory
         if (sorting.is_some() || group.is_some()) && !path.is_dir() {
             // Do no use bail! to add suggestion
+            let attr = if sorting.is_some() { "sorting" } else { "group" };
             return Err(eyre!(
-                "{} cannot be set when {} is a directory",
-                if sorting.is_some() {
-                    "sorting"
-                } else {
-                    "group"
-                }
-                .bold()
-                .italic()
-                .blue(),
+                "{} cannot be set when {} points to a file",
+                attr.bold().italic().blue(),
                 "path".bold().italic().blue(),
             )
             .with_suggestion(|| {
                 format!(
                     "Either remove {} or set {} to a directory",
-                    if sorting.is_some() {
-                        "sorting"
-                    } else {
-                        "group"
-                    }
-                    .bold()
-                    .italic()
-                    .blue(),
+                    attr.bold().italic().blue(),
                     "path".bold().italic().blue(),
                 )
             }));
