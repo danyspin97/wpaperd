@@ -396,7 +396,7 @@ impl Config {
                     continue;
                 }
             };
-            if re.is_match(description) {
+            if re.is_match(description) || re.is_match(name) {
                 matched = Some(v);
                 break;
             };
@@ -500,13 +500,31 @@ where
 /// Wayland may report an output description that includes information about the port and port type.
 /// This information is *not* reported by Sway or Hyprland so we need to strip it off so outputs are
 /// matched the way users expect.
+///
+/// Some compositors (e.g. niri) use a ` - PORT` suffix instead of ` (PORT)`.
 fn clean_monitor_description(desc: &str) -> &str {
-    desc.split_once(" (")
+    // Handle "(port)" suffix: "ASUS PB258 G1LMTJ002598 (DP-10)" → "ASUS PB258 G1LMTJ002598"
+    let desc = desc
+        .split_once(" (")
         .map(|(s, _)| s)
         .unwrap_or(desc)
         // Some monitors descriptions contain more than a single space before the port information.
         // See <https://github.com/danyspin97/wpaperd/issues/113>.
-        .trim_end()
+        .trim_end();
+    // Handle " - PORT" suffix used by niri:
+    // "Dell Inc. - DELL P2723DE - DP-4" → "Dell Inc. - DELL P2723DE"
+    if let Some((before, port)) = desc.rsplit_once(" - ") {
+        if is_port_name(port) {
+            return before;
+        }
+    }
+    desc
+}
+
+/// Return true if `s` looks like a Wayland output port name (e.g. `DP-1`, `HDMI-A-2`, `eDP-1`).
+fn is_port_name(s: &str) -> bool {
+    const PORT_PREFIXES: &[&str] = &["DP-", "HDMI-", "eDP-", "DVI-", "VGA-", "LVDS-", "DSI-"];
+    PORT_PREFIXES.iter().any(|p| s.starts_with(p))
 }
 
 #[cfg(test)]
@@ -534,6 +552,19 @@ mod test {
         assert_eq!(
             clean_monitor_description("GIGA-BYTE TECHNOLOGY CO. LTD. G34WQC A  (DP-8)"),
             "GIGA-BYTE TECHNOLOGY CO. LTD. G34WQC A"
+        );
+        // niri reports descriptions with " - PORT" suffix instead of " (PORT)"
+        assert_eq!(
+            clean_monitor_description("Dell Inc. - DELL P2723DE - DP-4"),
+            "Dell Inc. - DELL P2723DE"
+        );
+        assert_eq!(
+            clean_monitor_description("ASUSTek COMPUTER INC - ROG XG27AQ - DP-1"),
+            "ASUSTek COMPUTER INC - ROG XG27AQ"
+        );
+        assert_eq!(
+            clean_monitor_description("Dell Inc. - DELL P2723DE - HDMI-A-1"),
+            "Dell Inc. - DELL P2723DE"
         );
     }
 }
