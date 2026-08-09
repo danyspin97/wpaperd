@@ -181,8 +181,9 @@ impl Surface {
         // Check transition status and draw the wallpaper using wall-clock time.
         let transition_running = context.renderer.update_transition_status();
         if transition_running {
-            // Transition is running - still need to draw so the transition renders
             context.draw().wrap_err("Failed to draw the transition")?;
+            self.wl_surface
+                .damage_buffer(0, 0, adjusted_width, adjusted_height);
             self.queue_draw(qh);
             return Ok(());
         }
