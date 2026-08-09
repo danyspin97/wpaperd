@@ -45,7 +45,6 @@ use smithay_client_toolkit::reexports::{
     calloop_wayland_source::WaylandSource,
     client::{globals::registry_queue_init, Connection, Proxy},
 };
-use wallpaper_info::Sorting;
 use wpaperd_ipc::socket_path;
 use xdg::BaseDirectories;
 
@@ -274,12 +273,6 @@ fn run(opts: Opts, xdg_dirs: BaseDirectories) -> Result<()> {
                 // If the surface has already been drawn for the first time, then handle pausing/resuming
                 // the automatic wallpaper sequence.
                 surface.handle_pause_state(&event_loop.handle());
-                if matches!(
-                    surface.wallpaper_info.sorting,
-                    Some(Sorting::GroupedRandom { .. })
-                ) {
-                    // surface.image_picker.handle_grouped_sorting();
-                }
             };
         });
 
