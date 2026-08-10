@@ -99,19 +99,29 @@ impl ImageLoader {
                 .and_then(|file| ImageReader::new(BufReader::new(file)).with_guessed_format())
             {
                 Ok(image) => {
-                    // Notify the event loop that the image has been loaded
-                    // We need this so that Surface::load_wallpaper is called even if
-                    // wl_surface::frame doesn't get called by the compositor (e.g. a window is
-                    // fullscreen)
-                    // Do the conversion first, then the ping, otherwise we will have a race
-                    // condition
-                    let mut decoder = image.into_decoder().unwrap();
-                    let orientation = decoder.orientation().unwrap();
-                    let mut image = DynamicImage::from_decoder(decoder).unwrap();
-                    image.apply_orientation(orientation);
-                    let image = image.into_rgba8();
-                    tx.send(Some(image)).unwrap();
-                    ping_clone.ping();
+                    match image.into_decoder() {
+                        Ok(mut decoder) => {
+                            // Notify the event loop that the image has been loaded
+                            // We need this so that Surface::load_wallpaper is called even if
+                            // wl_surface::frame doesn't get called by the compositor (e.g. a window is
+                            // fullscreen)
+                            // Do the conversion first, then the ping, otherwise we will have a race
+                            // condition
+                            let orientation = decoder.orientation().unwrap();
+                            let mut image = DynamicImage::from_decoder(decoder).unwrap();
+                            image.apply_orientation(orientation);
+                            let image = image.into_rgba8();
+                            tx.send(Some(image)).unwrap();
+                            ping_clone.ping();
+                        }
+                        Err(err) => {
+                            warn!(
+                            "{:?}",
+                            eyre!(err).wrap_err(format!("Failed to decode image {path_clone:?} needed for {requester_clone}"))
+                        );
+                            tx.send(None).unwrap();
+                        }
+                    };
                 }
                 Err(err) => {
                     warn!(
