@@ -69,6 +69,11 @@ pub struct SerializedWallpaperInfo {
     // Path to bash script.
     #[serde(default, deserialize_with = "tilde_expansion_deserialize")]
     pub exec: Option<PathBuf>,
+
+    /// Path for a symlink pointing to the current wallpaper.
+    /// Relative paths are resolved under $XDG_STATE_HOME/wpaperd/wallpapers/.
+    #[serde(default, deserialize_with = "tilde_expansion_deserialize")]
+    pub symlink: Option<PathBuf>,
 }
 
 impl SerializedWallpaperInfo {
@@ -232,6 +237,11 @@ impl SerializedWallpaperInfo {
             (None, None) => None,
         };
 
+        let symlink = match (&self.symlink, &default.symlink) {
+            (Some(link), _) | (None, Some(link)) => Some(link.to_path_buf()),
+            (None, None) => None,
+        };
+
         if let Some(exec_path) = &exec {
             ensure!(
                 exec_path.exists(),
@@ -263,6 +273,7 @@ impl SerializedWallpaperInfo {
             offset,
             recursive,
             exec,
+            symlink,
         })
     }
 }
@@ -363,6 +374,27 @@ impl Config {
                 }
             }
         }
+
+        // Remove current-image-link if it has no template variables in a section that can match
+        // multiple monitors — without %PORT% or %NAME%, all matching monitors would write to
+        // the same symlink path.
+        config
+            .data
+            .iter_mut()
+            .filter(|(key, info)| {
+                (*key == "default" || *key == "any" || key.starts_with("re:"))
+                    && info
+                        .symlink
+                        .as_deref()
+                        .is_some_and(|p| !has_template_vars(p))
+            })
+            .for_each(|(key, info)| {
+                error!(
+                    "`symlink` in [{key}] has no template variables (%PORT% or \
+                     %NAME%) but the section can match multiple monitors, ignoring it"
+                );
+                info.symlink = None;
+            });
 
         config.path = path.to_path_buf();
         Ok(config)
@@ -486,6 +518,12 @@ where
         path.strip_prefix("~")
             .map_or(path.to_path_buf(), |p| home_dir().unwrap().join(p)),
     ))
+}
+
+/// Return true if `path` contains any template variable (`%PORT%` or `%NAME%`).
+pub fn has_template_vars(path: &Path) -> bool {
+    let s = path.to_string_lossy();
+    s.contains("%PORT%") || s.contains("%NAME%")
 }
 
 /// Clean a monitor description so that the value reported by Wayland matches the one reported by

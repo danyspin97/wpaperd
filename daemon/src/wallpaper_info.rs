@@ -44,6 +44,10 @@ pub struct WallpaperInfo {
     /// Recursively iterate the directory set as path
     pub recursive: Option<Recursive>,
     pub exec: Option<PathBuf>,
+
+    /// Path for a symlink pointing to the current wallpaper.
+    /// Relative paths are resolved under $XDG_STATE_HOME/wpaperd/wallpapers/.
+    pub symlink: Option<PathBuf>,
 }
 
 impl Default for WallpaperInfo {
@@ -61,6 +65,7 @@ impl Default for WallpaperInfo {
             offset: None,
             recursive: None,
             exec: None,
+            symlink: None,
         }
     }
 }

@@ -87,8 +87,8 @@ pub struct Surface {
     /// Pause state of the automatic wallpaper sequence.
     /// When Some, only an explicit next/previous wallpaper command will change the wallpaper.
     pause_reason: Option<PauseReason>,
-    /// Contains the value of XDG_STATE_HOME, given by wapaperd at struct creation
-    xdg_state_home: PathBuf,
+    /// Path to $XDG_STATE_HOME/wpaperd/wallpapers/
+    symlink_dir: PathBuf,
 }
 
 impl Surface {
@@ -98,7 +98,7 @@ impl Surface {
         wl_output: WlOutput,
         display_info: DisplayInfo,
         wallpaper_info: WallpaperInfo,
-        xdg_state_home: PathBuf,
+        symlink_dir: PathBuf,
     ) -> Result<Self> {
         let wl_surface = wl_layer.wl_surface().clone();
         // Commit the surface
@@ -147,7 +147,7 @@ impl Surface {
             loading_image: None,
             loading_image_tries: 0,
             skip_next_transition: first_transition,
-            xdg_state_home,
+            symlink_dir,
         };
 
         // Start loading the wallpaper as soon as possible (i.e. surface creation)
@@ -834,9 +834,33 @@ impl Surface {
         }
     }
 
+    /// Compute the symlink path for the current wallpaper link.
+    ///
+    /// If `symlink` is set, `%PORT%` and `%NAME%` are expanded with the display's port name and
+    /// description respectively. Relative paths are placed under the XDG state directory /
+    /// wallpapers; absolute paths are used as-is. Without `symlink`, the port name is used as the
+    /// symlink name under the XDG state directory (previous default behaviour).
+    fn wallpaper_link_path(&self) -> PathBuf {
+        match &self.wallpaper_info.symlink {
+            Some(p) => {
+                let expanded = p
+                    .to_string_lossy()
+                    .replace("%PORT%", self.name())
+                    .replace("%NAME%", self.description());
+                let expanded = PathBuf::from(expanded);
+                if expanded.is_absolute() {
+                    expanded
+                } else {
+                    self.symlink_dir.join(expanded)
+                }
+            }
+            None => self.symlink_dir.join(self.name()),
+        }
+    }
+
     /// Add a symlink into .local/state that points to the current wallpaper
     fn update_wallpaper_link(&self, image_path: &Path) {
-        let link = self.xdg_state_home.join(self.name());
+        let link = self.wallpaper_link_path();
 
         // remove the previous file if it exists, otherwise symlink() fails. If
         // no file exists, remove_file will return an error of kind NotFound and
@@ -909,7 +933,7 @@ impl Surface {
 impl Drop for Surface {
     fn drop(&mut self) {
         // Do not leave any symlink when a surface gets destroyed
-        let link = self.xdg_state_home.join(self.name());
+        let link = self.wallpaper_link_path();
         if link.exists() {
             if let Err(err) = fs::remove_file(&link)
                 .wrap_err_with(|| format!("Failed to remove symlink {link:?}"))

@@ -258,7 +258,7 @@ impl OutputHandler for Wpaperd {
             }
         };
 
-        let xdg_state_home_dir = match self.xdg_dirs.create_state_directory("wallpapers") {
+        let symlink_dir = match self.xdg_dirs.create_state_directory("wallpapers") {
             Ok(dir) => dir,
             Err(err) => {
                 warn!(
@@ -277,7 +277,7 @@ impl OutputHandler for Wpaperd {
             output,
             display_info,
             wallpaper_info,
-            xdg_state_home_dir,
+            symlink_dir,
         );
         match res {
             Ok(surface) => self.surfaces.push(surface),
