@@ -75,25 +75,18 @@ impl SerializedWallpaperInfo {
     pub fn apply_and_validate(&self, default: &Self) -> Result<WallpaperInfo> {
         let mut path_inherited = false;
         let path = match (&self.path, &default.path) {
-            (Some(path), None) | (Some(path), Some(_))=> path,
+            (Some(path), None) | (Some(path), Some(_)) => path.to_path_buf(),
             (None, Some(path)) => {
                 path_inherited = true;
-                path
+                path.to_path_buf()
             }
-            (None, None) => {
-                return Err(eyre!(
-                    "Attribute {} must be set",
-                    "path".bold().italic().blue(),
-                ))
-                .with_suggestion(|| {
-                    format!(
-                        "Add attribute {} in the display section of the configuration:\npath = \"</path/to/image>\"",
-                        "path".bold().italic().blue(),
-                    )
-                });
-            }
-        }
-        .to_path_buf();
+            (None, None) => xdg::BaseDirectories::with_prefix("wpaperd")
+                .create_data_directory("wallpapers")
+                .wrap_err(
+                    "Failed to create default wallpaper directory $XDG_DATA_HOME/wpaperd/wallpapers",
+                )?
+                .to_path_buf(),
+        };
         // Ensure that a path exists
         if !path.exists() {
             return Err(eyre!(
@@ -156,7 +149,11 @@ impl SerializedWallpaperInfo {
         // sorting and group can only be set when path is a directory
         if (sorting.is_some() || group.is_some()) && !path.is_dir() {
             // Do no use bail! to add suggestion
-            let attr = if sorting.is_some() { "sorting" } else { "group" };
+            let attr = if sorting.is_some() {
+                "sorting"
+            } else {
+                "group"
+            };
             return Err(eyre!(
                 "{} cannot be set when {} points to a file",
                 attr.bold().italic().blue(),
@@ -330,9 +327,7 @@ impl Config {
                     .map(|res| (name, res))
                     .ok()
             })
-            .filter(|(_, info)| {
-                matches!(info.sorting, Some(Sorting::GroupedRandom { .. }))
-            })
+            .filter(|(_, info)| matches!(info.sorting, Some(Sorting::GroupedRandom { .. })))
             .collect::<Vec<_>>();
 
         // Check if all the groups share the same path
