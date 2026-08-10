@@ -89,6 +89,12 @@ pub struct Surface {
     pause_reason: Option<PauseReason>,
     /// Path to $XDG_STATE_HOME/wpaperd/wallpapers/
     symlink_dir: PathBuf,
+    /// A buffer-scale value that must be applied to the wl_surface on the next commit that
+    /// follows an eglSwapBuffers call.  Committing a new scale against a stale buffer whose
+    /// dimensions are not divisible by the scale triggers Wayland protocol error
+    /// invalid_size (error 2 on wl_surface).  We therefore defer the set_buffer_scale call
+    /// until draw() has just swapped a fresh buffer at the correct physical dimensions.
+    pending_scale: Option<i32>,
 }
 
 impl Surface {
@@ -148,6 +154,7 @@ impl Surface {
             loading_image_tries: 0,
             skip_next_transition: first_transition,
             symlink_dir,
+            pending_scale: None,
         };
 
         // Start loading the wallpaper as soon as possible (i.e. surface creation)
@@ -171,6 +178,7 @@ impl Surface {
         let window_drawn = self.window_drawn;
         let adjusted_width = self.display_info.adjusted_width();
         let adjusted_height = self.display_info.adjusted_height();
+        let scale_pending = self.pending_scale.is_some();
 
         // Use the correct context before drawing
         let context = self.get_context()?;
@@ -182,18 +190,32 @@ impl Surface {
         let transition_running = context.renderer.update_transition_status();
         if transition_running {
             context.draw().wrap_err("Failed to draw the transition")?;
+            // Apply a deferred scale change now that we have a fresh buffer.
+            if let Some(scale) = self.pending_scale.take() {
+                self.wl_surface.set_buffer_scale(scale);
+            }
             self.wl_surface
                 .damage_buffer(0, 0, adjusted_width, adjusted_height);
             self.queue_draw(qh);
             return Ok(());
         }
 
-        if loading_image && window_drawn {
+        // Skip redrawing while waiting for a new image to load, unless a scale
+        // change is pending.  If pending_scale is set we must render a fresh
+        // buffer at the new physical dimensions before committing the new scale
+        // factor; committing the stale buffer would trigger Wayland protocol
+        // error invalid_size (wl_surface error 2).
+        if loading_image && window_drawn && !scale_pending {
             self.queue_draw(qh);
             return Ok(());
         }
 
         context.draw().wrap_err("Failed to draw the wallpaper")?;
+
+        // Apply a deferred scale change now that we have a fresh buffer.
+        if let Some(scale) = self.pending_scale.take() {
+            self.wl_surface.set_buffer_scale(scale);
+        }
 
         // Mark the entire surface as damaged and commit
         self.wl_surface
@@ -432,7 +454,12 @@ impl Surface {
 
     pub fn change_scale_factor(&mut self, scale_factor: i32, qh: &QueueHandle<Wpaperd>) {
         if self.display_info.change_scale_factor(scale_factor) {
-            self.wl_surface.set_buffer_scale(scale_factor);
+            // Defer set_buffer_scale until draw() has produced a fresh buffer at the new
+            // physical size.  Calling set_buffer_scale and then committing before
+            // eglSwapBuffers would apply the new scale to the old (stale) buffer, whose
+            // dimensions may not be divisible by the scale, triggering Wayland protocol
+            // error invalid_size (wl_surface error 2).
+            self.pending_scale = Some(scale_factor);
             // Resize the gl viewport
             if let Err(err) = self.resize(qh).wrap_err_with(|| {
                 format!("Failed to resize the surface for display {}", self.name())
