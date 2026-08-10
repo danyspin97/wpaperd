@@ -30,7 +30,10 @@ pub enum TransitionStatus {
     /// Transition has been requested but no frame has been drawn yet.
     /// The Instant is unused; the clock starts on the first actual draw.
     Started,
-    Running { started: Instant, progress: f32 },
+    Running {
+        started: Instant,
+        progress: f32,
+    },
     Ended,
 }
 
@@ -247,7 +250,7 @@ impl Renderer {
                 .gl
                 .GetUniformLocation(self.program, b"textureScale\0".as_ptr() as *const _);
             self.check_error("Failed to get the uniform location for textureScale")?;
-            ensure!(loc >= 0,"Failed to find uniform textureScale");
+            ensure!(loc >= 0, "Failed to find uniform textureScale");
             self.gl
                 .Uniform2fv(loc, 1, texture_scale.as_ptr() as *const _);
             self.check_error("Failed to set uniform textureScale")?;
@@ -256,7 +259,7 @@ impl Renderer {
                 .gl
                 .GetUniformLocation(self.program, b"prevTextureScale\0".as_ptr() as *const _);
             self.check_error("Failed to get the uniform location for prevTextureScale")?;
-            ensure!(loc >= 0,"Failed to find the uniform prevTextureScale");
+            ensure!(loc >= 0, "Failed to find the uniform prevTextureScale");
             self.gl
                 .Uniform2fv(loc, 1, prev_texture_scale.as_ptr() as *const _);
             self.check_error("Failed to set the value for prevTextureScale")?;
@@ -407,7 +410,7 @@ impl Renderer {
             .gl
             .GetUniformLocation(self.program, b"projection_matrix\0".as_ptr() as *const _);
         self.check_error("Failed to get the uniform location for projection_matrix")?;
-        ensure!(loc >= 0,"Failed to find uniform projection_matrix");
+        ensure!(loc >= 0, "Failed to find uniform projection_matrix");
         self.gl
             .UniformMatrix2fv(loc, 1, 0, projection_matrix.as_ptr());
         //self.gl
@@ -452,12 +455,12 @@ fn create_program(gl: &gl::Gl, transition: Transition) -> Result<gl::types::GLui
         // We need to setup the uniform each time we create a program
         let loc = gl.GetUniformLocation(program, b"u_prev_texture\0".as_ptr() as *const _);
         gl_check!(gl, "Failed to get the uniform location for u_prev_texture");
-        ensure!(loc >= 0,"Failed to find the uniform u_prev_texture");
+        ensure!(loc >= 0, "Failed to find the uniform u_prev_texture");
         gl.Uniform1i(loc, 0);
         gl_check!(gl, "Failed to set the value for uniform u_prev_texture");
         let loc = gl.GetUniformLocation(program, b"u_texture\0".as_ptr() as *const _);
         gl_check!(gl, "Failed to get the uniform location for u_texture");
-        ensure!(loc >= 0,"Failed to find the uniform u_texture");
+        ensure!(loc >= 0, "Failed to find the uniform u_texture");
         gl.Uniform1i(loc, 1);
         gl_check!(gl, "Failed to set the value for uniform u_texture");
 

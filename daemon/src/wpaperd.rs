@@ -118,9 +118,7 @@ impl Wpaperd {
         &mut self,
         surface: &wl_surface::WlSurface,
     ) -> Option<&mut Surface> {
-        self.surfaces
-            .iter_mut()
-            .find(|s| surface == s.wl_surface())
+        self.surfaces.iter_mut().find(|s| surface == s.wl_surface())
     }
 }
 
