@@ -963,13 +963,20 @@ impl Surface {
 
 impl Drop for Surface {
     fn drop(&mut self) {
-        // Do not leave any symlink when a surface gets destroyed
+        // Do not leave any symlink when a surface gets destroyed.
+        // Use remove_file directly rather than checking link.exists() first:
+        // exists() follows symlinks and returns false for dangling symlinks
+        // (whose target was deleted), which would leave orphaned symlink files
+        // on disk.  Mirroring the pattern in update_wallpaper_link, we call
+        // remove_file unconditionally and only warn on unexpected errors.
         let link = self.wallpaper_link_path();
-        if link.exists() {
-            if let Err(err) = fs::remove_file(&link)
-                .wrap_err_with(|| format!("Failed to remove symlink {link:?}"))
-            {
-                warn!("{err:?}");
+        if let Err(err) = fs::remove_file(&link) {
+            if err.kind() != std::io::ErrorKind::NotFound {
+                warn!(
+                    "{:?}",
+                    eyre!(err)
+                        .wrap_err(format!("Failed to remove symlink {link:?}"))
+                );
             }
         }
     }
