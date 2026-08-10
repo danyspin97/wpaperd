@@ -169,6 +169,11 @@ represents a different display and can contain the following keys:
   it is only valid when `path` points to a directory. (_Optional_, true by default)
 - `exec`, path to a script that will be executed every time the wallpaper changes; the script
   will be called with the display and the new wallpaper as argument. (_Optional_)
+- `symlink`, path for a symlink that will point to the current wallpaper. Relative paths are
+  resolved under `$XDG_STATE_HOME/wpaperd/wallpapers/`. When used in sections that can match
+  multiple monitors (`default`, `any`, or `re:` patterns), the path must contain the template
+  variable `%NAME%` (output name) or `%PORT%` (output port) to avoid multiple monitors writing
+  to the same symlink. (_Optional_)
 
 The section `default` will be used as base for the all the display configuration; the section
 `any` will be used for all the displays that are not explictly listed. This allows to have a
