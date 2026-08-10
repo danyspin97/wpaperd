@@ -916,17 +916,23 @@ impl Surface {
             return;
         }
 
-        self.context = match EglContext::new(
+        match EglContext::new(
             egl_display,
             &self.wl_surface,
             &self.wallpaper_info,
             &self.display_info,
         ) {
             Ok(context) => {
-                // We were able to create a new context, so we can draw the wallpaper
-                // First we need to tell the image picker that we are not choosing a new image
+                // Assign the new context BEFORE calling load_wallpaper or try_drawing.
+                // Both need self.context to be Some: load_wallpaper uploads the decoded
+                // image to the GL texture, and try_drawing calls get_context() which
+                // returns Err when self.context is None.  Assigning after would cause
+                // the decoded image to be silently discarded (consumed from the cache
+                // but never uploaded), forcing an unnecessary re-decode from disk.
+                self.context = Some(context);
+                // Tell the image picker that we are not choosing a new image
                 self.image_picker.reload();
-                // Then we need to ask the background loader to load the image
+                // Ask the background loader to load the image into the new GL context
                 let res = self.load_wallpaper();
                 match res {
                     Ok(loaded) if loaded => {
@@ -940,14 +946,12 @@ impl Surface {
                         warn!("{err:?}");
                     }
                 }
-                Some(context)
             }
             Err(err) => {
                 error!("{err:?}");
                 self.wl_surface.frame(qh, self.wl_surface.clone());
-                None
             }
-        };
+        }
     }
 
     pub fn get_context(&mut self) -> Result<&mut EglContext> {
