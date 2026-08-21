@@ -79,10 +79,10 @@ If you want to automatically run it at startup, add this line to your sway confi
 exec ~/.local/bin/wpaperd -d
 ```
 
-Or in Hyprland:
+Or in Hyprland(lua syntax):
 
 ```
-exec-once=~/.local/bin/wpaperd -d
+hl.exec_cmd("~/.local/bin/wpaperd -d)
 ```
 
 ## Image formats support
